@@ -1,0 +1,74 @@
+{
+  "name": "inkmap-vscode",
+  "displayName": "Inkmap 墨图",
+  "description": "把 Markdown 大纲当作思维导图编辑：编辑器旁边或 Chrome 中显示导图，改动实时写回文档",
+  "version": "0.1.0",
+  "publisher": "inkmap",
+  "license": "MIT",
+  "private": true,
+  "engines": { "vscode": "^1.90.0" },
+  "categories": ["Visualization", "Other"],
+  "keywords": ["markdown", "mind map", "mindmap", "思维导图", "markmap"],
+  "main": "./dist/extension.js",
+  "activationEvents": [],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "inkmap.mindmap",
+        "displayName": "Inkmap 思维导图",
+        "selector": [{ "filenamePattern": "*.md" }],
+        "priority": "option"
+      }
+    ],
+    "commands": [
+      { "command": "inkmap.openToSide", "title": "在侧边打开思维导图", "category": "Inkmap", "icon": "$(type-hierarchy)" },
+      { "command": "inkmap.openInBrowser", "title": "在浏览器中打开思维导图", "category": "Inkmap", "icon": "$(globe)" },
+      { "command": "inkmap.showSource", "title": "在侧边打开 Markdown", "category": "Inkmap", "icon": "$(go-to-file)" }
+    ],
+    "menus": {
+      "editor/title": [
+        { "command": "inkmap.openToSide", "when": "resourceLangId == markdown && activeCustomEditorId != inkmap.mindmap", "group": "navigation" },
+        { "command": "inkmap.openInBrowser", "when": "resourceLangId == markdown || activeCustomEditorId == inkmap.mindmap", "group": "navigation" },
+        { "command": "inkmap.showSource", "when": "activeCustomEditorId == inkmap.mindmap", "group": "navigation" }
+      ],
+      "explorer/context": [
+        { "command": "inkmap.openToSide", "when": "resourceExtname == .md", "group": "navigation@20" },
+        { "command": "inkmap.openInBrowser", "when": "resourceExtname == .md", "group": "navigation@21" }
+      ],
+      "commandPalette": [
+        { "command": "inkmap.openToSide", "when": "editorLangId == markdown" },
+        { "command": "inkmap.openInBrowser", "when": "editorLangId == markdown || activeCustomEditorId == inkmap.mindmap" },
+        { "command": "inkmap.showSource", "when": "activeCustomEditorId == inkmap.mindmap" }
+      ]
+    },
+    "configuration": {
+      "title": "Inkmap",
+      "properties": {
+        "inkmap.browser": {
+          "type": "string",
+          "enum": ["chrome", "default"],
+          "enumDescriptions": ["用 Google Chrome 打开（找不到时改用默认浏览器）", "用系统默认浏览器打开"],
+          "default": "chrome",
+          "description": "“在浏览器中打开思维导图”使用的浏览器"
+        },
+        "inkmap.browserAutoSave": {
+          "type": "boolean",
+          "default": true,
+          "description": "在浏览器中修改导图后自动保存文档；关闭后改动只进入编辑器中未保存的内容"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "test": "node --test test/",
+    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository -o dist/inkmap.vsix",
+    "vscode:prepublish": "npm run build"
+  },
+  "devDependencies": {
+    "@types/vscode": "~1.90.0",
+    "@vscode/vsce": "^3.0.0",
+    "esbuild": "^0.25.0",
+    "puppeteer-core": "^24.0.0"
+  }
+}

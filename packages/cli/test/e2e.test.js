@@ -5,7 +5,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import puppeteer from "puppeteer-core";
-import { serve } from "../dist/server.js";
+import { fileURLToPath } from "node:url";
+import { fileSource, serve } from "../dist/server.js";
+
+const WEB_ROOT = fileURLToPath(new URL("../dist/web/", import.meta.url));
 
 const CHROME = process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const FIXTURE = new URL("../../core/test/fixtures/logic-design.md", import.meta.url);
@@ -49,7 +52,7 @@ describe("inkmap editor", { skip: !existsSync(CHROME) && "Chrome not found" }, (
   async function open(name, content) {
     const file = join(dir, name);
     await writeFile(file, content);
-    const served = await serve({ file, port: 0 });
+    const served = await serve({ source: await fileSource(file), webRoot: WEB_ROOT, port: 0 });
     const page = await browser.newPage();
     await page.setViewport({ width: 1400, height: 900 });
     const errors = [];

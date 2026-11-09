@@ -3,9 +3,9 @@ import Drag from "simple-mind-map/src/plugins/Drag.js";
 import KeyboardNavigation from "simple-mind-map/src/plugins/KeyboardNavigation.js";
 import Select from "simple-mind-map/src/plugins/Select.js";
 import "simple-mind-map/dist/simpleMindMap.esm.css";
-import { isRich, parse, serialize, type OutlineDoc } from "@inkmap/core";
+import { isRich, parse, serialize, serializeWithLines, type OutlineDoc, type OutlineNode } from "@inkmap/core";
 import { collectExpand, markdownOf, nodeData, toMind, toOutlineDoc, type MindNode, type MindNodeData } from "./convert";
-import { HttpHost, type DocState, type Host } from "./host";
+import { detectHost, HttpHost, type DocState, type Host } from "./host";
 import { createRenderer } from "./render";
 import "./style.css";
 
@@ -101,6 +101,8 @@ export async function start(host: Host) {
   // ---- write back -------------------------------------------------------
 
   const currentMarkdown = () => serialize(toOutlineDoc(meta, mindMap.getData(false)));
+  // In an editor the map edits the open document; saving to disk stays with the editor.
+  const SYNCED = host instanceof HttpHost ? "已保存" : "已同步";
 
   function scheduleSave() {
     clearTimeout(saveTimer);
@@ -111,14 +113,14 @@ export async function start(host: Host) {
 
   async function save() {
     const md = currentMarkdown();
-    if (md === lastMd) return setStatus("saved", "已保存");
+    if (md === lastMd) return setStatus("saved", SYNCED);
     setStatus("saving", "保存中…");
     try {
       const result = await host.save(md, doc.version);
       if (result.ok) {
         lastMd = md;
         doc = { ...doc, md, version: result.version };
-        setStatus("saved", "已保存");
+        setStatus("saved", SYNCED);
       } else {
         await applyExternal(result.doc);
         showToast("文件已在别处修改，已载入最新内容；刚才这一步修改没有写入，请重做。");
@@ -161,11 +163,11 @@ export async function start(host: Host) {
     if (node && isRich(text)) setMarkdown(node, text);
   });
 
-  function openSource(node: any) {
+  function openSource(node: any, focus = true) {
     sourceNode = node;
     source.hidden = false;
     sourceText.value = markdownOf(node.getData());
-    sourceText.focus();
+    if (focus) sourceText.focus();
   }
   function closeSource() {
     sourceNode = null;
@@ -188,8 +190,48 @@ export async function start(host: Host) {
   });
   mindMap.on("node_active", (node: any, list: any[]) => {
     if (source.hidden) return;
-    if (list.length === 1) openSource(list[0]);
+    if (list.length === 1) openSource(list[0], !revealing);
     else sourceText.value = "";
+  });
+
+  // ---- link with the text editor ------------------------------------------
+
+  /** Start line of every node in the current document, keyed by node uid. */
+  function nodeLines(): Map<string, number> {
+    const uids = new Map<OutlineNode, string>();
+    const { lines } = serializeWithLines(toOutlineDoc(meta, mindMap.getData(false), uids));
+    const out = new Map<string, number>();
+    for (const [node, line] of lines) {
+      const uid = uids.get(node);
+      if (uid) out.set(uid, line);
+    }
+    return out;
+  }
+
+  let revealing = false;
+  if (host.select) {
+    mindMap.on("node_click", (node: any) => {
+      const line = nodeLines().get(node.getData("uid"));
+      if (line !== undefined) host.select!(line);
+    });
+  }
+  host.onReveal?.(line => {
+    let best: string | undefined;
+    let bestLine = -1;
+    for (const [uid, start] of nodeLines()) {
+      if (start <= line && start > bestLine) [best, bestLine] = [uid, start];
+    }
+    if (!best || mindMap.renderer.activeNodeList[0]?.getData("uid") === best) return;
+    const uid = best;
+    mindMap.renderer.expandToNodeUid(uid, () => {
+      const node = mindMap.renderer.findNodeByUid(uid);
+      if (!node) return;
+      revealing = true;
+      mindMap.execCommand("CLEAR_ACTIVE_NODE");
+      node.active();
+      revealing = false;
+      if (!node.checkIsInClient?.(40)) mindMap.renderer.moveNodeToCenter(node, false);
+    });
   });
   const toggleSource = () => {
     const active = mindMap.renderer.activeNodeList;
@@ -206,8 +248,12 @@ export async function start(host: Host) {
       fn();
       (e.currentTarget as HTMLElement).blur();
     });
-  click("#undo", () => mindMap.execCommand("BACK"));
-  click("#redo", () => mindMap.execCommand("FORWARD"));
+  if (host.history) {
+    mindMap.keyCommand.removeShortcut("Control+z");
+    mindMap.keyCommand.removeShortcut("Control+y");
+  }
+  click("#undo", () => (host.history ? host.history.undo() : mindMap.execCommand("BACK")));
+  click("#redo", () => (host.history ? host.history.redo() : mindMap.execCommand("FORWARD")));
   click("#fit", () => mindMap.view.fit());
   click("#toggle-source", toggleSource);
   click("#close-source", closeSource);
@@ -228,7 +274,7 @@ export async function start(host: Host) {
   return { mindMap, currentMarkdown };
 }
 
-start(new HttpHost()).then(api => {
+start(detectHost()).then(api => {
   // Exposed for end-to-end tests and console debugging.
   (window as any).inkmap = api;
 }).catch(err => {

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isRich, parse, plainText, serialize } from "../src/index";
+import { isRich, parse, plainText, serialize, serializeWithLines } from "../src/index";
 
 const roundTrip = (md: string) => serialize(parse(md));
 
@@ -61,6 +61,26 @@ describe("structure", () => {
     a.children.push({ ...h, children: [] });
     doc.root.children.push(a);
     expect(serialize(doc)).toBe("# R\n\n- a\n  - H\n");
+  });
+});
+
+describe("line positions", () => {
+  it("reports where each node starts", () => {
+    const doc = parse("---\ntitle: T\n---\n\n## Root\n\n- a\n  more\n  - b\n\n- c\n");
+    const { md, lines } = serializeWithLines(doc);
+    const lineOf = (n: { md: string }) => md.split("\n")[lines.get(n as never)!];
+    const [a, c] = doc.root.children;
+    expect(lines.get(doc.root)).toBe(4);
+    expect(lineOf(a)).toBe("- a");
+    expect(lineOf(a.children[0])).toBe("  - b");
+    expect(lineOf(c)).toBe("- c");
+  });
+
+  it("starts a synthetic root at its first child", () => {
+    const doc = parse("\n- a\n- b\n");
+    const { lines } = serializeWithLines(doc);
+    expect(lines.get(doc.root.children[0])).toBe(1);
+    expect(lines.get(doc.root.children[1])).toBe(2);
   });
 });
 

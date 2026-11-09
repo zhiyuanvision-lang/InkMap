@@ -1,11 +1,9 @@
 import { createHash } from "node:crypto";
-import { watch, type FSWatcher } from "node:fs";
+import { watch } from "node:fs";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { basename, dirname, extname, join, normalize, relative, resolve, sep } from "node:path";
-import { fileURLToPath } from "node:url";
+import { basename, dirname, extname, join, normalize, resolve, sep } from "node:path";
 
-const WEB_ROOT = fileURLToPath(new URL("./web/", import.meta.url));
 const MAX_BODY = 20 * 1024 * 1024;
 const TYPES: Record<string, string> = {
   ".html": "text/html; charset=utf-8",
@@ -20,8 +18,21 @@ const TYPES: Record<string, string> = {
   ".json": "application/json",
 };
 
+/** Where the served document comes from: a file on disk, or a document open in an editor. */
+export interface DocSource {
+  name: string;
+  /** Directory that relative image paths resolve against. */
+  dir: string;
+  read(): Promise<string>;
+  write(md: string): Promise<void>;
+  /** Calls `onChange` whenever the text may have changed elsewhere; returns a disposer. */
+  watch(onChange: () => void): () => void;
+}
+
 export interface ServeOptions {
-  file: string;
+  source: DocSource;
+  /** Directory holding the built web editor. */
+  webRoot: string;
   port?: number;
   host?: string;
   log?: (msg: string) => void;
@@ -34,40 +45,60 @@ export interface Served {
 
 const hash = (s: string) => createHash("sha1").update(s).digest("hex");
 
-/** Resolves `rel` under `root`, or returns null when it would escape it. */
-function within(root: string, rel: string): string | null {
-  const full = normalize(join(root, decodeURIComponent(rel)));
-  return full === root || full.startsWith(root.endsWith(sep) ? root : root + sep) ? full : null;
+export function docName(path: string) {
+  return basename(path).replace(/\.md$/i, "").replace(/\.markmap$/i, "");
 }
 
-export async function serve({ file, port = 4377, host = "127.0.0.1", log = () => {} }: ServeOptions): Promise<Served> {
+export async function fileSource(file: string, log: (msg: string) => void = () => {}): Promise<DocSource> {
   const path = resolve(file);
   if (!(await stat(path)).isFile()) throw new Error(`不是文件：${path}`);
   const dir = dirname(path);
-  const name = basename(path).replace(/\.md$/i, "").replace(/\.markmap$/i, "");
+  return {
+    name: docName(path),
+    dir,
+    read: () => readFile(path, "utf8"),
+    async write(md) {
+      await writeFile(path, md, "utf8");
+      log(`已写回 ${path}`);
+    },
+    watch(onChange) {
+      // Watch the directory rather than the file so atomic saves by editors (write + rename) are seen.
+      const watcher = watch(dir, (_, changed) => {
+        if (!changed || changed === basename(path)) onChange();
+      });
+      return () => watcher.close();
+    },
+  };
+}
 
-  let current = await readFile(path, "utf8");
+/** Resolves `rel` under `root`, or returns null when it would escape it. */
+function within(root: string, rel: string): string | null {
+  const base = root.endsWith(sep) ? root : root + sep;
+  const full = normalize(join(root, decodeURIComponent(rel)));
+  return full.startsWith(base) ? full : null;
+}
+
+export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", log = () => {} }: ServeOptions): Promise<Served> {
+  let current = await source.read();
   let version = hash(current);
   const clients = new Set<ServerResponse>();
 
-  const docState = () => ({ name, md: current, version });
+  const docState = () => ({ name: source.name, md: current, version });
   const broadcast = () => {
     const payload = `event: change\ndata: ${JSON.stringify(docState())}\n\n`;
     for (const res of clients) res.write(payload);
   };
 
-  // Watch the directory rather than the file so atomic saves by editors (write + rename) are seen.
   let pending: NodeJS.Timeout | undefined;
-  const watcher: FSWatcher = watch(dir, (_, changed) => {
-    if (changed && changed !== basename(path)) return;
+  const unwatch = source.watch(() => {
     clearTimeout(pending);
     pending = setTimeout(async () => {
       try {
-        const text = await readFile(path, "utf8");
+        const text = await source.read();
         if (hash(text) === version) return;
         current = text;
         version = hash(text);
-        log("文件已在外部修改，已推送到页面");
+        log("文档已在别处修改，已推送到页面");
         broadcast();
       } catch {
         // The file may be briefly missing while an editor replaces it.
@@ -117,8 +148,13 @@ export async function serve({ file, port = 4377, host = "127.0.0.1", log = () =>
         if (md !== current) {
           current = md;
           version = hash(md);
-          await writeFile(path, md, "utf8");
-          log(`已写回 ${relative(process.cwd(), path) || path}`);
+          try {
+            await source.write(md);
+          } catch (err) {
+            current = await source.read();
+            version = hash(current);
+            throw err;
+          }
         }
         return json(res, 200, { version });
       }
@@ -130,9 +166,8 @@ export async function serve({ file, port = 4377, host = "127.0.0.1", log = () =>
         return;
       }
       if (url.pathname === "/favicon.ico") return void res.writeHead(204).end();
-      if (url.pathname.startsWith("/doc-assets/")) return sendFile(res, within(dir, url.pathname.slice("/doc-assets/".length)));
-      const asset = url.pathname === "/" ? "index.html" : url.pathname.slice(1);
-      return sendFile(res, within(WEB_ROOT, asset));
+      if (url.pathname.startsWith("/doc-assets/")) return sendFile(res, within(source.dir, url.pathname.slice("/doc-assets/".length)));
+      return sendFile(res, within(webRoot, url.pathname === "/" ? "index.html" : url.pathname.slice(1)));
     } catch (err) {
       json(res, 500, { error: err instanceof Error ? err.message : String(err) });
     }
@@ -158,7 +193,8 @@ export async function serve({ file, port = 4377, host = "127.0.0.1", log = () =>
     url: `http://${host}:${bound}/`,
     close: () =>
       new Promise<void>(done => {
-        watcher.close();
+        clearTimeout(pending);
+        unwatch();
         for (const res of clients) res.end();
         server.close(() => done());
       }),

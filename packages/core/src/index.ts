@@ -131,7 +131,14 @@ export function parse(markdown: string, title = "Untitled"): OutlineDoc {
 }
 
 export function serialize(doc: OutlineDoc): string {
+  return serializeWithLines(doc).md;
+}
+
+/** Serializes the document and reports the zero-based line where each node starts. */
+export function serializeWithLines(doc: OutlineDoc): { md: string; lines: Map<OutlineNode, number> } {
   const out: string[] = [];
+  const lines = new Map<OutlineNode, number>();
+  const offset = doc.frontMatter ? doc.frontMatter.split("\n").length - 1 : 0;
   const blanks = (n = 0) => { for (let k = 0; k < n; k++) out.push(""); };
   const pushLines = (first: string, md: string, pad: string) => {
     const [head, ...rest] = md.split("\n");
@@ -139,9 +146,10 @@ export function serialize(doc: OutlineDoc): string {
     for (const l of rest) out.push(l === "" ? "" : pad + l);
   };
 
-  const write = (node: OutlineNode, parent: OutlineNode, indent: number, headingLevel: number) => {
+  const write = (node: OutlineNode, parent: OutlineNode, indent: number, headingLevel: number, first = false) => {
     // Blank lines around headings and blocks do not carry over once they are written as list items.
-    blanks(parent.kind === "heading" || node.kind === "item" ? node.blankBefore : 0);
+    if (!first) blanks(parent.kind === "heading" || node.kind === "item" ? node.blankBefore : 0);
+    lines.set(node, offset + out.length);
     if (node.kind === "heading" && parent.kind === "heading") {
       const level = node.level && node.level > headingLevel ? node.level : headingLevel + 1;
       pushLines("#".repeat(Math.min(level, 6)) + " ", node.md, "");
@@ -161,14 +169,16 @@ export function serialize(doc: OutlineDoc): string {
 
   blanks(doc.leadingBlank);
   if (doc.syntheticRoot) {
-    doc.root.children.forEach((c, k) => write(k === 0 ? { ...c, blankBefore: 0 } : c, doc.root, 0, 0));
+    lines.set(doc.root, offset + out.length);
+    doc.root.children.forEach((c, k) => write(c, doc.root, 0, 0, k === 0));
   } else {
     const level = doc.root.level || 1;
+    lines.set(doc.root, offset + out.length);
     pushLines("#".repeat(level) + " ", doc.root.md, "");
     doc.root.children.forEach(c => write(c, doc.root, 0, level));
   }
   const body = out.join("\n");
-  return doc.frontMatter + body + (doc.trailingNewline ? "\n" : "");
+  return { md: doc.frontMatter + body + (doc.trailingNewline ? "\n" : ""), lines };
 }
 
 /** True when the Markdown needs rendering rather than plain-text display. */

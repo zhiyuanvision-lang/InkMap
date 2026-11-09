@@ -1,5 +1,8 @@
 import { spawn } from "node:child_process";
-import { serve } from "./server.js";
+import { fileURLToPath } from "node:url";
+import { fileSource, serve } from "./server.js";
+
+const WEB_ROOT = fileURLToPath(new URL("./web/", import.meta.url));
 
 const USAGE = `用法：inkmap <文件.md> [--port 端口] [--no-open]
 
@@ -27,7 +30,8 @@ export async function main(argv: string[]) {
   if (!file) throw new Error(USAGE);
   if (port !== undefined && !Number.isInteger(port)) throw new Error("--port 需要一个整数");
 
-  const served = await serve({ file, port, log: msg => console.log(`[inkmap] ${msg}`) });
+  const log = (msg: string) => console.log(`[inkmap] ${msg}`);
+  const served = await serve({ source: await fileSource(file, log), webRoot: WEB_ROOT, port, log });
   console.log(`[inkmap] 正在编辑 ${file}`);
   console.log(`[inkmap] ${served.url}  （Ctrl+C 退出）`);
   if (open) openBrowser(served.url);

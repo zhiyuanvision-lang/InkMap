@@ -42,20 +42,22 @@ export function toMind(node: OutlineNode, expand: (path: string[], depth: number
 /** Markdown of a node: plain nodes are edited as text on the canvas, rich nodes through their source. */
 export const markdownOf = (data: MindNodeData) => (data.rich ? data.md : String(data.text ?? "")).replace(/\r\n?/g, "\n");
 
-export function fromMind(node: MindNode): OutlineNode {
+export function fromMind(node: MindNode, uids?: Map<OutlineNode, string>): OutlineNode {
   const { data } = node;
-  return {
+  const out: OutlineNode = {
     md: markdownOf(data),
     kind: data.kind ?? "item",
     level: data.level,
     marker: data.marker,
     blankBefore: data.blankBefore,
-    children: (node.children ?? []).map(fromMind),
+    children: (node.children ?? []).map(c => fromMind(c, uids)),
   };
+  if (uids && data.uid) uids.set(out, data.uid);
+  return out;
 }
 
-export function toOutlineDoc(meta: Omit<OutlineDoc, "root">, root: MindNode): OutlineDoc {
-  return { ...meta, root: fromMind(root) };
+export function toOutlineDoc(meta: Omit<OutlineDoc, "root">, root: MindNode, uids?: Map<OutlineNode, string>): OutlineDoc {
+  return { ...meta, root: fromMind(root, uids) };
 }
 
 /** Expanded state keyed by the Markdown path from the root, used to keep folds across reloads. */

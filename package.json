@@ -5,10 +5,12 @@
   "workspaces": [
     "packages/core",
     "packages/web",
-    "packages/cli"
+    "packages/cli",
+    "packages/vscode"
   ],
   "scripts": {
-    "build": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build -w inkmap",
+    "build": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build -w inkmap && npm run build -w inkmap-vscode",
+    "package:vscode": "npm run package -w inkmap-vscode",
     "test": "npm test -w @inkmap/core",
     "dev": "npm run dev -w @inkmap/web"
   },
