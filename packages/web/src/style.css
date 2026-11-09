@@ -22,6 +22,14 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: #f5f6f7; col
 #source-text { flex: 1; border: none; outline: none; resize: none; padding: 12px; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: #1f2329; }
 .source-hint { margin: 0; padding: 8px 12px; border-top: 1px solid #eff0f1; font-size: 12px; color: #8f959e; }
 
+#node-menu { position: fixed; z-index: 30; min-width: 180px; padding: 4px; background: #fff; border: 1px solid #dee0e3; border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(31, 35, 41, .12); font-size: 13px; }
+#node-menu[hidden] { display: none; }
+#node-menu button { display: flex; justify-content: space-between; gap: 16px; width: 100%; border: none; background: none; border-radius: 4px;
+  padding: 6px 10px; font: inherit; color: inherit; cursor: pointer; text-align: left; }
+#node-menu button:hover { background: #f0f4ff; }
+#node-menu kbd { font: inherit; color: #8f959e; }
+
 #toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 20; background: #1f2329; color: #fff;
   padding: 8px 14px; border-radius: 6px; font-size: 13px; max-width: 70vw; }
 #toast[hidden] { display: none; }

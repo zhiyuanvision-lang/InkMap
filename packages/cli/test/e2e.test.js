@@ -135,6 +135,45 @@ describe("inkmap editor", { skip: !existsSync(CHROME) && "Chrome not found" }, (
     });
   });
 
+  it("expands every descendant of the selected node", async () => {
+    const DEEP = "## Root\n\n- a\n  - b\n    - c\n      - d\n        - e\n- x\n  - y\n    - z\n      - w\n";
+    await withDoc("deep.md", DEEP, async t => {
+      const shown = text =>
+        t.page.evaluate(text => {
+          let hit = false;
+          const walk = n => ((hit ||= n.getData("text") === text), (n.children ?? []).forEach(walk));
+          walk(window.inkmap.mindMap.renderer.root);
+          return hit;
+        }, text);
+      assert.equal(await shown("d"), false, "deep levels start folded");
+
+      assert.ok(await activate(t.page, "a"));
+      await t.page.keyboard.down("Shift");
+      await t.page.keyboard.press("Slash");
+      await t.page.keyboard.up("Shift");
+      await waitFor(() => shown("e"), "subtree expanded by ⇧/");
+      assert.equal(await shown("w"), false, "other branches stay folded");
+      assert.equal(await t.page.evaluate(() => !!document.querySelector(".smm-node-edit-wrap:focus")), false, "⇧/ does not start text editing");
+
+      const box = await t.page.evaluate(() => {
+        let x;
+        const walk = n => (n.getData("text") === "x" && (x = n), (n.children ?? []).forEach(walk));
+        walk(window.inkmap.mindMap.renderer.root);
+        const r = x.group.node.getBoundingClientRect();
+        return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+      });
+      await t.page.mouse.click(box.x, box.y, { button: "right" });
+      await t.page.waitForSelector("#node-menu:not([hidden])");
+      await t.page.click("#menu-expand-subtree");
+      await waitFor(() => shown("w"), "subtree expanded from the context menu");
+      assert.ok(await t.page.$("#node-menu[hidden]"));
+
+      await sleep(600);
+      assert.equal(await readFile(t.file, "utf8"), DEEP, "expanding does not touch the file");
+      assert.deepEqual(t.errors, []);
+    });
+  });
+
   it("edits rich nodes through the source panel", async () => {
     await withDoc("table.md", SIMPLE, async t => {
       assert.ok(await activate(t.page, "| a | b |"));

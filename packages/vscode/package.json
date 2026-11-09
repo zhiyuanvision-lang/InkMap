@@ -2,7 +2,7 @@
   "name": "inkmap-vscode",
   "displayName": "Inkmap 墨图",
   "description": "把 Markdown 大纲当作思维导图编辑：编辑器旁边或 Chrome 中显示导图，改动实时写回文档",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "inkmap",
   "license": "MIT",
   "private": true,
@@ -21,6 +21,7 @@
       }
     ],
     "commands": [
+      { "command": "inkmap.open", "title": "Open as Inkmap", "icon": "$(type-hierarchy)" },
       { "command": "inkmap.openToSide", "title": "在侧边打开思维导图", "category": "Inkmap", "icon": "$(type-hierarchy)" },
       { "command": "inkmap.openInBrowser", "title": "在浏览器中打开思维导图", "category": "Inkmap", "icon": "$(globe)" },
       { "command": "inkmap.showSource", "title": "在侧边打开 Markdown", "category": "Inkmap", "icon": "$(go-to-file)" }
@@ -32,10 +33,18 @@
         { "command": "inkmap.showSource", "when": "activeCustomEditorId == inkmap.mindmap", "group": "navigation" }
       ],
       "explorer/context": [
-        { "command": "inkmap.openToSide", "when": "resourceExtname == .md", "group": "navigation@20" },
+        { "command": "inkmap.open", "when": "resourceExtname == .md", "group": "navigation@20" },
         { "command": "inkmap.openInBrowser", "when": "resourceExtname == .md", "group": "navigation@21" }
       ],
+      "editor/context": [
+        { "command": "inkmap.open", "when": "resourceLangId == markdown", "group": "navigation@20" },
+        { "command": "inkmap.openInBrowser", "when": "resourceLangId == markdown", "group": "navigation@21" }
+      ],
+      "editor/title/context": [
+        { "command": "inkmap.open", "when": "resourceExtname == .md && activeCustomEditorId != inkmap.mindmap", "group": "1_open@20" }
+      ],
       "commandPalette": [
+        { "command": "inkmap.open", "when": "editorLangId == markdown" },
         { "command": "inkmap.openToSide", "when": "editorLangId == markdown" },
         { "command": "inkmap.openInBrowser", "when": "editorLangId == markdown || activeCustomEditorId == inkmap.mindmap" },
         { "command": "inkmap.showSource", "when": "activeCustomEditorId == inkmap.mindmap" }

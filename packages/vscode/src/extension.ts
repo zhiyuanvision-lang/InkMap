@@ -13,21 +13,21 @@ export function activate(context: vscode.ExtensionContext) {
     return run(uri);
   };
 
+  const openToSide = withUri(uri =>
+    vscode.commands.executeCommand("vscode.openWith", uri, MindmapEditorProvider.viewType, {
+      viewColumn: vscode.ViewColumn.Beside,
+      preserveFocus: true,
+    }),
+  );
+
   context.subscriptions.push(
     log,
     browsers,
     vscode.window.registerCustomEditorProvider(MindmapEditorProvider.viewType, new MindmapEditorProvider(context), {
       webviewOptions: { retainContextWhenHidden: true },
     }),
-    vscode.commands.registerCommand(
-      "inkmap.openToSide",
-      withUri(uri =>
-        vscode.commands.executeCommand("vscode.openWith", uri, MindmapEditorProvider.viewType, {
-          viewColumn: vscode.ViewColumn.Beside,
-          preserveFocus: true,
-        }),
-      ),
-    ),
+    vscode.commands.registerCommand("inkmap.open", openToSide),
+    vscode.commands.registerCommand("inkmap.openToSide", openToSide),
     vscode.commands.registerCommand(
       "inkmap.showSource",
       withUri(uri => vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside, preview: false })),

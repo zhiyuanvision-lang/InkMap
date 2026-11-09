@@ -241,6 +241,31 @@ export async function start(host: Host) {
   };
   mindMap.keyCommand.addShortcut("Control+e", toggleSource);
 
+  const expandSubtree = (nodes: any[] = mindMap.renderer.activeNodeList) => {
+    if (!nodes.length) return showToast("先选中一个节点");
+    nodes.forEach(n => mindMap.execCommand("EXPAND_ALL", n.getData("uid")));
+  };
+  mindMap.keyCommand.addShortcut("Shift+/", () => expandSubtree());
+
+  const menu = $("#node-menu");
+  let menuNodes: any[] = [];
+  const hideMenu = () => {
+    menu.hidden = true;
+    menuNodes = [];
+  };
+  mindMap.on("node_contextmenu", (e: MouseEvent, node: any) => {
+    e.preventDefault();
+    const active = mindMap.renderer.activeNodeList;
+    menuNodes = active.includes(node) ? [...active] : [node];
+    menu.hidden = false;
+    menu.style.left = `${Math.min(e.clientX, innerWidth - menu.offsetWidth - 8)}px`;
+    menu.style.top = `${Math.min(e.clientY, innerHeight - menu.offsetHeight - 8)}px`;
+  });
+  window.addEventListener("pointerdown", e => !menu.contains(e.target as Node) && hideMenu(), true);
+  window.addEventListener("keydown", e => e.key === "Escape" && hideMenu());
+  mindMap.on("scale", hideMenu);
+  mindMap.on("translate", hideMenu);
+
   // ---- toolbar ----------------------------------------------------------
 
   const click = (sel: string, fn: () => void) =>
@@ -255,6 +280,12 @@ export async function start(host: Host) {
   click("#undo", () => (host.history ? host.history.undo() : mindMap.execCommand("BACK")));
   click("#redo", () => (host.history ? host.history.redo() : mindMap.execCommand("FORWARD")));
   click("#fit", () => mindMap.view.fit());
+  click("#expand-subtree", () => expandSubtree());
+  click("#menu-expand-subtree", () => {
+    const nodes = menuNodes;
+    hideMenu();
+    expandSubtree(nodes);
+  });
   click("#toggle-source", toggleSource);
   click("#close-source", closeSource);
   document.querySelectorAll<HTMLElement>("#bar [data-level]").forEach(btn =>

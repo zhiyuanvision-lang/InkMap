@@ -24,7 +24,7 @@ cursor --install-extension packages/vscode/dist/inkmap.vsix   # VS Code 用 code
 
 打开 `.md` 文件后，编辑器右上角有两个按钮（资源管理器右键菜单和命令面板里也有）：
 
-- **在侧边打开思维导图**：左栏 Markdown、右栏导图，改动直接进入编辑器中的文档（与 Markdown 共用撤销记录，`⌘Z` / `⇧⌘Z`）。在 Markdown 中移动光标，导图定位到对应节点；点导图节点，Markdown 跳到对应行。
+- **在侧边打开思维导图**（右键菜单中为「Open as Inkmap」）：左栏 Markdown、右栏导图，改动直接进入编辑器中的文档（与 Markdown 共用撤销记录，`⌘Z` / `⇧⌘Z`）。在 Markdown 中移动光标，导图定位到对应节点；点导图节点，Markdown 跳到对应行。
 - **在浏览器中打开思维导图**：在 Chrome 中编辑，改动写回编辑器中的文档并自动保存。设置 `inkmap.browser` 可改为系统默认浏览器，`inkmap.browserAutoSave` 可关闭自动保存。
 
 `.md` 默认仍用普通编辑器打开；也可以右键标签页选「重新打开编辑器的方式…」→「Inkmap 思维导图」。
@@ -36,6 +36,7 @@ cursor --install-extension packages/vscode/dist/inkmap.vsix   # VS Code 用 code
 | 新增子节点 / 同级节点 | `Tab` / `Enter` |
 | 编辑文字 | 双击节点，或选中后直接打字；`Enter` 完成 |
 | 删除 | `Delete` / `Backspace` |
+| 展开选中节点的所有子孙节点 | `⇧/`，右键节点菜单，或工具栏「展开子孙」 |
 | 移动 | 拖拽节点 |
 | 撤销 / 重做 | `⌘Z` / `⌘Y`，或工具栏按钮（插件中为 `⌘Z` / `⇧⌘Z`） |
 | 编辑表格、图片、多行内容 | 双击该节点，或选中后 `⌘E`，在右侧面板改 Markdown 源码 |
