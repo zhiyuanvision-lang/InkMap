@@ -2,5 +2,10 @@
 !dist/extension.js
 !dist/web/**
 !package.json
+!package.nls.json
+!package.nls.zh-cn.json
 !README.md
-!LICENSE
+!CHANGELOG.md
+!LICENSE.md
+!THIRD_PARTY_NOTICES.md
+!images/*.png

@@ -1,5 +1,7 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { PRODUCT } from "@inkmap/core";
+import { adFeed, fileLicenseStorage, licenseService } from "./license.js";
 import { fileSource, serve } from "./server.js";
 
 const WEB_ROOT = fileURLToPath(new URL("./web/", import.meta.url));
@@ -31,7 +33,14 @@ export async function main(argv: string[]) {
   if (port !== undefined && !Number.isInteger(port)) throw new Error("--port 需要一个整数");
 
   const log = (msg: string) => console.log(`[inkmap] ${msg}`);
-  const served = await serve({ source: await fileSource(file, log), webRoot: WEB_ROOT, port, log });
+  const served = await serve({
+    source: await fileSource(file, log),
+    webRoot: WEB_ROOT,
+    port,
+    log,
+    license: licenseService(fileLicenseStorage()),
+    ads: adFeed(PRODUCT.adFeedUrl),
+  });
   console.log(`[inkmap] 正在编辑 ${file}`);
   console.log(`[inkmap] ${served.url}  （Ctrl+C 退出）`);
   if (open) openBrowser(served.url);

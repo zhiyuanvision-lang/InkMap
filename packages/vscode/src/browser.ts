@@ -1,7 +1,10 @@
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
+import type { Ad } from "@inkmap/core";
+import type { LicenseService } from "../../cli/src/license";
 import { serve, type DocSource, type Served } from "../../cli/src/server";
 import { docDir, docName, replaceText } from "./documents";
+import { t } from "./i18n";
 
 /** Serves open documents to the browser editor; one local server per document. */
 export class BrowserServers implements vscode.Disposable {
@@ -10,13 +13,22 @@ export class BrowserServers implements vscode.Disposable {
   constructor(
     private readonly webRoot: string,
     private readonly log: vscode.OutputChannel,
+    private readonly license: LicenseService,
+    private readonly ads: () => Promise<Ad[]>,
   ) {}
 
   async open(uri: vscode.Uri) {
     const key = uri.toString();
     let served = this.servers.get(key);
     if (!served) {
-      served = serve({ source: documentSource(uri), webRoot: this.webRoot, port: 0, log: msg => this.log.appendLine(`[${docName(uri)}] ${msg}`) });
+      served = serve({
+        source: documentSource(uri),
+        webRoot: this.webRoot,
+        port: 0,
+        log: msg => this.log.appendLine(`[${docName(uri)}] ${msg}`),
+        license: this.license,
+        ads: this.ads,
+      });
       this.servers.set(key, served);
       served.catch(() => this.servers.delete(key));
     }
@@ -40,7 +52,7 @@ function documentSource(uri: vscode.Uri): DocSource {
     read: async () => (await document()).getText(),
     async write(md) {
       const doc = await document();
-      if (!(await replaceText(doc, md))) throw new Error("文档无法修改（可能是只读文件）");
+      if (!(await replaceText(doc, md))) throw new Error(t("readOnly"));
       if (vscode.workspace.getConfiguration("inkmap").get<boolean>("browserAutoSave", true) && !doc.isUntitled) await doc.save();
     },
     watch(onChange) {

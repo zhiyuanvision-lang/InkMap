@@ -9,29 +9,95 @@
   <header id="bar">
     <strong id="doc-name">Inkmap</strong>
     <span class="sep"></span>
-    <button id="undo" title="撤销 ⌘Z">撤销</button>
-    <button id="redo" title="重做 ⇧⌘Z">重做</button>
+    <button id="undo" class="icon-btn" data-i18n-title="undoTitle">↶</button>
+    <button id="redo" class="icon-btn" data-i18n-title="redoTitle">↷</button>
     <span class="sep"></span>
-    <span class="label">展开到</span>
-    <button data-level="1">1</button><button data-level="2">2</button><button data-level="3">3</button><button data-level="4">4</button><button data-level="all">全部</button>
-    <button id="expand-subtree" title="展开选中节点的所有子孙节点 ⇧/">展开子孙</button>
-    <button id="fit" title="适应窗口">适应窗口</button>
+    <label class="picker"><span data-i18n="expandTo"></span><select id="level-select">
+      <option value="" hidden>–</option>
+      <option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="all" data-i18n="all"></option>
+    </select></label>
+    <button id="expand-subtree" data-i18n="expandBranch" data-i18n-title="expandBranchTitle"></button>
+    <button id="fit" data-i18n="fit"></button>
     <span class="sep"></span>
-    <button id="toggle-source" title="编辑选中节点的 Markdown 源码 ⌘E">源码</button>
-    <span id="status" data-state="saved">已保存</span>
+    <label class="picker"><span data-i18n="layout"></span><select id="layout-select"></select></label>
+    <label class="picker"><span data-i18n="theme"></span><select id="theme-select"></select></label>
+    <span class="sep"></span>
+    <button id="find" data-i18n="find" data-i18n-title="findTitle"></button>
+    <span class="dropdown">
+      <button id="export" data-pro data-i18n="export"></button>
+      <span id="export-menu" class="menu" hidden>
+        <button data-export="png" data-i18n="exportPng"></button>
+        <button data-export="svg" data-i18n="exportSvg"></button>
+      </span>
+    </span>
+    <button id="present" data-pro data-i18n="present" data-i18n-title="presentTitle"></button>
+    <button id="toggle-source" data-i18n="source" data-i18n-title="sourceTitle"></button>
+    <button id="pro"></button>
+    <span id="status" data-state="saved"></span>
   </header>
+
+  <div id="search" hidden>
+    <input id="find-input" data-i18n-placeholder="findPlaceholder" spellcheck="false">
+    <span id="find-count"></span>
+    <button id="find-prev" data-i18n-title="prev">↑</button>
+    <button id="find-next" data-i18n-title="next">↓</button>
+    <span class="sep"></span>
+    <input id="replace-input" data-i18n-placeholder="replacePlaceholder" spellcheck="false">
+    <button id="replace-one" data-pro data-i18n="replace"></button>
+    <button id="replace-all" data-pro data-i18n="replaceAll"></button>
+    <button id="find-close" class="icon" data-i18n-title="close">×</button>
+  </div>
+
   <main id="map"></main>
+
   <aside id="source" hidden>
     <div class="source-head">
-      <span>节点 Markdown</span>
-      <button id="close-source" title="关闭">×</button>
+      <span data-i18n="sourceHead"></span>
+      <button id="close-source" data-i18n-title="close">×</button>
     </div>
-    <textarea id="source-text" spellcheck="false" placeholder="先选中一个节点"></textarea>
-    <p class="source-hint">修改即时生效并写回文件。表格、图片、多行内容在这里编辑；普通文字也可以在图上双击编辑。</p>
+    <textarea id="source-text" spellcheck="false" data-i18n-placeholder="sourcePlaceholder"></textarea>
+    <p class="source-hint" data-i18n="sourceHint"></p>
   </aside>
-  <div id="node-menu" hidden>
-    <button id="menu-expand-subtree">展开所有子孙节点<kbd>⇧/</kbd></button>
+
+  <div id="node-menu" class="menu" hidden>
+    <button id="menu-expand-subtree"><span data-i18n="expandAllDescendants"></span><kbd>⇧/</kbd></button>
   </div>
+
+  <aside id="ad" hidden>
+    <span class="ad-label" data-i18n="adLabel"></span>
+    <button class="ad-hide" data-i18n-title="adHide">×</button>
+    <strong class="ad-title"></strong>
+    <p class="ad-text"></p>
+    <div class="ad-actions">
+      <a class="ad-cta" target="_blank" rel="noopener"></a>
+      <button class="ad-remove" data-i18n="removeAds"></button>
+    </div>
+  </aside>
+
+  <div id="upgrade" hidden>
+    <div class="upgrade-card" role="dialog" aria-modal="true">
+      <button class="upgrade-close" data-i18n-title="close">×</button>
+      <h2 data-i18n="proTitle"></h2>
+      <p class="upgrade-sub" data-i18n="proSubtitle"></p>
+      <p class="upgrade-locked" hidden></p>
+      <ul class="upgrade-features"></ul>
+      <div class="upgrade-buy">
+        <a id="buy-cn" class="buy" target="_blank" rel="noopener"><strong></strong><span></span></a>
+        <a id="buy-intl" class="buy" target="_blank" rel="noopener"><strong></strong><span></span></a>
+      </div>
+      <p class="upgrade-soon" data-i18n="comingSoon"></p>
+      <form id="activate-form">
+        <label for="code-input" data-i18n="haveCode"></label>
+        <div class="activate-row">
+          <input id="code-input" autocomplete="off" spellcheck="false" data-i18n-placeholder="codePlaceholder">
+          <button type="submit" data-i18n="activate"></button>
+        </div>
+        <p id="activate-msg"></p>
+      </form>
+      <p id="pro-state" hidden></p>
+    </div>
+  </div>
+
   <div id="toast" hidden></div>
   <script type="module" src="./src/main.ts"></script>
 </body>

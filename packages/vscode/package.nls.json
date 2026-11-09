@@ -1,0 +1,17 @@
+{
+  "displayName": "Inkmap — Markdown Mind Map",
+  "description": "Edit Markdown outlines as mind maps beside your editor or in Chrome; every change is written back to the Markdown.",
+  "virtualWorkspaces": "Inkmap edits Markdown files on disk.",
+  "editor.displayName": "Inkmap Mind Map",
+  "command.open": "Open as Inkmap",
+  "command.openToSide": "Open Mind Map to the Side",
+  "command.openInBrowser": "Open Mind Map in Browser",
+  "command.showSource": "Open Markdown to the Side",
+  "command.upgrade": "Get Inkmap Pro",
+  "command.enterLicense": "Enter License Key",
+  "command.removeLicense": "Remove License Key",
+  "config.browser": "Browser used by “Open Mind Map in Browser”",
+  "config.browser.chrome": "Google Chrome (falls back to the default browser when not found)",
+  "config.browser.default": "The system default browser",
+  "config.browserAutoSave": "Save the document automatically after editing the map in the browser; when off, changes stay unsaved in the editor"
+}

@@ -1,0 +1,18 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "inkmap-license",
+  "main": "src/worker.ts",
+  "compatibility_date": "2026-11-09",
+  "observability": {
+    "enabled": true,
+    "traces": { "enabled": true }
+  },
+  "vars": {
+    // Fill in after creating the product in Creem.
+    "CREEM_PRODUCT_ID": "",
+    "SUPPORT_EMAIL": ""
+  }
+  // Secrets, set with `npx wrangler secret put <NAME>`:
+  //   CREEM_API_KEY        Creem dashboard → Developers → API key (live mode)
+  //   LICENSE_PRIVATE_KEY  contents of ~/.inkmap/license-private.key
+}

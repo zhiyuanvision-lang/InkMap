@@ -1,15 +1,21 @@
+import { PRODUCT } from "@inkmap/core";
 import * as vscode from "vscode";
+import { adFeed } from "../../cli/src/license";
 import { BrowserServers } from "./browser";
 import { targetUri } from "./documents";
+import { t } from "./i18n";
+import { extensionLicense, offerPro, promptForCode } from "./license";
 import { MindmapEditorProvider } from "./mindmapEditor";
 
 export function activate(context: vscode.ExtensionContext) {
   const log = vscode.window.createOutputChannel("Inkmap");
-  const browsers = new BrowserServers(vscode.Uri.joinPath(context.extensionUri, "dist", "web").fsPath, log);
+  const license = extensionLicense(context);
+  const ads = adFeed(PRODUCT.adFeedUrl);
+  const browsers = new BrowserServers(vscode.Uri.joinPath(context.extensionUri, "dist", "web").fsPath, log, license, ads);
 
   const withUri = (run: (uri: vscode.Uri) => unknown) => (arg?: unknown) => {
     const uri = targetUri(arg);
-    if (!uri) return vscode.window.showWarningMessage("请先打开一个 Markdown 文件");
+    if (!uri) return vscode.window.showWarningMessage(t("openMarkdownFirst"));
     return run(uri);
   };
 
@@ -23,7 +29,7 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     log,
     browsers,
-    vscode.window.registerCustomEditorProvider(MindmapEditorProvider.viewType, new MindmapEditorProvider(context), {
+    vscode.window.registerCustomEditorProvider(MindmapEditorProvider.viewType, new MindmapEditorProvider(context, license, ads), {
       webviewOptions: { retainContextWhenHidden: true },
     }),
     vscode.commands.registerCommand("inkmap.open", openToSide),
@@ -35,15 +41,24 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       "inkmap.openInBrowser",
       withUri(async uri => {
+        if (!(await license.state()).pro && !(await offerPro(license, "browser"))) return;
         try {
           const url = await browsers.open(uri);
-          const pick = await vscode.window.showInformationMessage(`思维导图已在浏览器打开：${url}`, "复制链接");
+          const pick = await vscode.window.showInformationMessage(t("browserOpened", { url }), t("copyLink"));
           if (pick) await vscode.env.clipboard.writeText(url);
         } catch (err) {
-          vscode.window.showErrorMessage(`无法在浏览器打开思维导图：${err instanceof Error ? err.message : String(err)}`);
+          vscode.window.showErrorMessage(t("browserFailed", { error: err instanceof Error ? err.message : String(err) }));
         }
       }),
     ),
+    vscode.commands.registerCommand("inkmap.upgrade", () => offerPro(license)),
+    vscode.commands.registerCommand("inkmap.enterLicense", () => promptForCode(license)),
+    vscode.commands.registerCommand("inkmap.removeLicense", async () => {
+      const remove = t("remove");
+      if ((await vscode.window.showWarningMessage(t("removeConfirm"), { modal: true }, remove)) !== remove) return;
+      await license.deactivate();
+      vscode.window.showInformationMessage(t("removed"));
+    }),
   );
 }
 

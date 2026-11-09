@@ -3,6 +3,8 @@ import { watch } from "node:fs";
 import { readFile, stat, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { basename, dirname, extname, join, normalize, resolve, sep } from "node:path";
+import type { Ad } from "@inkmap/core";
+import type { LicenseService } from "./license.js";
 
 const MAX_BODY = 20 * 1024 * 1024;
 const TYPES: Record<string, string> = {
@@ -36,6 +38,9 @@ export interface ServeOptions {
   port?: number;
   host?: string;
   log?: (msg: string) => void;
+  /** Membership; without it the editor runs as the free edition. */
+  license?: LicenseService;
+  ads?: () => Promise<Ad[]>;
 }
 
 export interface Served {
@@ -78,16 +83,18 @@ function within(root: string, rel: string): string | null {
   return full.startsWith(base) ? full : null;
 }
 
-export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", log = () => {} }: ServeOptions): Promise<Served> {
+export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", log = () => {}, license, ads }: ServeOptions): Promise<Served> {
   let current = await source.read();
   let version = hash(current);
   const clients = new Set<ServerResponse>();
 
   const docState = () => ({ name: source.name, md: current, version });
-  const broadcast = () => {
-    const payload = `event: change\ndata: ${JSON.stringify(docState())}\n\n`;
+  const send = (event: string, data: unknown) => {
+    const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const res of clients) res.write(payload);
   };
+  const broadcast = () => send("change", docState());
+  const unlisten = license?.onChange(state => send("license", state)) ?? (() => {});
 
   let pending: NodeJS.Timeout | undefined;
   const unwatch = source.watch(() => {
@@ -158,6 +165,13 @@ export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", 
         }
         return json(res, 200, { version });
       }
+      if (url.pathname === "/api/license" && req.method === "GET") return json(res, 200, (await license?.state()) ?? { pro: false });
+      if (url.pathname === "/api/license" && req.method === "POST") {
+        const { code } = JSON.parse(await readBody(req));
+        if (typeof code !== "string") return json(res, 400, { error: "code 必须是字符串" });
+        return json(res, 200, license ? await license.activate(code) : { ok: false, reason: "format" });
+      }
+      if (url.pathname === "/api/ads") return json(res, 200, (await ads?.()) ?? []);
       if (url.pathname === "/api/events") {
         res.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
         res.write(": connected\n\n");
@@ -195,6 +209,7 @@ export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", 
       new Promise<void>(done => {
         clearTimeout(pending);
         unwatch();
+        unlisten();
         for (const res of clients) res.end();
         server.close(() => done());
       }),

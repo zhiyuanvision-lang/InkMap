@@ -2,3 +2,8 @@ node_modules/
 dist/
 *.vsix
 .DS_Store
+.wrangler/
+.dev.vars
+*.key
+*-codes.txt
+issued.csv

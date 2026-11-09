@@ -44,11 +44,17 @@ cursor --install-extension packages/vscode/dist/inkmap.vsix   # VS Code 用 code
 
 在节点里输入 Markdown 语法（如 `**加粗**`、`` `代码` ``）后会按 Markdown 渲染。
 
+### 免费版与 Pro
+
+免费版可以完整编辑导图，角落显示一条可关闭的小广告。Pro 终身会员（国内 ¥19.9，海外 $9.9，一次购买、永久使用、包含后续全部更新）去除广告，并解锁：在 Chrome 中编辑、导出 PNG / SVG、7 种额外结构、3 套额外配色、查找替换、演示模式。功能对比见 [插件说明](packages/vscode/README.md)，收款和上架步骤见 [PUBLISHING.md](PUBLISHING.md)。
+
+激活码用 Ed25519 离线签名（`INK1-` 开头），插件内置公钥校验，不需要服务器。插件中激活码存在编辑器存储里（随设置同步），命令行存在 `~/.inkmap/license`。
+
 ### 文件格式
 
 - 标题和列表项都是节点；只有一个顶级标题时它就是根节点，否则用 front matter 的 `title` 作根节点。
 - 列表项下缩进的内容（续行、表格、图片）属于该节点。图片标题写数字时作为显示宽度：`![图](a.png "600")`。
-- front matter 中 `markmap.layout: two-sided` 时左右两侧展开，否则向右展开。
+- 工具栏选的结构和配色保存在 front matter 的 `inkmap.layout`、`inkmap.theme` 中；没有设置时，`markmap.layout: two-sided` 表示左右两侧展开，否则向右展开。
 - 没有改动的部分按原文写回；新增或移动的节点使用 `- ` 和两个空格缩进。
 
 ## 结构
@@ -59,18 +65,18 @@ cursor --install-extension packages/vscode/dist/inkmap.vsix   # VS Code 用 code
 | `packages/web` | 浏览器编辑器（Vite 构建），通过 `Host` 接口读写文档 |
 | `packages/cli` | `inkmap` 命令：本地 HTTP 服务、文件监听、推送外部修改 |
 | `packages/vscode` | VS Code / Cursor 插件：侧边导图（webview 自定义编辑器）和浏览器导图（复用 cli 的服务） |
+| `services/license-worker` | Cloudflare Worker：验证 Creem 付款跳转，按订单号发放激活码 |
+| `scripts` | 生成签名密钥（`license-keygen.mjs`）、批量签发激活码（`license-issue.mjs`） |
 
 `Host` 接口把编辑器和文档来源分开：命令行和插件的浏览器模式用 HTTP 和 SSE，插件的侧边导图用 webview 消息，复用同一个编辑器。
 
 ## 开发
 
 ```bash
-npm test                         # core 单元测试
-npm run build && npm test -w inkmap   # 端到端测试（需要本机 Chrome，可用 CHROME_PATH 指定）
-npm test -w inkmap-vscode        # 插件 webview 消息协议测试（需先 build）
+npm run build && npm test       # 全部测试：core 单元测试、命令行端到端、插件 webview、发码服务（需要本机 Chrome，可用 CHROME_PATH 指定）
 npm run dev                      # 编辑器热更新；另开终端运行 inkmap <文件> 提供接口
 ```
 
 ## 计划
 
-- 节点搜索、大纲多选批量操作、导出图片
+- 大纲多选批量操作

@@ -11,7 +11,7 @@
   "scripts": {
     "build": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build -w inkmap && npm run build -w inkmap-vscode",
     "package:vscode": "npm run package -w inkmap-vscode",
-    "test": "npm test -w @inkmap/core",
+    "test": "npm test -w @inkmap/core && npm test -w inkmap && npm test -w inkmap-vscode && node --test services/license-worker/test/",
     "dev": "npm run dev -w @inkmap/web"
   },
   "devDependencies": {

@@ -195,3 +195,28 @@ export function plainText(md: string): string {
     .replace(/\s*\n\s*/g, " ")
     .trim();
 }
+
+// ---- per-document settings: an `inkmap:` section in the front matter ----
+
+const SETTINGS_SECTION = /^inkmap:[ \t]*\n((?:[ \t]+.*\n)*)/m;
+
+export function documentSetting(frontMatter: string, key: string): string | undefined {
+  const section = frontMatter.match(SETTINGS_SECTION)?.[1] ?? "";
+  const value = section.match(new RegExp(`^[ \\t]+${key}:[ \\t]*(.*)$`, "m"))?.[1].trim();
+  return value ? value.replace(/^["']|["']$/g, "") : undefined;
+}
+
+/** Returns `frontMatter` with `inkmap.<key>` set, creating the front matter or section if needed. */
+export function withDocumentSetting(frontMatter: string, key: string, value: string): string {
+  const line = `  ${key}: ${value}\n`;
+  if (!frontMatter) return `---\ninkmap:\n${line}---\n`;
+  const section = frontMatter.match(SETTINGS_SECTION);
+  if (!section) return frontMatter.replace(/---\n$/, `inkmap:\n${line}---\n`);
+  const keyLine = new RegExp(`^[ \\t]+${key}:.*\\n`, "m");
+  const body = keyLine.test(section[1]) ? section[1].replace(keyLine, line) : section[1] + line;
+  return frontMatter.replace(SETTINGS_SECTION, `inkmap:\n${body}`);
+}
+
+export * from "./license.js";
+export * from "./license-key.js";
+export * from "./product.js";

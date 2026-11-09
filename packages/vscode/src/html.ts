@@ -5,10 +5,12 @@ export interface WebviewHtmlOptions {
   assetBase: string;
   cspSource: string;
   nonce: string;
+  /** Editor display language, e.g. `zh-cn` or `en`. */
+  locale: string;
 }
 
-/** Adapts the built `index.html` to a webview: absolute asset URIs, a CSP, and the asset base. */
-export function webviewHtml(html: string, { webBase, assetBase, cspSource, nonce }: WebviewHtmlOptions): string {
+/** Adapts the built `index.html` to a webview: absolute asset URIs, a CSP, and editor settings. */
+export function webviewHtml(html: string, { webBase, assetBase, cspSource, nonce, locale }: WebviewHtmlOptions): string {
   const csp = [
     "default-src 'none'",
     `img-src ${cspSource} https: data: blob:`,
@@ -17,7 +19,7 @@ export function webviewHtml(html: string, { webBase, assetBase, cspSource, nonce
     `script-src 'nonce-${nonce}'`,
   ].join("; ");
   const head = `<meta http-equiv="Content-Security-Policy" content="${csp}">
-  <script nonce="${nonce}">window.INKMAP_ASSET_BASE = ${JSON.stringify(assetBase)};</script>`;
+  <script nonce="${nonce}">window.INKMAP_ASSET_BASE = ${JSON.stringify(assetBase)}; window.INKMAP_LOCALE = ${JSON.stringify(locale)};</script>`;
   return html
     .replace(/ crossorigin/g, "")
     .replace(/(src|href)="\.\/assets\//g, `$1="${webBase}/assets/`)

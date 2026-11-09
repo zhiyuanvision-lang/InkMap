@@ -1,30 +1,41 @@
 {
   "name": "inkmap-vscode",
-  "displayName": "Inkmap 墨图",
-  "description": "把 Markdown 大纲当作思维导图编辑：编辑器旁边或 Chrome 中显示导图，改动实时写回文档",
-  "version": "0.1.1",
+  "displayName": "%displayName%",
+  "description": "%description%",
+  "version": "0.2.0",
   "publisher": "inkmap",
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
+  "icon": "images/icon.png",
+  "galleryBanner": { "color": "#1f2a44", "theme": "dark" },
+  "pricing": "Free",
+  "qna": false,
   "engines": { "vscode": "^1.90.0" },
-  "categories": ["Visualization", "Other"],
-  "keywords": ["markdown", "mind map", "mindmap", "思维导图", "markmap"],
+  "categories": ["Visualization", "Education", "Other"],
+  "keywords": ["markdown", "mind map", "mindmap", "outline", "思维导图", "脑图", "大纲", "markmap", "xmind", "brainstorm"],
   "main": "./dist/extension.js",
   "activationEvents": [],
+  "capabilities": {
+    "untrustedWorkspaces": { "supported": true },
+    "virtualWorkspaces": { "supported": false, "description": "%virtualWorkspaces%" }
+  },
   "contributes": {
     "customEditors": [
       {
         "viewType": "inkmap.mindmap",
-        "displayName": "Inkmap 思维导图",
+        "displayName": "%editor.displayName%",
         "selector": [{ "filenamePattern": "*.md" }],
         "priority": "option"
       }
     ],
     "commands": [
-      { "command": "inkmap.open", "title": "Open as Inkmap", "icon": "$(type-hierarchy)" },
-      { "command": "inkmap.openToSide", "title": "在侧边打开思维导图", "category": "Inkmap", "icon": "$(type-hierarchy)" },
-      { "command": "inkmap.openInBrowser", "title": "在浏览器中打开思维导图", "category": "Inkmap", "icon": "$(globe)" },
-      { "command": "inkmap.showSource", "title": "在侧边打开 Markdown", "category": "Inkmap", "icon": "$(go-to-file)" }
+      { "command": "inkmap.open", "title": "%command.open%", "icon": "$(type-hierarchy)" },
+      { "command": "inkmap.openToSide", "title": "%command.openToSide%", "category": "Inkmap", "icon": "$(type-hierarchy)" },
+      { "command": "inkmap.openInBrowser", "title": "%command.openInBrowser%", "category": "Inkmap", "icon": "$(globe)" },
+      { "command": "inkmap.showSource", "title": "%command.showSource%", "category": "Inkmap", "icon": "$(go-to-file)" },
+      { "command": "inkmap.upgrade", "title": "%command.upgrade%", "category": "Inkmap" },
+      { "command": "inkmap.enterLicense", "title": "%command.enterLicense%", "category": "Inkmap" },
+      { "command": "inkmap.removeLicense", "title": "%command.removeLicense%", "category": "Inkmap" }
     ],
     "menus": {
       "editor/title": [
@@ -56,14 +67,14 @@
         "inkmap.browser": {
           "type": "string",
           "enum": ["chrome", "default"],
-          "enumDescriptions": ["用 Google Chrome 打开（找不到时改用默认浏览器）", "用系统默认浏览器打开"],
+          "enumDescriptions": ["%config.browser.chrome%", "%config.browser.default%"],
           "default": "chrome",
-          "description": "“在浏览器中打开思维导图”使用的浏览器"
+          "description": "%config.browser%"
         },
         "inkmap.browserAutoSave": {
           "type": "boolean",
           "default": true,
-          "description": "在浏览器中修改导图后自动保存文档；关闭后改动只进入编辑器中未保存的内容"
+          "description": "%config.browserAutoSave%"
         }
       }
     }
@@ -71,8 +82,12 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test test/",
-    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository -o dist/inkmap.vsix",
+    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository --no-rewrite-relative-links -o dist/inkmap.vsix",
+    "package:release": "npm run build && vsce package --no-dependencies --allow-missing-repository --baseImagesUrl \"$INKMAP_IMAGES_URL\" --baseContentUrl \"$INKMAP_CONTENT_URL\" -o dist/inkmap.vsix",
     "vscode:prepublish": "npm run build"
+  },
+  "dependencies": {
+    "@inkmap/core": "0.1.0"
   },
   "devDependencies": {
     "@types/vscode": "~1.90.0",

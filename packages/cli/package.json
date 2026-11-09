@@ -9,6 +9,9 @@
     "build": "tsc -p . && node scripts/copy-web.js",
     "test": "node --test test/"
   },
+  "dependencies": {
+    "@inkmap/core": "0.1.0"
+  },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "puppeteer-core": "^24.0.0"

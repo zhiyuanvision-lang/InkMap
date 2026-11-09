@@ -1,27 +1,47 @@
 import MindMapCtor from "simple-mind-map";
+import Demonstrate from "simple-mind-map/src/plugins/Demonstrate.js";
 import Drag from "simple-mind-map/src/plugins/Drag.js";
+import Export from "simple-mind-map/src/plugins/Export.js";
 import KeyboardNavigation from "simple-mind-map/src/plugins/KeyboardNavigation.js";
 import Select from "simple-mind-map/src/plugins/Select.js";
 import "simple-mind-map/dist/simpleMindMap.esm.css";
-import { isRich, parse, serialize, serializeWithLines, type OutlineDoc, type OutlineNode } from "@inkmap/core";
+import {
+  documentSetting,
+  isRich,
+  parse,
+  serialize,
+  serializeWithLines,
+  withDocumentSetting,
+  type OutlineDoc,
+  type OutlineNode,
+} from "@inkmap/core";
 import { collectExpand, markdownOf, nodeData, toMind, toOutlineDoc, type MindNode, type MindNodeData } from "./convert";
 import { detectHost, HttpHost, type DocState, type Host } from "./host";
+import { applyI18n, setLocale, t } from "./i18n";
+import nodesCss from "./nodes.css?inline";
+import { createPro } from "./pro";
 import { createRenderer } from "./render";
+import { createSearch } from "./search";
+import { applyThemeCss, FONT, LAYOUTS, layoutName, themeConfig, themeName, THEMES, type ThemeOption } from "./themes";
 import "./style.css";
 
 // simple-mind-map ships loose typings; the editor treats its instances as untyped.
 const MindMap = MindMapCtor as any;
-MindMap.usePlugin(Drag).usePlugin(Select).usePlugin(KeyboardNavigation);
+MindMap.usePlugin(Drag).usePlugin(Select).usePlugin(KeyboardNavigation).usePlugin(Export).usePlugin(Demonstrate);
 
 const INITIAL_LEVELS = 3;
 const SAVE_DELAY = 400;
-const BLUE = "#5b7fd4";
-const ROOT = "#4e83fd";
-const FONT = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", sans-serif';
+const EXPORT_PADDING = 40;
 
 const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
+const nodeStyle = document.createElement("style");
+nodeStyle.textContent = nodesCss;
+document.head.append(nodeStyle);
+
 export async function start(host: Host) {
+  setLocale(host.locale);
+  applyI18n();
   const renderer = createRenderer(host.assetBase);
   const status = $("#status");
   const toast = $("#toast");
@@ -39,11 +59,15 @@ export async function start(host: Host) {
     status.dataset.state = state;
     status.textContent = text;
   };
+  let toastTimer = 0;
   const showToast = (text: string) => {
     toast.textContent = text;
     toast.hidden = false;
-    setTimeout(() => (toast.hidden = true), 4000);
+    clearTimeout(toastTimer);
+    toastTimer = window.setTimeout(() => (toast.hidden = true), 4000);
   };
+
+  const pro = await createPro(host, showToast);
 
   async function buildData(md: string, expandOf: (path: string[], depth: number) => boolean): Promise<MindNode> {
     const outline = parse(md, doc.name);
@@ -56,12 +80,26 @@ export async function start(host: Host) {
     return toMind(root, expandOf);
   }
 
-  const layoutOf = (md: string) =>
-    /^\s*layout:\s*["']?(two-sided|mindMap)/m.test(md.split(/^---$/m)[1] ?? "") ? "mindMap" : "logicalStructure";
+  // ---- per-document look: layout and theme live in the front matter ------
+
+  const frontMatterOf = (md: string) => (md.startsWith("---\n") ? (md.match(/^---\n[\s\S]*?\n---\n/)?.[0] ?? "") : "");
+  function layoutOf(md: string) {
+    const fm = frontMatterOf(md);
+    const chosen = LAYOUTS.find(l => l.id === documentSetting(fm, "layout"));
+    if (chosen && (!chosen.pro || pro.isPro())) return chosen.id;
+    return /^\s*layout:\s*["']?(two-sided|mindMap)/m.test(fm) ? "mindMap" : "logicalStructure";
+  }
+  function themeOf(md: string): ThemeOption {
+    const chosen = THEMES.find(th => th.id === documentSetting(frontMatterOf(md), "theme"));
+    return chosen && (!chosen.pro || pro.isPro()) ? chosen : THEMES[0];
+  }
 
   const title = doc.md.match(/^---\n[\s\S]*?^title:\s*["']?(.+?)["']?\s*$/m)?.[1] ?? doc.name;
   $("#doc-name").textContent = title;
   document.title = `${title} · Inkmap`;
+
+  let theme = themeOf(doc.md);
+  applyThemeCss(theme);
 
   const mindMap = new MindMap({
     el: $("#map"),
@@ -70,8 +108,8 @@ export async function start(host: Host) {
     fit: true,
     enableShortcutOnlyWhenMouseInSvg: false,
     enableAutoEnterTextEditWhenKeydown: true,
-    defaultInsertSecondLevelNodeText: "新主题",
-    defaultInsertBelowSecondLevelNodeText: "新主题",
+    defaultInsertSecondLevelNodeText: t("newTopic"),
+    defaultInsertBelowSecondLevelNodeText: t("newTopic"),
     isShowCreateChildBtnIcon: false,
     isUseCustomNodeContent: true,
     customCreateNodeContent(node: any) {
@@ -82,39 +120,35 @@ export async function start(host: Host) {
       el.innerHTML = renderer.render(data.md);
       return el;
     },
-    themeConfig: {
-      backgroundColor: "#f5f6f7",
-      lineStyle: "straight",
-      lineRadius: 6,
-      lineWidth: 1.5,
-      lineColor: BLUE,
-      rootLineKeepSameInCurve: false,
-      paddingX: 12,
-      paddingY: 6,
-      root: { fillColor: ROOT, color: "#fff", fontSize: 18, fontWeight: "bold", fontFamily: FONT, borderWidth: 0, borderRadius: 8, marginX: 80, marginY: 24 },
-      second: { fillColor: "#fff", color: "#1f2329", fontSize: 15, fontWeight: "bold", fontFamily: FONT, borderColor: BLUE, borderWidth: 1.5, borderRadius: 6, marginX: 60, marginY: 16 },
-      node: { fillColor: "#fff", color: "#1f2329", fontSize: 14, fontFamily: FONT, borderColor: "#dee0e3", borderWidth: 1, borderRadius: 6, marginX: 50, marginY: 10 },
+    themeConfig: themeConfig(theme),
+    expandBtnStyle: { color: theme.palette.line, fill: theme.palette.card, fontSize: 12, strokeColor: theme.palette.line },
+    exportPaddingX: EXPORT_PADDING,
+    exportPaddingY: EXPORT_PADDING,
+    handleBeingExportSvg: (svg: any) => {
+      svg.node.insertAdjacentHTML("afterbegin", `<style>${resolvedNodeCss()}</style>`);
+      return svg;
     },
-    expandBtnStyle: { color: BLUE, fill: "#fff", fontSize: 12, strokeColor: BLUE },
+    demonstrateConfig: { boxShadowColor: "rgba(0, 0, 0, 0.75)", borderColor: theme.palette.line, padding: 24, margin: 60 },
   });
 
   // ---- write back -------------------------------------------------------
 
   const currentMarkdown = () => serialize(toOutlineDoc(meta, mindMap.getData(false)));
   // In an editor the map edits the open document; saving to disk stays with the editor.
-  const SYNCED = host instanceof HttpHost ? "已保存" : "已同步";
+  const SYNCED = host instanceof HttpHost ? t("saved") : t("synced");
+  setStatus("saved", SYNCED);
 
   function scheduleSave() {
     clearTimeout(saveTimer);
     if (currentMarkdown() === lastMd) return;
-    setStatus("pending", "待保存");
+    setStatus("pending", t("pending"));
     saveTimer = window.setTimeout(() => (saving = saving.then(save)), SAVE_DELAY);
   }
 
   async function save() {
     const md = currentMarkdown();
     if (md === lastMd) return setStatus("saved", SYNCED);
-    setStatus("saving", "保存中…");
+    setStatus("saving", t("saving"));
     try {
       const result = await host.save(md, doc.version);
       if (result.ok) {
@@ -123,12 +157,22 @@ export async function start(host: Host) {
         setStatus("saved", SYNCED);
       } else {
         await applyExternal(result.doc);
-        showToast("文件已在别处修改，已载入最新内容；刚才这一步修改没有写入，请重做。");
+        showToast(t("conflict"));
       }
     } catch (err) {
-      setStatus("error", "保存失败");
+      setStatus("error", t("saveFailed"));
       showToast(String(err instanceof Error ? err.message : err));
     }
+  }
+
+  /** Replaces the map with `md`, keeping folds; `local` edits are then saved like any other edit. */
+  async function load(md: string, local: boolean) {
+    const folds = collectExpand(mindMap.getData(false));
+    const data = await buildData(md, (path, depth) => folds.get(path.join("\u0000")) ?? depth < INITIAL_LEVELS);
+    closeSource();
+    mindMap.updateData(data);
+    applyLook(md);
+    if (local) scheduleSave();
   }
 
   async function applyExternal(next: DocState) {
@@ -136,13 +180,10 @@ export async function start(host: Host) {
       doc = next;
       return;
     }
-    const folds = collectExpand(mindMap.getData(false));
-    const data = await buildData(next.md, (path, depth) => folds.get(path.join("\u0000")) ?? depth < INITIAL_LEVELS);
     doc = next;
     lastMd = next.md;
-    closeSource();
-    mindMap.updateData(data);
-    setStatus("saved", "已同步");
+    await load(next.md, false);
+    setStatus("saved", t("synced"));
   }
 
   mindMap.on("data_change", scheduleSave);
@@ -194,6 +235,25 @@ export async function start(host: Host) {
     else sourceText.value = "";
   });
 
+  /** Rewrites node Markdown in place (every node, or the one with `uid`) and saves the result. */
+  async function rewrite(change: (md: string) => string | null, uid?: string): Promise<number> {
+    const tree: MindNode = mindMap.getData(false);
+    let n = 0;
+    const walk = (node: MindNode) => {
+      if (!uid || node.data.uid === uid) {
+        const next = change(markdownOf(node.data));
+        if (next !== null && next !== markdownOf(node.data)) {
+          Object.assign(node.data, nodeData(next));
+          n++;
+        }
+      }
+      (node.children ?? []).forEach(walk);
+    };
+    walk(tree);
+    if (n) await load(serialize(toOutlineDoc(meta, tree)), true);
+    return n;
+  }
+
   // ---- link with the text editor ------------------------------------------
 
   /** Start line of every node in the current document, keyed by node uid. */
@@ -237,36 +297,144 @@ export async function start(host: Host) {
     const active = mindMap.renderer.activeNodeList;
     if (!source.hidden) closeSource();
     else if (active.length === 1) openSource(active[0]);
-    else showToast("先选中一个节点");
+    else showToast(t("selectNode"));
   };
   mindMap.keyCommand.addShortcut("Control+e", toggleSource);
 
   const expandSubtree = (nodes: any[] = mindMap.renderer.activeNodeList) => {
-    if (!nodes.length) return showToast("先选中一个节点");
+    if (!nodes.length) return showToast(t("selectNode"));
     nodes.forEach(n => mindMap.execCommand("EXPAND_ALL", n.getData("uid")));
   };
   mindMap.keyCommand.addShortcut("Shift+/", () => expandSubtree());
 
-  const menu = $("#node-menu");
+  // ---- menus ------------------------------------------------------------
+
+  const nodeMenu = $("#node-menu");
+  const exportMenu = $("#export-menu");
   let menuNodes: any[] = [];
-  const hideMenu = () => {
-    menu.hidden = true;
+  const hideMenus = () => {
+    nodeMenu.hidden = true;
+    exportMenu.hidden = true;
     menuNodes = [];
   };
   mindMap.on("node_contextmenu", (e: MouseEvent, node: any) => {
     e.preventDefault();
     const active = mindMap.renderer.activeNodeList;
     menuNodes = active.includes(node) ? [...active] : [node];
-    menu.hidden = false;
-    menu.style.left = `${Math.min(e.clientX, innerWidth - menu.offsetWidth - 8)}px`;
-    menu.style.top = `${Math.min(e.clientY, innerHeight - menu.offsetHeight - 8)}px`;
+    nodeMenu.hidden = false;
+    nodeMenu.style.left = `${Math.min(e.clientX, innerWidth - nodeMenu.offsetWidth - 8)}px`;
+    nodeMenu.style.top = `${Math.min(e.clientY, innerHeight - nodeMenu.offsetHeight - 8)}px`;
   });
-  window.addEventListener("pointerdown", e => !menu.contains(e.target as Node) && hideMenu(), true);
-  window.addEventListener("keydown", e => e.key === "Escape" && hideMenu());
-  mindMap.on("scale", hideMenu);
-  mindMap.on("translate", hideMenu);
+  window.addEventListener("pointerdown", e => {
+    const target = e.target as Node;
+    if (!nodeMenu.contains(target) && !exportMenu.parentElement!.contains(target)) hideMenus();
+  }, true);
+  window.addEventListener("keydown", e => e.key === "Escape" && hideMenus());
+  mindMap.on("scale", hideMenus);
+  mindMap.on("translate", hideMenus);
+
+  // ---- layout and theme -------------------------------------------------
+
+  const layoutSelect = $<HTMLSelectElement>("#layout-select");
+  const themeSelect = $<HTMLSelectElement>("#theme-select");
+  const fillPickers = () => {
+    const mark = (isPro: boolean) => (isPro && !pro.isPro() ? " · Pro" : "");
+    layoutSelect.innerHTML = LAYOUTS.map(l => `<option value="${l.id}">${t(layoutName(l.id))}${mark(l.pro)}</option>`).join("");
+    themeSelect.innerHTML = THEMES.map(th => `<option value="${th.id}">${t(themeName(th.id))}${mark(th.pro)}</option>`).join("");
+    layoutSelect.value = mindMap.getLayout();
+    themeSelect.value = theme.id;
+  };
+
+  function setTheme(next: ThemeOption) {
+    theme = next;
+    applyThemeCss(theme);
+    mindMap.updateConfig({ expandBtnStyle: { color: theme.palette.line, fill: theme.palette.card, fontSize: 12, strokeColor: theme.palette.line } });
+    mindMap.setThemeConfig(themeConfig(theme));
+  }
+
+  /** Applies the document's layout and theme, e.g. after it changed elsewhere or Pro was activated. */
+  function applyLook(md: string) {
+    const layout = layoutOf(md);
+    if (layout !== mindMap.getLayout()) mindMap.setLayout(layout);
+    const next = themeOf(md);
+    if (next.id !== theme.id) setTheme(next);
+    fillPickers();
+  }
+
+  function remember(key: "layout" | "theme", value: string) {
+    meta = { ...meta, frontMatter: withDocumentSetting(meta.frontMatter, key, value) };
+    scheduleSave();
+  }
+
+  layoutSelect.addEventListener("change", () => {
+    const choice = LAYOUTS.find(l => l.id === layoutSelect.value)!;
+    if (choice.pro && !pro.allow("layouts")) return fillPickers();
+    mindMap.setLayout(choice.id);
+    remember("layout", choice.id);
+    setTimeout(() => mindMap.view.fit(), 200);
+  });
+  themeSelect.addEventListener("change", () => {
+    const choice = THEMES.find(th => th.id === themeSelect.value)!;
+    if (choice.pro && !pro.allow("themes")) return fillPickers();
+    setTheme(choice);
+    remember("theme", choice.id);
+  });
+  pro.onChange(() => applyLook(currentMarkdown()));
+  fillPickers();
+
+  // ---- export -----------------------------------------------------------
+
+  /** The node stylesheet with theme variables resolved, for SVG files viewed outside the editor. */
+  function resolvedNodeCss() {
+    const style = getComputedStyle(document.documentElement);
+    return nodesCss.replace(/var\((--[\w-]+),\s*([^()]+)\)/g, (_, name, fallback) => style.getPropertyValue(name).trim() || fallback);
+  }
+
+  async function exportAs(type: "png" | "svg") {
+    hideMenus();
+    if (!pro.allow("export")) return;
+    const name = title.replace(/[\\/:*?"<>|]+/g, "_");
+    try {
+      mindMap.execCommand("CLEAR_ACTIVE_NODE");
+      const data: string = await mindMap.export(type, false, name);
+      const file = `${name}.${type}`;
+      if (await host.saveFile(file, data)) showToast(t("exported", { name: file }));
+    } catch (err) {
+      showToast(t("exportFailed", { error: String(err instanceof Error ? err.message : err) }));
+    }
+  }
+
+  // ---- presentation -----------------------------------------------------
+
+  async function present() {
+    if (!pro.allow("present")) return;
+    hideMenus();
+    closeSource();
+    search.close();
+    pro.setAdsSuspended(true);
+    document.documentElement.classList.add("presenting");
+    try {
+      await mindMap.el.requestFullscreen();
+    } catch {
+      // Editor webviews may not allow fullscreen; present inside the panel instead.
+      mindMap.demonstrate._enter();
+    }
+  }
+  // The plugin listens for a vendor-prefixed event that current Chromium no longer fires.
+  document.addEventListener("fullscreenchange", () => {
+    const demo = mindMap.demonstrate;
+    if (document.fullscreenElement === mindMap.el && !demo.isInDemonstrate) demo._enter();
+    else if (!document.fullscreenElement && demo.isInDemonstrate) demo.exit();
+  });
+  mindMap.on("exit_demonstrate", () => {
+    document.documentElement.classList.remove("presenting");
+    pro.setAdsSuspended(false);
+  });
 
   // ---- toolbar ----------------------------------------------------------
+
+  const search = createSearch({ mindMap, pro, showToast, rewrite });
+  mindMap.keyCommand.addShortcut("Control+f", () => search.open());
 
   const click = (sel: string, fn: () => void) =>
     $(sel).addEventListener("click", e => {
@@ -283,26 +451,33 @@ export async function start(host: Host) {
   click("#expand-subtree", () => expandSubtree());
   click("#menu-expand-subtree", () => {
     const nodes = menuNodes;
-    hideMenu();
+    hideMenus();
     expandSubtree(nodes);
   });
   click("#toggle-source", toggleSource);
   click("#close-source", closeSource);
-  document.querySelectorAll<HTMLElement>("#bar [data-level]").forEach(btn =>
-    btn.addEventListener("click", () => {
-      const level = btn.dataset.level!;
-      if (level === "all") mindMap.execCommand("EXPAND_ALL");
-      else mindMap.execCommand("UNEXPAND_TO_LEVEL", Number(level) + 1);
-      btn.blur();
-      setTimeout(() => mindMap.view.fit(), 300);
-    }),
-  );
+  click("#find", () => (search.isOpen() ? search.close() : search.open()));
+  click("#export", () => {
+    if (!pro.allow("export")) return;
+    exportMenu.hidden = !exportMenu.hidden;
+  });
+  document.querySelectorAll<HTMLElement>("[data-export]").forEach(btn => btn.addEventListener("click", () => exportAs(btn.dataset.export as "png" | "svg")));
+  click("#present", present);
+  const levelSelect = $<HTMLSelectElement>("#level-select");
+  levelSelect.addEventListener("change", () => {
+    const level = levelSelect.value;
+    if (level === "all") mindMap.execCommand("EXPAND_ALL");
+    else if (level) mindMap.execCommand("UNEXPAND_TO_LEVEL", Number(level) + 1);
+    levelSelect.value = "";
+    levelSelect.blur();
+    setTimeout(() => mindMap.view.fit(), 300);
+  });
 
   window.addEventListener("beforeunload", e => {
     if (status.dataset.state !== "saved") e.preventDefault();
   });
 
-  return { mindMap, currentMarkdown };
+  return { mindMap, currentMarkdown, pro };
 }
 
 start(detectHost()).then(api => {

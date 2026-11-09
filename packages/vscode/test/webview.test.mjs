@@ -50,6 +50,7 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
             assetBase: `${origin}/doc/`,
             cspSource: origin,
             nonce: "test-nonce",
+            locale: new URL(req.url, "http://x").searchParams.get("lang") ?? "zh-cn",
           });
           return res.writeHead(200, { "content-type": "text/html" }).end(html);
         }
@@ -72,19 +73,29 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
   });
 
   /** Opens the editor with a fake extension that keeps the document text and version. */
-  async function open() {
+  async function open({ lang, ads = [], beforeLoad } = {}) {
     const page = await browser.newPage();
     await page.setViewport({ width: 1400, height: 900 });
     const errors = [];
     page.on("pageerror", e => errors.push(e.message));
     page.on("console", m => m.type() === "error" && errors.push(m.text()));
-    const ext = { md: DOC, version: 1, sent: [] };
+    const ext = { md: DOC, version: 1, sent: [], license: { pro: false }, files: [] };
     const reply = msg => page.evaluate(m => window.postMessage(m, "*"), msg);
     ext.state = () => ({ name: "demo", md: ext.md, version: String(ext.version) });
     ext.reply = reply;
     await page.exposeFunction("__toExtension", async msg => {
       ext.sent.push(msg);
-      if (msg.type === "ready") await reply({ type: "doc", doc: ext.state() });
+      if (msg.type === "ready") await reply({ type: "doc", doc: ext.state(), license: ext.license, ads });
+      if (msg.type === "activate") {
+        const ok = msg.code === "INK1-good";
+        if (ok) ext.license = { pro: true, id: "abc" };
+        await reply({ type: "activated", id: msg.id, result: ok ? { ok: true, state: ext.license } : { ok: false, reason: "signature" } });
+        if (ok) await reply({ type: "license", state: ext.license });
+      }
+      if (msg.type === "saveFile") {
+        ext.files.push(msg);
+        await reply({ type: "fileSaved", id: msg.id, saved: true });
+      }
       if (msg.type === "save") {
         if (msg.baseVersion !== String(ext.version)) return reply({ type: "conflict", id: msg.id, doc: ext.state() });
         ext.md = msg.md;
@@ -95,7 +106,8 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     await page.evaluateOnNewDocument(() => {
       window.acquireVsCodeApi = () => ({ postMessage: m => window.__toExtension(m) });
     });
-    await page.goto(origin);
+    if (beforeLoad) await page.evaluateOnNewDocument(beforeLoad);
+    await page.goto(lang ? `${origin}/?lang=${lang}` : origin);
     await page.waitForFunction(() => window.inkmap?.mindMap);
     return { page, ext, errors };
   }
@@ -177,6 +189,47 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
 
     await page.click("#undo");
     await waitFor(() => ext.sent.some(m => m.type === "undo"), "undo message");
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+
+  it("shows ads until a license is activated, then exports and presents", async () => {
+    const ads = [{ id: "s1", title: "Sponsor", text: "Hello", url: "https://example.com", locale: "en" }];
+    const { page, ext, errors } = await open({
+      lang: "en",
+      ads,
+      // Webviews refuse fullscreen, so presentation has to run inside the panel.
+      beforeLoad: () => (Element.prototype.requestFullscreen = () => Promise.reject(new Error("denied"))),
+    });
+    await page.waitForSelector("#ad:not([hidden])", { timeout: 5000 });
+    assert.equal(await page.$eval("#ad .ad-label", el => el.textContent), "Ad");
+    assert.equal(await page.$eval("#ad .ad-remove", el => el.textContent), "Remove ads");
+
+    await page.click("#export");
+    await page.waitForSelector("#upgrade:not([hidden])");
+    assert.equal(ext.files.length, 0);
+    await page.type("#code-input", "INK1-bad");
+    await page.click("#activate-form button[type=submit]");
+    await waitFor(() => page.$eval("#activate-msg", el => el.dataset.state === "error"), "bad code rejected");
+    await page.$eval("#code-input", el => (el.value = ""));
+    await page.type("#code-input", "INK1-good");
+    await page.click("#activate-form button[type=submit]");
+    await waitFor(() => page.$eval("html", el => el.classList.contains("pro")), "pro unlocked");
+    assert.ok(await page.$("#ad[hidden]"));
+    await page.keyboard.press("Escape");
+
+    await page.click("#export");
+    await page.click('[data-export="png"]');
+    await waitFor(() => ext.files.length === 1, "file saved");
+    assert.equal(ext.files[0].name, "Demo.png", "named after the document title");
+    assert.match(ext.files[0].dataUrl, /^data:image\/png;base64,/);
+
+    await page.click("#present");
+    await waitFor(() => page.evaluate(() => window.inkmap.mindMap.demonstrate.isInDemonstrate), "presenting in panel");
+    await sleep(600);
+    await page.keyboard.press("Escape");
+    await waitFor(() => page.$eval("html", el => !el.classList.contains("presenting")), "presentation ended");
+    assert.equal(ext.sent.filter(m => m.type === "save").length, 0, "presenting does not save");
     assert.deepEqual(errors, []);
     await page.close();
   });
