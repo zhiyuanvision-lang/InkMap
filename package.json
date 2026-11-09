@@ -1,0 +1,19 @@
+{
+  "name": "inkmap-monorepo",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/core",
+    "packages/web",
+    "packages/cli"
+  ],
+  "scripts": {
+    "build": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build -w inkmap",
+    "test": "npm test -w @inkmap/core",
+    "dev": "npm run dev -w @inkmap/web"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vitest": "^3.2.7"
+  }
+}
