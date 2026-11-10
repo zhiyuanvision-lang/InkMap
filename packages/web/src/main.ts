@@ -431,6 +431,16 @@ export async function start(host: Host) {
     pro.setAdsSuspended(false);
   });
 
+  // The map sizes its SVG only on creation; editor panels change size whenever splits are dragged or closed.
+  let resizeFrame = 0;
+  new ResizeObserver(() => {
+    cancelAnimationFrame(resizeFrame);
+    resizeFrame = requestAnimationFrame(() => {
+      const { width, height } = mindMap.el.getBoundingClientRect();
+      if (width > 0 && height > 0) mindMap.resize();
+    });
+  }).observe(mindMap.el);
+
   // ---- toolbar ----------------------------------------------------------
 
   const search = createSearch({ mindMap, pro, showToast, rewrite });

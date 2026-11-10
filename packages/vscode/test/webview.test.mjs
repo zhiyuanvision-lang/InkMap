@@ -132,6 +132,17 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     await page.close();
   });
 
+  it("grows the map when the panel is widened", async () => {
+    const { page, errors } = await open();
+    const svgWidth = () => page.evaluate(() => document.querySelector("#map svg").getBoundingClientRect().width);
+    await page.setViewport({ width: 400, height: 700 });
+    await waitFor(async () => (await svgWidth()) === 400, "narrow map");
+    await page.setViewport({ width: 1300, height: 900 });
+    await waitFor(async () => (await svgWidth()) === 1300, "map fills the wider panel");
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+
   it("saves edits with the document version and follows external changes", async () => {
     const { page, ext, errors } = await open();
     const node = await find(page, "alpha child");

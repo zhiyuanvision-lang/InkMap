@@ -144,7 +144,8 @@ describe("inkmap editor", { skip: !existsSync(CHROME) && "Chrome not found" }, (
         t.page.evaluate(text => {
           let hit = false;
           const walk = n => ((hit ||= n.getData("text") === text), (n.children ?? []).forEach(walk));
-          walk(window.inkmap.mindMap.renderer.root);
+          const root = window.inkmap.mindMap.renderer.root;
+          if (root) walk(root);
           return hit;
         }, text);
       assert.equal(await shown("d"), false, "deep levels start folded");
