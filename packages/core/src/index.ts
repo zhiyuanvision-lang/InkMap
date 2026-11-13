@@ -183,7 +183,7 @@ export function serializeWithLines(doc: OutlineDoc): { md: string; lines: Map<Ou
 
 /** True when the Markdown needs rendering rather than plain-text display. */
 export function isRich(md: string): boolean {
-  return /\n|[`*_\\|<>[\]!~]|^#|^\d+\.\s/.test(md);
+  return /\n|[`*_\\|<>[\]!~]|\$[^\s$][\s\S]*\$|\$\$[\s\S]+\$\$|^#|^\d+\.\s/.test(md);
 }
 
 /** Plain-text summary of a node's Markdown, used for search and fallback display. */
@@ -217,6 +217,36 @@ export function withDocumentSetting(frontMatter: string, key: string, value: str
   return frontMatter.replace(SETTINGS_SECTION, `inkmap:\n${body}`);
 }
 
-export * from "./license.js";
-export * from "./license-key.js";
+export interface ViewState {
+  /** Expanded state of branch nodes, keyed by `\u0000`-joined Markdown path from the root. */
+  folds?: Record<string, boolean>;
+  /** Canvas zoom and screen-space offset of the root node from the viewport center. */
+  view?: { scale: number; dx: number; dy: number };
+}
+
+export function sanitizeViewState(raw: unknown): ViewState | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const r = raw as Record<string, unknown>;
+  let folds: Record<string, boolean> | undefined;
+  if (r.folds && typeof r.folds === "object" && !Array.isArray(r.folds)) {
+    const out: Record<string, boolean> = {};
+    for (const [k, v] of Object.entries(r.folds as Record<string, unknown>).slice(0, 5000)) {
+      if (typeof v === "boolean") out[k] = v;
+    }
+    if (Object.keys(out).length) folds = out;
+  }
+  let view: { scale: number; dx: number; dy: number } | undefined;
+  if (r.view && typeof r.view === "object") {
+    const v = r.view as Record<string, unknown>;
+    if (
+      typeof v.scale === "number" && Number.isFinite(v.scale) && v.scale >= 0.05 && v.scale <= 20 &&
+      typeof v.dx === "number" && Number.isFinite(v.dx) && Math.abs(v.dx) < 1e6 &&
+      typeof v.dy === "number" && Number.isFinite(v.dy) && Math.abs(v.dy) < 1e6
+    ) {
+      view = { scale: v.scale, dx: v.dx, dy: v.dy };
+    }
+  }
+  return folds || view ? { ...(folds && { folds }), ...(view && { view }) } : undefined;
+}
+
 export * from "./product.js";

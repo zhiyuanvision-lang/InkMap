@@ -13,6 +13,7 @@ await build({
   format: "cjs",
   target: "node20",
   external: ["vscode"],
+  define: { "process.env.INKMAP_DEFAULT_BILLING_ORIGIN": JSON.stringify(process.env.INKMAP_BILLING_ORIGIN ?? "") },
   outfile: new URL("dist/extension.js", root).pathname,
   sourcemap: true,
 });

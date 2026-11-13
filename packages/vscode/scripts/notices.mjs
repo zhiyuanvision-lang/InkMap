@@ -46,7 +46,7 @@ const sections = [...names].sort().map(name => {
   if (!licenseFile && !existsSync(fallback)) throw new Error(`${name} ships no license file; add ${fallback}`);
   const text = readFileSync(licenseFile ? join(dir, licenseFile) : fallback, "utf8").trim();
   const home = pkg.homepage ?? (typeof pkg.repository === "string" ? pkg.repository : pkg.repository?.url) ?? "";
-  return `## ${name} ${pkg.version}\n\nLicense: ${pkg.license ?? "see below"}${home ? `  \nSource: ${home}` : ""}\n\n\`\`\`\n${text}\n\`\`\`\n`;
+  return `## ${name} ${pkg.version}\n\nLicense: ${pkg.license ?? "see below"}${home ? `\n\nSource: ${home}` : ""}\n\n\`\`\`\n${text}\n\`\`\`\n`;
 });
 
 writeFileSync(

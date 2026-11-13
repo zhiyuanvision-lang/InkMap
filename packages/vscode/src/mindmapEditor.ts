@@ -1,19 +1,28 @@
+import { hasAccess, sanitizeViewState, type Ad } from "@inkmap/core";
+import { openCheckout } from "./license";
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
-import type { Ad } from "@inkmap/core";
 import * as vscode from "vscode";
 import type { LicenseService } from "../../cli/src/license";
-import { docDir, docName, replaceText, type DocState } from "./documents";
+import { addLinesToChat, chatAvailable, openChat, docDir, docName, replaceText, type DocState } from "./documents";
 import { webviewHtml } from "./html";
 import { t } from "./i18n";
+
+const VIEW_STATE_PREFIX = "inkmap.viewState:";
 
 type FromWebview =
   | { type: "ready" }
   | { type: "save"; id: number; md: string; baseVersion: string }
   | { type: "select"; line: number }
+  | { type: "viewState"; state: unknown }
+  | { type: "addToChat"; startLine?: number; endLine?: number; text?: string }
   | { type: "undo" }
   | { type: "redo" }
-  | { type: "activate"; id: number; code: string }
+  | { type: "checkout"; id: number; mode: "buy" | "restore" }
+  | { type: "orderPro"; id: number }
+  | { type: "sendPhoneCode"; id: number; phone: string }
+  | { type: "signInByPhone"; id: number; phone: string; code: string }
+  | { type: "signOut"; id: number }
   | { type: "saveFile"; id: number; name: string; dataUrl: string };
 
 const CHANGE_DELAY = 120;
@@ -21,6 +30,13 @@ const REVEAL_DELAY = 150;
 
 export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
   static readonly viewType = "inkmap.mindmap";
+  private readonly panels = new Set<vscode.WebviewPanel>();
+
+  /** The chat shortcut was pressed: the focused mind map says what is selected. Anywhere else it just opens the chat. */
+  requestChat(): void | Thenable<unknown> {
+    const panel = [...this.panels].find(p => p.active);
+    return panel ? panel.webview.postMessage({ type: "requestChat" }) : openChat();
+  }
 
   constructor(
     private readonly context: vscode.ExtensionContext,
@@ -30,6 +46,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
 
   async resolveCustomTextEditor(document: vscode.TextDocument, panel: vscode.WebviewPanel): Promise<void> {
     const webview = panel.webview;
+    this.panels.add(panel);
     const webRoot = vscode.Uri.joinPath(this.context.extensionUri, "dist", "web");
     const assets = docDir(document.uri);
     webview.options = {
@@ -38,8 +55,23 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
     };
     webview.html = await editorHtml(webview, webRoot, assets);
 
-    const state = (): DocState => ({ name: docName(document.uri), md: document.getText(), version: String(document.version) });
+    const viewKey = VIEW_STATE_PREFIX + document.uri.toString();
+    const state = (): DocState => {
+      const viewState = document.uri.scheme === "untitled"
+        ? undefined
+        : sanitizeViewState(this.context.workspaceState.get(viewKey));
+      return {
+        name: docName(document.uri),
+        md: document.getText(),
+        version: String(document.version),
+        ...(viewState && { viewState }),
+      };
+    };
     const post = (msg: unknown) => webview.postMessage(msg);
+    const syncLicense = async () => {
+      const state = await this.license.state();
+      if (panel.visible && this.panels.has(panel)) await post({ type: "license", state });
+    };
     const disposables: vscode.Disposable[] = [];
     let applying = false;
     let changeTimer: NodeJS.Timeout | undefined;
@@ -48,6 +80,13 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
     const unlisten = this.license.onChange(license => post({ type: "license", state: license }));
     disposables.push(
       { dispose: unlisten },
+      // A hidden panel can miss a license update. Send the latest state when it becomes visible again.
+      panel.onDidChangeViewState(({ webviewPanel }) => {
+        if (webviewPanel.visible) void syncLicense();
+      }),
+      vscode.window.onDidChangeWindowState(({ focused }) => {
+        if (focused && panel.visible) void syncLicense();
+      }),
       vscode.workspace.onDidChangeTextDocument(e => {
         if (applying || e.document !== document || !e.contentChanges.length) return;
         clearTimeout(changeTimer);
@@ -60,10 +99,21 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
         revealTimer = setTimeout(() => post({ type: "reveal", line: e.selections[0].active.line }), REVEAL_DELAY);
       }),
       webview.onDidReceiveMessage(async (msg: FromWebview) => {
+        const accountAction = msg.type === "checkout" || msg.type === "orderPro" || msg.type === "signOut" || msg.type === "sendPhoneCode" || msg.type === "signInByPhone";
+        if (!accountAction && msg.type !== "ready" && msg.type !== "viewState" && !hasAccess(await this.license.state())) {
+          if ("id" in msg) return post({ type: "error", id: msg.id, message: t("trialExpired") });
+          return;
+        }
         switch (msg.type) {
           case "ready": {
             const [license, ads] = await Promise.all([this.license.state(), this.ads()]);
-            return post({ type: "doc", doc: state(), license, ads });
+            return post({ type: "doc", doc: state(), license, ads, chat: await chatAvailable() });
+          }
+          case "viewState": {
+            if (document.uri.scheme === "untitled") return;
+            const cleaned = sanitizeViewState(msg.state);
+            if (cleaned) await this.context.workspaceState.update(viewKey, cleaned);
+            return;
           }
           case "save": {
             if (msg.baseVersion !== String(document.version)) return post({ type: "conflict", id: msg.id, doc: state() });
@@ -87,8 +137,33 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
             editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
             return;
           }
-          case "activate":
-            return post({ type: "activated", id: msg.id, result: await this.license.activate(msg.code) });
+          case "addToChat":
+            return msg.startLine === undefined || msg.endLine === undefined ? openChat() : addLinesToChat(document, msg.startLine, msg.endLine, msg.text);
+          case "checkout":
+            try {
+              if (msg.mode !== "buy" && msg.mode !== "restore") throw new Error("Invalid checkout mode");
+              await openCheckout(this.license, msg.mode);
+              return post({ type: "checkout", id: msg.id });
+            } catch (error) {
+              return post({ type: "error", id: msg.id, message: error instanceof Error ? error.message : t("checkoutFailed") });
+            }
+          case "orderPro":
+            try {
+              const result = await this.license.orderPro();
+              if (result.status === "redirect" && !await vscode.env.openExternal(vscode.Uri.parse(result.url))) {
+                throw new Error(t("checkoutFailed"));
+              }
+              return post({ type: "proOrder", id: msg.id, result });
+            } catch (error) {
+              return post({ type: "error", id: msg.id, message: error instanceof Error ? error.message : t("checkoutFailed") });
+            }
+          case "signOut":
+            await this.license.deactivate();
+            return post({ type: "signedOut", id: msg.id });
+          case "sendPhoneCode":
+            return post({ type: "phoneCodeSent", id: msg.id, result: await this.license.sendPhoneCode(msg.phone) });
+          case "signInByPhone":
+            return post({ type: "phoneSignIn", id: msg.id, result: await this.license.signInByPhone(msg.phone, msg.code) });
           case "saveFile":
             return post({ type: "fileSaved", id: msg.id, saved: await saveDataUrl(msg.name, msg.dataUrl, assets) });
         }
@@ -96,6 +171,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
     );
 
     panel.onDidDispose(() => {
+      this.panels.delete(panel);
       clearTimeout(changeTimer);
       clearTimeout(revealTimer);
       disposables.forEach(d => d.dispose());

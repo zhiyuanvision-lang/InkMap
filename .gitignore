@@ -1,5 +1,8 @@
 node_modules/
 dist/
+dist-codex/
+dist-workbuddy/
+.tmp/
 *.vsix
 .DS_Store
 .wrangler/
@@ -7,3 +10,4 @@ dist/
 *.key
 *-codes.txt
 issued.csv
+

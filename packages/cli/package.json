@@ -3,17 +3,26 @@
   "version": "0.1.0",
   "description": "Edit a Markdown outline as a mind map in the browser, with changes written back to the file",
   "type": "module",
-  "bin": { "inkmap": "bin/inkmap.js" },
-  "files": ["bin", "dist"],
+  "bin": {
+    "inkmap": "bin/inkmap.js"
+  },
+  "files": [
+    "bin",
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p . && node scripts/copy-web.js",
     "test": "node --test test/"
   },
   "dependencies": {
-    "@inkmap/core": "0.1.0"
+    "@inkmap/core": "0.1.0",
+    "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "esbuild": "0.25.12",
     "puppeteer-core": "^24.0.0"
   }
 }

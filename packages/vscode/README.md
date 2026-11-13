@@ -11,31 +11,17 @@
 - **文件就是 Markdown**：不用导入导出，也不依赖私有格式。没改动的部分逐字节保留原文，Git diff 干净。
 - **两栏联动**：左边 Markdown、右边导图。在 Markdown 中移动光标，导图定位到对应节点；点击节点，Markdown 跳到对应行。
 - **与编辑器共用撤销记录**：导图中的修改就是对文档的普通编辑，`⌘Z` / `⇧⌘Z` 随时撤回。
-- **富内容节点**：表格、图片、代码、加粗都按 Markdown 渲染；双击节点即可编辑源码。
-- **中英文界面**：跟随编辑器的显示语言。
+- **富内容节点**：支持 LaTeX 公式、表格、图片、代码和加粗；双击节点即可编辑源码。
+- **流程图**：预览 Mermaid 流程图和状态图，并直接编辑图表源码。
+- **中英文界面**：默认英文，可在导图工具栏切换为中文。
 
-## 免费版与 Pro
+在 Markdown 中保留带有 `mermaid` 语言标记的围栏代码块，Inkmap 会在节点中预览流程图或状态图。点击图下方的「编辑流程图源码」，即可修改节点文字、状态、连线或备注，改动会同步回原文件。
 
-免费版可以完整编辑导图，不限文件数量、不限节点数量，也可以商用。免费版在导图角落显示一条小广告，可以随时关闭 15 分钟。
+## 7 天免费试用与购买
 
-**Pro 终身会员：国内 ¥19.9，海外 $9.9。一次购买，永久使用，包含后续全部更新。**
+首次使用起可免登录试用全部功能 7 天。到期后需一次性购买 Inkmap Pro 才能继续使用。原始 Markdown 文件仍可在文本编辑器中打开。
 
-| 功能 | 免费版 | Pro |
-| --- | :---: | :---: |
-| 编辑导图、两栏联动、富内容节点 | ✓ | ✓ |
-| 逻辑结构图、左右分布导图 | ✓ | ✓ |
-| 经典配色 | ✓ | ✓ |
-| 查找节点 | ✓ | ✓ |
-| **无广告** |  | ✓ |
-| **在 Chrome 中全屏编辑**，与编辑器实时同步 |  | ✓ |
-| **导出 PNG 高清图片和 SVG 矢量图**，直接放进文档和 PPT |  | ✓ |
-| **7 种额外结构**：向左逻辑图、组织结构图、目录组织图、时间轴、交错时间轴、竖向时间轴、鱼骨图 |  | ✓ |
-| **3 套额外配色**：薄荷、暖阳、护眼深色 |  | ✓ |
-| **查找替换**：整张导图一键批量修改 |  | ✓ |
-| **演示模式**：逐个节点放映，适合讲解、汇报和复习 |  | ✓ |
-| **之后新增的 Pro 功能** |  | ✓ 免费获得 |
-
-一杯奶茶的价格，换来没有广告的工作区、能直接放进 PPT 的导图图片，以及以后所有新功能。
+试用包含 Chrome 全屏编辑、PNG 和 SVG 导出、更多导图结构与配色、查找替换及演示模式。购买包含后续更新。
 
 ![组织结构图](images/org-chart.png)
 
@@ -43,13 +29,15 @@
 
 ### 购买与激活
 
-1. 点导图工具栏的「升级 Pro」，或运行命令 **Inkmap: 升级到 Inkmap Pro**。
-2. 国内用微信 / 支付宝在爱发电购买；海外用银行卡在 Creem 购买。付款后立即收到 `INK1-` 开头的激活码。
-3. 在升级窗口粘贴激活码，或运行命令 **Inkmap: 输入激活码**。
+1. 点导图工具栏右侧的云帆账号入口，选择「购买 Pro」，或运行命令 **Inkmap: 升级到 Inkmap Pro**。
+2. 浏览器直接打开 Inkmap Pro 结账页，登录云帆平台账号并微信扫码付款。
+3. 付款后返回编辑器，Pro 会自动解锁。换设备或编辑器时，点「登录」并使用同一个云帆账号，已有权益会自动同步。
 
-激活在本机离线完成，不需要账号。同一激活码可以用在你自己的所有设备上；开启设置同步时会自动同步到其他设备。购买后 7 天内不满意可全额退款。
+购买后 7 天内可申请全额退款。
 
-![升级窗口](images/upgrade-zh.png)
+![购买与恢复权益](images/upgrade-zh.png)
+
+
 
 ## 使用方法
 
@@ -76,7 +64,7 @@
 
 ## 隐私
 
-Inkmap 不收集、不上传你的文档，没有任何使用统计或跟踪。免费版获取广告列表的请求不带任何用户标识或文档内容。详见 [用户许可协议](LICENSE.md)。
+Inkmap 不收集、不上传你的文档，没有任何使用统计或跟踪。详见 [用户许可协议](LICENSE.md)。
 
 ---
 
@@ -91,41 +79,31 @@ Edit Markdown outlines as mind maps. Every change in the map is written straight
 - **The file is just Markdown** — no import, no export, no proprietary format. Untouched parts are kept byte for byte, so Git diffs stay clean.
 - **Linked panes** — Markdown on the left, map on the right. Move the cursor and the map follows; click a node and the Markdown jumps to its line.
 - **One undo history** — map edits are ordinary document edits, so `⌘Z` / `⇧⌘Z` just work.
-- **Rich nodes** — tables, images, code and emphasis render as Markdown; double-click a node to edit its source.
+- **Rich nodes** — render LaTeX formulas, tables, images, code and emphasis; double-click a node to edit its source.
+- **Flowcharts** — preview Mermaid flowcharts and state diagrams and edit their source.
 - **English and Chinese UI**, following your editor's display language.
 
-### Free and Pro
+Keep flowcharts and state diagrams in fenced `mermaid` blocks. Inkmap renders them in the map. Select **Edit diagram source** to change labels, states, transitions or notes and sync the edits back to the Markdown document.
 
-The free edition edits maps fully, with no limits on files or nodes, and may be used commercially. It shows one small ad in a corner of the map, which you can dismiss for 15 minutes at a time.
+### 7-day free trial and purchase
 
-**Pro lifetime license: $9.9 (¥19.9 in China). Pay once, use it forever, every future update included.**
+Try all features for 7 days from first use without signing in. After the trial, a one-time Inkmap Pro purchase is required to continue using Inkmap. Your Markdown files remain accessible in your text editor.
 
-| Feature | Free | Pro |
-| --- | :---: | :---: |
-| Map editing, linked panes, rich nodes | ✓ | ✓ |
-| Logic chart and two-sided mind map | ✓ | ✓ |
-| Classic theme | ✓ | ✓ |
-| Find nodes | ✓ | ✓ |
-| **No ads** |  | ✓ |
-| **Full-screen editing in Chrome**, synced live with your editor |  | ✓ |
-| **Export PNG and SVG** for docs and slides |  | ✓ |
-| **7 extra layouts**: left logic chart, org chart, catalog, timeline, alternating timeline, vertical timeline, fishbone |  | ✓ |
-| **3 extra themes**: Mint, Sunset and a dark theme |  | ✓ |
-| **Find and replace** across the whole map |  | ✓ |
-| **Presentation mode** — walk through nodes one by one |  | ✓ |
-| **Every Pro feature added later** |  | ✓ included |
+The trial includes full-screen editing in Chrome, PNG and SVG export, additional layouts and themes, find and replace, and presentation mode. Purchase includes future updates.
 
 ![Timeline layout](images/timeline.png)
 
 #### Buying and activating
 
-1. Click **Get Pro** in the map toolbar, or run **Inkmap: Get Inkmap Pro**.
-2. Pay by card through Creem (or WeChat Pay / Alipay through Afdian in China). Your `INK1-` license key arrives right after payment.
-3. Paste the key into the upgrade dialog, or run **Inkmap: Enter License Key**.
+1. Open the account panel on the right of the map toolbar and choose **Buy Pro**, or run **Inkmap: Get Inkmap Pro**.
+2. In the Inkmap Pro checkout, sign in to Yunfan and pay with WeChat Pay.
+3. Return to the editor. Pro unlocks automatically. On another device or editor, choose **Sign in** and use the same Yunfan account to sync your access.
 
-Activation is offline and needs no account. Use the key on all of your own devices; with Settings Sync on, it follows you automatically. Not happy? Full refund within 7 days.
+You can request a full refund within 7 days of purchase.
 
-![Upgrade dialog](images/upgrade-en.png)
+![Buy or restore Pro](images/upgrade-en.png)
+
+
 
 ### Usage
 
@@ -152,4 +130,4 @@ The chosen layout and theme are stored in the document's front matter (`inkmap.l
 
 ### Privacy
 
-Inkmap never collects or uploads your documents and does no analytics or tracking. The free edition's ad request carries no user identifier or document content. See the [license agreement](LICENSE.md).
+Inkmap never collects or uploads your documents and does no analytics or tracking. See the [license agreement](LICENSE.md).

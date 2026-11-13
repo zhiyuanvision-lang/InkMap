@@ -10,35 +10,29 @@
 
 本协议适用于 Inkmap（墨图）编辑器插件、命令行工具及其后续更新（下称“本软件”）。安装或使用本软件，即表示你同意本协议。
 
-### 2. 免费版
+### 2. 免费试用
 
-你可以在任意数量的设备上免费使用本软件的免费功能，用于个人或商业用途。免费版会在导图界面角落显示广告，广告可以临时关闭。
+首次使用起可免费试用 7 天，用于个人或商业用途。到期后需购买 Pro 才能继续使用本软件。
 
 ### 3. Pro 终身会员
 
-购买 Pro 后，你会获得一个激活码。激活后：
+购买 Pro 后，权益与购买者的云帆平台账号绑定。使用同一账号可在本人的设备上恢复权益。软件通过联网验证权益后解锁全部功能。
 
-- 本软件不再显示任何广告，并解锁全部 Pro 功能。
-- “终身”指：**一次购买，永久使用，并免费获得此后发布的全部更新，包括之后新增的 Pro 功能**，不另收续费或升级费。
-- 激活码供购买者本人使用，可以激活本人的全部设备和编辑器。
-- 激活在本地离线完成，不依赖服务器。即使本软件将来停止维护，已激活的版本仍可继续使用。
-
-你不得公开发布、转售或批量分享激活码。经核实泄露或滥用的激活码，后续版本可能将其停用；停用前我们会尽量通过购买渠道联系购买者，并为本人补发新码。
+“终身”指一次购买、无需续费，并免费获得后续发布的更新及新增 Pro 功能。
 
 ### 4. 退款
 
-自购买之日起 7 天内，如对 Pro 不满意，可通过购买渠道联系我们申请全额退款，无需说明理由。退款后对应激活码会被停用。
+自购买之日起 7 天内，如对 Pro 不满意，可通过购买渠道联系我们申请全额退款，无需说明理由。退款后对应 Pro 权益会被撤销。
 
 ### 5. 隐私
 
 - 本软件不收集、不上传你的文档内容，不做任何使用统计或跟踪。
-- 免费版会从广告源获取广告列表。该请求不携带任何用户标识、设备信息或文档内容；点击广告前不会发送任何数据。
-- 激活码保存在你本机的编辑器存储中（启用设置同步时随同步一起保存），或命令行工具的 `~/.inkmap/license` 文件中。
-- 购买时的付款信息由支付平台处理，我们只能看到订单号、商品和联系方式等平台提供的信息，仅用于发放激活码和售后。
+- 平台会话凭证保存在编辑器的机密存储中，命令行工具保存在 `~/.inkmap/billing-session` 中。
+- 购买时的付款信息由支付平台处理，我们只能看到订单号、商品和联系方式等平台提供的信息，用于确认支付、发放权益和售后。
 
 ### 6. 限制
 
-除法律明确允许外，你不得：反编译或修改本软件以绕过激活或广告；出租、转售本软件或 Pro 权益；去除本软件中的版权和许可声明。
+除法律明确允许外，你不得：反编译或修改本软件以绕过授权；出租、转售本软件或 Pro 权益；去除本软件中的版权和许可声明。
 
 ### 7. 第三方组件
 
@@ -58,35 +52,29 @@
 
 This agreement covers the Inkmap editor extension, the command-line tool and their future updates (the "Software"). By installing or using the Software you agree to it.
 
-### 2. Free edition
+### 2. Free trial
 
-You may use the free features on any number of devices, for personal or commercial work, at no cost. The free edition shows an ad in a corner of the map; you can dismiss it temporarily.
+You may use all features for 7 days from first use, for personal or commercial work, at no cost. A Pro purchase is required to continue using the Software after the trial.
 
 ### 3. Pro lifetime license
 
-Buying Pro gives you a license key. Once activated:
+Pro access is linked to the purchaser's Yunfan account. Use that account to restore access on your own devices. The software verifies access online to unlock all features.
 
-- The Software shows no ads, and every Pro feature is unlocked.
-- "Lifetime" means **pay once, use it forever, and receive every later update for free — including Pro features added in the future**. There are no renewals or upgrade fees.
-- A key is for the purchaser and may be activated on all of the purchaser's own devices and editors.
-- Activation happens offline on your machine. Activated copies keep working even if the Software is discontinued.
-
-You may not publish, resell or mass-share license keys. Keys found to be leaked or abused may be revoked in later versions; before revoking we will try to reach the purchaser through the store and issue them a replacement.
+Lifetime access is a one-time purchase and includes future updates and new Pro features without a renewal fee.
 
 ### 4. Refunds
 
-Within 7 days of purchase you can ask for a full refund through the store, no questions asked. The key is revoked after a refund.
+Within 7 days of purchase you can ask for a full refund through the store, no questions asked. The corresponding Pro access is revoked after a refund.
 
 ### 5. Privacy
 
 - The Software never collects or uploads your documents and does no analytics or tracking.
-- The free edition downloads a list of ads from an ad feed. That request carries no user identifier, device information or document content, and nothing is sent unless you click an ad.
-- Your license key is stored in your editor's local storage (synced if you use Settings Sync) or, for the command-line tool, in `~/.inkmap/license`.
-- Payments are handled by the payment platform. We only see what it shares — order number, product and contact details — and use it solely to deliver keys and provide support.
+- The platform session is stored in the editor’s secret storage or in `~/.inkmap/billing-session` for the CLI.
+- Payments are handled by the payment platform. We only see what it shares — order number, product and contact details — and use it to confirm payments, grant access and provide support.
 
 ### 6. Restrictions
 
-Except where the law expressly permits it, you may not decompile or modify the Software to bypass activation or ads, rent or resell the Software or Pro rights, or remove copyright and license notices.
+Except where the law expressly permits it, you may not decompile or modify the Software to bypass licensing, rent or resell the Software or Pro rights, or remove copyright and license notices.
 
 ### 7. Third-party components
 

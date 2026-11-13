@@ -1,21 +1,106 @@
-import { Marked, type Tokens } from "marked";
+import katex from "katex";
+import { preloadDiagram, type DiagramImage } from "./diagrams";
+import { Marked, type TokenizerAndRendererExtension, type Tokens } from "marked";
+import DOMPurify from "dompurify";
 
 const sizes = new Map<string, { width: number; height: number }>();
 const IMAGE = /!\[[^\]]*\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g;
+const HAS_MATH = /\$|\\[([]/;
 const MAX_IMAGE_WIDTH = 600;
 
 const escapeAttr = (s: string) => s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 
-export function createRenderer(assetBase: string) {
-  const resolve = (href: string) =>
-    /^([a-z][a-z0-9+.-]*:|\/\/|\/)/i.test(href) ? href : assetBase + href.replace(/^\.\//, "");
+const renderMath = (tex: string, displayMode: boolean) =>
+  katex.renderToString(tex.trim(), { displayMode, output: "html", throwOnError: false, strict: false });
 
+interface MathToken extends Tokens.Generic {
+  tex: string;
+  display: boolean;
+}
+
+const blockMath: TokenizerAndRendererExtension = {
+  name: "blockMath",
+  level: "block",
+  start: src => src.search(/\$\$|\\\[/),
+  tokenizer(src) {
+    const m = /^\$\$([\s\S]+?)\$\$[ \t]*(?:\n|$)/.exec(src) ?? /^\\\[([\s\S]+?)\\\][ \t]*(?:\n|$)/.exec(src);
+    if (!m || !m[1].trim()) return undefined;
+    return { type: "blockMath", raw: m[0], tex: m[1], display: true };
+  },
+  renderer: token => renderMath((token as MathToken).tex, true),
+};
+
+const inlineMath: TokenizerAndRendererExtension = {
+  name: "inlineMath",
+  level: "inline",
+  start: src => src.search(/\$|\\[([]/),
+  tokenizer(src) {
+    const display = /^\$\$(?!\$)([\s\S]+?)\$\$/.exec(src) ?? /^\\\[([\s\S]+?)\\\]/.exec(src);
+    if (display && display[1].trim()) return { type: "inlineMath", raw: display[0], tex: display[1], display: true };
+    const paren = /^\\\(([\s\S]+?)\\\)/.exec(src);
+    if (paren && paren[1].trim()) return { type: "inlineMath", raw: paren[0], tex: paren[1], display: false };
+    if (src[0] === "$" && src[1] && !/[\s$]/.test(src[1])) {
+      for (let i = 1; i < src.length; i++) {
+        const ch = src[i];
+        if (ch === "\\") {
+          i++;
+          continue;
+        }
+        if (ch === "\n" && src[i + 1] === "\n") break;
+        if (ch === "$") {
+          const prev = src[i - 1];
+          const next = src[i + 1] ?? "";
+          if (!/\s/.test(prev) && next !== "$" && !/[0-9]/.test(next)) {
+            return { type: "inlineMath", raw: src.slice(0, i + 1), tex: src.slice(1, i), display: false };
+          }
+          break;
+        }
+      }
+    }
+    return undefined;
+  },
+  renderer: token => renderMath((token as MathToken).tex, (token as MathToken).display),
+};
+
+export function createRenderer(assetBase: string, privateDocument = false) {
+  const resolve = (href: string) => {
+    const absolute = /^([a-z][a-z0-9+.-]*:|[\\/])/i.test(href);
+    if (privateDocument) {
+      if (/^data:image\/(?:png|jpeg|gif|webp);base64,[\w+/=]+$/i.test(href)) return href;
+      if (absolute || !assetBase) return "";
+      const target = new URL(href, location.origin + assetBase);
+      return target.origin === location.origin && target.pathname.startsWith(assetBase) ? target.href : "";
+    }
+    return absolute ? href : assetBase + href.replace(/^\.\//, "");
+  };
+
+  const diagrams = new Map<string, DiagramImage | undefined>();
   const marked = new Marked({
     gfm: true,
+    extensions: [blockMath, inlineMath],
     renderer: {
+      html({ raw }: Tokens.HTML | Tokens.Tag) {
+        return privateDocument ? escapeAttr(raw) : false;
+      },
+      link({ href, tokens }: Tokens.Link) {
+        if (!privateDocument) return false;
+        const label = this.parser.parseInline(tokens);
+        if (!/^(https?:\/\/|mailto:)/i.test(href)) return label;
+        return `<a href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
+      },
+      code({ lang, text }: Tokens.Code) {
+        if (lang?.trim().toLowerCase() !== "mermaid") return false;
+        const image = diagrams.get(text);
+        const content = image
+          ? `<div class="ink-diagram-viewport"><img class="ink-diagram-image" src="${image.src}" width="${image.width}" height="${image.height}" data-natural-width="${image.naturalWidth}" data-natural-height="${image.naturalHeight}" alt="Mermaid"></div>`
+          : `<pre class="ink-diagram-error"><code>${escapeAttr(text)}</code></pre>`;
+        const zoomBtn = image ? `<button type="button" class="ink-diagram-zoom"></button>` : "";
+        return `<div class="ink-diagram">${content}<div class="ink-diagram-bar">${zoomBtn}<button type="button" class="ink-diagram-edit"></button></div></div>`;
+      },
       // Image widths follow the markmap convention of putting the display width in the title.
       image({ href, title, text }: Tokens.Image) {
         const src = resolve(href);
+        if (!src) return `<span>${escapeAttr(text || href)}</span>`;
         const natural = sizes.get(src);
         const width = Number(title) || Math.min(natural?.width ?? MAX_IMAGE_WIDTH, MAX_IMAGE_WIDTH);
         const height = natural ? Math.round((natural.height * width) / natural.width) : undefined;
@@ -24,17 +109,49 @@ export function createRenderer(assetBase: string) {
     },
   });
 
+  let mathFontsReady: Promise<unknown> | undefined;
+
   return {
     render(md: string): string {
-      return marked.parse(md, { async: false }) as string;
+      const html = marked.parse(md, { async: false }) as string;
+      return privateDocument ? DOMPurify.sanitize(html) : html;
     },
 
-    /** Loads the natural size of every image so nodes can be measured before layout. */
+    /** Loads image sizes and math fonts before layout so node boxes are measured accurately. */
     async preload(mds: string[]): Promise<void> {
       const srcs = new Set<string>();
-      for (const md of mds) for (const m of md.matchAll(IMAGE)) srcs.add(resolve(m[1]));
-      await Promise.all(
-        [...srcs].filter(src => !sizes.has(src)).map(
+      const diagramSources = new Set<string>();
+      let needsMath = false;
+      for (const md of mds) {
+        if (!needsMath && HAS_MATH.test(md)) needsMath = true;
+        for (const m of md.matchAll(IMAGE)) {
+          const src = resolve(m[1]);
+          if (src) srcs.add(src);
+        }
+        if (/mermaid/i.test(md)) {
+          marked.walkTokens(marked.lexer(md), token => {
+            if (token.type === "code" && token.lang?.trim().toLowerCase() === "mermaid") {
+              diagramSources.add(token.text);
+            }
+          });
+        }
+      }
+      if (needsMath && typeof document !== "undefined" && document.fonts) {
+        mathFontsReady ??= Promise.all(
+          ["1em KaTeX_Main", "italic 1em KaTeX_Math", "1em KaTeX_Size1", "1em KaTeX_AMS"].map(f =>
+            document.fonts.load(f).catch(() => {}),
+          ),
+        );
+      }
+      await Promise.all([
+        mathFontsReady,
+        ...[...diagramSources].map(async source => {
+          if (!diagrams.get(source)) {
+            const img = await preloadDiagram(source);
+            if (img) diagrams.set(source, img);
+          }
+        }),
+        ...[...srcs].filter(src => !sizes.has(src)).map(
           src =>
             new Promise<void>(done => {
               const img = new Image();
@@ -46,7 +163,7 @@ export function createRenderer(assetBase: string) {
               img.src = src;
             }),
         ),
-      );
+      ]);
     },
   };
 }

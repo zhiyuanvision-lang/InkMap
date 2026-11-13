@@ -39,7 +39,7 @@ export function toMind(node: OutlineNode, expand: (path: string[], depth: number
   };
 }
 
-/** Markdown of a node: plain nodes are edited as text on the canvas, rich nodes through their source. */
+/** Read the saved Markdown of a node, keeping the source of rendered content intact. */
 export const markdownOf = (data: MindNodeData) => (data.rich ? data.md : String(data.text ?? "")).replace(/\r\n?/g, "\n");
 
 export function fromMind(node: MindNode, uids?: Map<OutlineNode, string>): OutlineNode {
@@ -65,5 +65,15 @@ export function collectExpand(node: MindNode, out = new Map<string, boolean>(), 
   const here = [...path, markdownOf(node.data)];
   out.set(here.join("\u0000"), node.data.expand !== false);
   (node.children ?? []).forEach(c => collectExpand(c, out, here));
+  return out;
+}
+
+/** Serializable expand map containing only nodes that actually have children. */
+export function collectBranchFolds(node: MindNode, out: Record<string, boolean> = {}, path: string[] = []) {
+  const here = [...path, markdownOf(node.data)];
+  if (node.children?.length) {
+    out[here.join("\u0000")] = node.data.expand !== false;
+    node.children.forEach(c => collectBranchFolds(c, out, here));
+  }
   return out;
 }

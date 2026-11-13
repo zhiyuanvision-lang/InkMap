@@ -16,7 +16,8 @@ export function webviewHtml(html: string, { webBase, assetBase, cspSource, nonce
     `img-src ${cspSource} https: data: blob:`,
     `style-src ${cspSource} 'unsafe-inline'`,
     `font-src ${cspSource} data:`,
-    `script-src 'nonce-${nonce}'`,
+    `script-src 'nonce-${nonce}' ${cspSource}`,
+    "form-action 'none'",
   ].join("; ");
   const head = `<meta http-equiv="Content-Security-Policy" content="${csp}">
   <script nonce="${nonce}">window.INKMAP_ASSET_BASE = ${JSON.stringify(assetBase)}; window.INKMAP_LOCALE = ${JSON.stringify(locale)};</script>`;

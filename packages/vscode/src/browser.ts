@@ -1,16 +1,19 @@
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
-import type { Ad } from "@inkmap/core";
+import { sanitizeViewState, type Ad } from "@inkmap/core";
 import type { LicenseService } from "../../cli/src/license";
 import { serve, type DocSource, type Served } from "../../cli/src/server";
 import { docDir, docName, replaceText } from "./documents";
 import { t } from "./i18n";
+
+const VIEW_STATE_PREFIX = "inkmap.viewState:";
 
 /** Serves open documents to the browser editor; one local server per document. */
 export class BrowserServers implements vscode.Disposable {
   private readonly servers = new Map<string, Promise<Served>>();
 
   constructor(
+    private readonly context: vscode.ExtensionContext,
     private readonly webRoot: string,
     private readonly log: vscode.OutputChannel,
     private readonly license: LicenseService,
@@ -22,7 +25,7 @@ export class BrowserServers implements vscode.Disposable {
     let served = this.servers.get(key);
     if (!served) {
       served = serve({
-        source: documentSource(uri),
+        source: documentSource(uri, this.context),
         webRoot: this.webRoot,
         port: 0,
         log: msg => this.log.appendLine(`[${docName(uri)}] ${msg}`),
@@ -44,8 +47,9 @@ export class BrowserServers implements vscode.Disposable {
   }
 }
 
-function documentSource(uri: vscode.Uri): DocSource {
+function documentSource(uri: vscode.Uri, context: vscode.ExtensionContext): DocSource {
   const document = () => vscode.workspace.openTextDocument(uri);
+  const viewKey = VIEW_STATE_PREFIX + uri.toString();
   return {
     name: docName(uri),
     dir: docDir(uri)?.fsPath ?? "",
@@ -60,6 +64,10 @@ function documentSource(uri: vscode.Uri): DocSource {
         if (e.document.uri.toString() === uri.toString() && e.contentChanges.length) onChange();
       });
       return () => sub.dispose();
+    },
+    readView: async () => (uri.scheme === "untitled" ? undefined : sanitizeViewState(context.workspaceState.get(viewKey))),
+    writeView: async state => {
+      if (uri.scheme !== "untitled") await context.workspaceState.update(viewKey, state);
     },
   };
 }

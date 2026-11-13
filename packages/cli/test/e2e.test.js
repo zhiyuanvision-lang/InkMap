@@ -6,9 +6,8 @@ import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
 import puppeteer from "puppeteer-core";
 import { fileURLToPath } from "node:url";
-import { generateLicenseKeys, issueLicense } from "@inkmap/core";
-import { licenseService } from "../dist/license.js";
 import { fileSource, serve } from "../dist/server.js";
+import { licenseService } from "../dist/license.js";
 
 const WEB_ROOT = fileURLToPath(new URL("../dist/web/", import.meta.url));
 
@@ -54,7 +53,7 @@ describe("inkmap editor", { skip: !existsSync(CHROME) && "Chrome not found" }, (
   async function open(name, content, options = {}) {
     const file = join(dir, name);
     await writeFile(file, content);
-    const served = await serve({ source: await fileSource(file), webRoot: WEB_ROOT, port: 0, ...options });
+    const served = await serve({ source: await fileSource(file), webRoot: WEB_ROOT, port: 0, license: { state: async () => ({ pro: false, trialUntil: Date.now() + 60_000 }), onChange: () => () => {} }, ...options });
     const page = await browser.newPage();
     await page.setViewport({ width: 1400, height: 900 });
     const errors = [];
@@ -175,53 +174,121 @@ describe("inkmap editor", { skip: !existsSync(CHROME) && "Chrome not found" }, (
       assert.equal(await readFile(t.file, "utf8"), DEEP, "expanding does not touch the file");
       assert.deepEqual(t.errors, []);
     });
-  });
 
-  it("shows ads and keeps Pro features locked in the free edition", async () => {
-    await withDoc("free.md", SIMPLE, async t => {
-      await t.page.waitForSelector("#ad:not([hidden])", { timeout: 5000 });
-      assert.equal(await t.page.$eval("html", el => el.classList.contains("pro")), false);
-
-      await t.page.click("#export");
-      await t.page.waitForSelector("#upgrade:not([hidden])");
-      assert.ok((await t.page.$eval(".upgrade-locked", el => el.textContent)).length > 0);
-      await t.page.keyboard.press("Escape");
-      await t.page.waitForSelector("#upgrade[hidden]");
-
-      await t.page.select("#layout-select", "organizationStructure");
-      await t.page.waitForSelector("#upgrade:not([hidden])");
-      assert.equal(await t.page.$eval("#layout-select", el => el.value), "logicalStructure", "locked layout is not applied");
-      await t.page.keyboard.press("Escape");
-      await sleep(600);
-      assert.equal(await readFile(t.file, "utf8"), SIMPLE);
-
-      await t.page.select("#layout-select", "mindMap");
-      await waitFor(async () => (await readFile(t.file, "utf8")).startsWith("---\ntitle: Demo\ninkmap:\n  layout: mindMap\n---\n"), "free layout saved");
+    // Reopening the same file on a new server port restores the expanded branches from ~/.inkmap/view-state.
+    await withDoc("deep.md", DEEP, async t => {
+      const shown = text =>
+        t.page.evaluate(text => {
+          let hit = false;
+          const walk = n => ((hit ||= n.getData("text") === text), (n.children ?? []).forEach(walk));
+          const root = window.inkmap.mindMap.renderer.root;
+          if (root) walk(root);
+          return hit;
+        }, text);
+      await waitFor(() => shown("e"), "branch a restored expanded across server restart");
+      await waitFor(() => shown("w"), "branch x restored expanded across server restart");
       assert.deepEqual(t.errors, []);
     });
   });
 
-  it("unlocks Pro with a license code", async () => {
-    const keys = await generateLicenseKeys();
-    let stored;
-    const license = licenseService({ read: async () => stored, write: async c => void (stored = c) }, keys.publicKey);
-    const code = await issueLicense(keys.privateKey);
+  it("renders Mermaid and writes edits back as diagram source", async () => {
+    const md = await readFile(new URL("../../core/test/fixtures/diagrams.md", import.meta.url), "utf8");
+    await withDoc("diagrams.md", md, async ({ page, file, errors }) => {
+      await page.waitForFunction(() => document.querySelectorAll(".ink-diagram-image").length === 2);
+      const rendered = () => page.$$eval(".ink-diagram-image", images => images.map(image => {
+        const svg = decodeURIComponent(image.getAttribute("src").split(",")[1]);
+        const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+        return {
+          loaded: image.complete && image.naturalWidth > 0,
+          labels: [...parsed.querySelectorAll("text")].map(node => node.textContent).join("\n"),
+        };
+      }));
+      await page.waitForFunction(() => [...document.querySelectorAll(".ink-diagram-image")].every(image => image.complete && image.naturalWidth));
+      const [flowchart, state] = await rendered();
+      assert.match(flowchart.labels, /Answer/);
+      assert.match(state.labels, /Keep practicing/);
+      assert.equal(state.loaded, true);
+      await (await page.$$(".ink-diagram-edit"))[1].click();
+      const field = await page.$("#source-text");
+      assert.match(await field.evaluate(el => el.value.slice(el.selectionStart, el.selectionEnd)), /stateDiagram-v2/);
+      await field.evaluate(el => {
+        el.value = el.value.replace("Answered correctly", "Practiced again").replace("Keep practicing", "Practice daily");
+        el.dispatchEvent(new Event("input"));
+      });
+      await waitFor(async () => (await readFile(file, "utf8")).includes("Practice daily"), "Mermaid source saved");
+      const saved = await readFile(file, "utf8");
+      assert.ok(saved.includes("    New --> Review: Practiced again"));
+      assert.ok(saved.includes("  ```mermaid"));
+      assert.ok(!saved.includes("data:image/svg"));
+      await waitFor(async () => (await rendered()).some(image => image.loaded && image.labels.includes("Practice daily")), "diagram updated");
+      const exported = await page.evaluate(async () => {
+        const svg = atob((await window.inkmap.mindMap.export("svg", false, "diagram")).split(",")[1]);
+        const parsed = new DOMParser().parseFromString(svg, "image/svg+xml");
+        return {
+          srcs: [...parsed.querySelectorAll(".ink-diagram-image")].map(image => image.getAttribute("src").slice(0, 45)),
+          controls: parsed.querySelectorAll(".ink-diagram-edit").length,
+        };
+      });
+      assert.equal(exported.srcs.length, 2);
+      assert.ok(exported.srcs.every(src => src.startsWith("data:image/")), JSON.stringify(exported));
+      assert.equal(exported.controls, 0);
+      assert.deepEqual(errors, []);
+    });
+  });
+
+  it("blocks editing after the trial expires, including direct saves", async () => {
+    await withDoc("expired.md", SIMPLE, async t => {
+      await t.page.waitForSelector("#trial-expired-message:not([hidden])");
+      await t.page.keyboard.press("Escape");
+      assert.ok(await t.page.$("#upgrade:not([hidden])"));
+      assert.equal(await t.page.$eval("#map", el => el.inert), true);
+      const status = await t.page.evaluate(async () => {
+        const doc = await (await fetch("/api/doc")).json();
+        const response = await fetch("/api/doc", {
+          method: "PUT", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ md: "# blocked", baseVersion: doc.version }),
+        });
+        return response.status;
+      });
+      assert.equal(status, 403);
+      assert.equal(await readFile(t.file, "utf8"), SIMPLE);
+    }, { license: { state: async () => ({ pro: false, trialUntil: 1 }), onChange: () => () => {} } });
+  });
+
+  it("unlocks Pro after platform checkout and preserves the editor", async () => {
+    let state = { pro: false };
+    let notify;
+    const license = {
+      state: async () => state,
+      onChange(listener) { notify = listener; return () => {}; },
+      async connect(mode) {
+        assert.equal(mode, "buy");
+        state = { pro: true, connected: true, account: "138****0000" };
+        notify(state);
+        return "about:blank";
+      },
+      async deactivate() {
+        state = { pro: false, trialUntil: Date.now() + 2 * 24 * 60 * 60 * 1000 };
+        notify(state);
+      },
+    };
     await withDoc(
       "pro.md",
       SIMPLE,
       async t => {
         const read = () => readFile(t.file, "utf8");
-        await t.page.click("#pro");
         await t.page.waitForSelector("#upgrade:not([hidden])");
-        await t.page.type("#code-input", "INK1-wrong");
-        await t.page.click("#activate-form button[type=submit]");
-        await waitFor(() => t.page.$eval("#activate-msg", el => el.dataset.state === "error"), "rejects a bad code");
-        await t.page.$eval("#code-input", el => (el.value = ""));
-        await t.page.type("#code-input", code);
-        await t.page.click("#activate-form button[type=submit]");
-        await waitFor(() => t.page.$eval("html", el => el.classList.contains("pro")), "pro unlocked");
-        assert.equal(stored, code);
-        assert.ok(await t.page.$("#ad[hidden]"), "ads are hidden");
+        assert.equal(await t.page.$eval("#account-actions", el => el.hidden), true, "sign-out hidden before sign-in");
+        await t.page.evaluate(() => {
+          window.open = () => ({ opener: null, location: { replace() {} }, close() {} });
+        });
+        await t.page.click("#buy-pro");
+        await waitFor(() => t.page.$eval("html", el => el.classList.contains("pro-member")), "pro unlocked");
+        assert.equal(await t.page.$eval("#account", el => el.dataset.plan), "pro", "lifetime badge on toolbar");
+        assert.equal(await t.page.$eval("#upgrade", el => el.hidden), true);
+        assert.match(await t.page.$eval("#account-text", el => el.textContent), /138\*\*\*\*0000/);
+        assert.equal(await t.page.$eval("#account-actions", el => el.hidden), false, "sign-out shown when connected");
+        assert.equal(await t.page.$("#ad"), null, "no ad element");
         await t.page.keyboard.press("Escape");
 
         await t.page.select("#layout-select", "timeline");
@@ -257,6 +324,12 @@ describe("inkmap editor", { skip: !existsSync(CHROME) && "Chrome not found" }, (
         await waitFor(() => t.page.$eval("html", el => !el.classList.contains("presenting")), "presentation ended");
         await sleep(600);
         assert.equal(await read(), before, "presenting does not change the file");
+
+        await t.page.click("#pro");
+        await t.page.waitForSelector("#account-panel", { visible: true });
+        await t.page.click("#sign-out");
+        await waitFor(() => t.page.$eval("#account", el => el.dataset.plan === "ending"), "reverted to expiring trial after sign-out");
+        assert.equal(await t.page.$eval("#account-actions", el => el.hidden), true);
         assert.deepEqual(t.errors, []);
       },
       { license },
@@ -275,5 +348,202 @@ describe("inkmap editor", { skip: !existsSync(CHROME) && "Chrome not found" }, (
       await waitFor(async () => (await readFile(t.file, "utf8")).includes("  | 1 | 2 |\n  | 3 | 4 |\n- omega"), "table row written");
       assert.deepEqual(t.errors, []);
     });
+  });
+
+  it("edits an escaped numbered node in place and preserves its Markdown", async () => {
+    await withDoc("numbered.md", "# Root\n\n- 3\\. Step\n", async t => {
+      const node = ".smm-node .ink-node";
+      await t.page.waitForSelector(node, { visible: true });
+      await t.page.click(node, { clickCount: 2 });
+      await t.page.waitForSelector("#node-inline-edit", { visible: true });
+      assert.equal(await t.page.$eval("#node-inline-edit", el => el.value), "3. Step");
+      assert.equal(await t.page.$eval("#source", el => el.hidden), true);
+      await t.page.keyboard.type("4. Updated");
+      await t.page.keyboard.press("Enter");
+      await waitFor(async () => (await readFile(t.file, "utf8")).includes("- 4\\. Updated\n"), "escaped numbered label saved");
+
+      await t.page.click(node, { clickCount: 2 });
+      await t.page.waitForSelector("#node-inline-edit", { visible: true });
+      await t.page.keyboard.type("Discarded");
+      await t.page.keyboard.press("Escape");
+      assert.equal(await t.page.$eval("#node-inline-edit", el => el.hidden), true);
+      assert.match(await t.page.$eval(node, el => el.textContent), /4\. Updated/);
+      assert.deepEqual(t.errors, []);
+    });
+  });
+});
+
+describe("licenseService", () => {
+  it("keeps the existing account on an invalid code and replaces it only after verified phone sign-in", async () => {
+    const origin = "https://billing.example.com";
+    const oldToken = "a".repeat(43);
+    const newToken = "b".repeat(43);
+    let saved = JSON.stringify({ origin, token: oldToken });
+    const service = licenseService({ read: async () => saved, write: async value => { saved = value; } }, () => origin);
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      assert.equal(init.redirect, "error");
+      if (url === origin + "/billing/v1/phone-sign-in/send") {
+        assert.deepEqual(JSON.parse(init.body), { product: "inkmap-pro", phone: "13800008000" });
+        return new Response(null, { status: 204 });
+      }
+      if (url === origin + "/billing/v1/phone-sign-in/verify") {
+        const { code } = JSON.parse(init.body);
+        return code === "123456" ? Response.json({ token: newToken }, { status: 201 }) : new Response(null, { status: 400 });
+      }
+      assert.equal(url, origin + "/billing/v1/entitlement");
+      const paid = init.headers.authorization === "Bearer " + newToken;
+      return Response.json({ connected: true, active: paid, entitlement: "inkmap.pro", account: paid ? "138****8000" : "u***@example.com" });
+    };
+    try {
+      assert.equal((await service.state()).account, "u***@example.com");
+      assert.equal((await service.sendPhoneCode("13800008000")).ok, true);
+      assert.deepEqual(await service.signInByPhone("13800008000", "000000"), { ok: false, reason: "invalid" });
+      assert.equal(JSON.parse(saved).token, oldToken);
+      const signedIn = await service.signInByPhone("13800008000", "123456");
+      assert.equal(signedIn.ok, true);
+      assert.equal(signedIn.value.pro, true);
+      assert.equal(signedIn.value.account, "138****8000");
+      assert.deepEqual(JSON.parse(saved), { origin, token: newToken });
+    } finally {
+      service.dispose();
+      globalThis.fetch = realFetch;
+    }
+  });
+  it("keeps login-only hosts away from legacy purchase pages", async () => {
+    const origin = "https://billing.example.com";
+    const flow = "0".repeat(32);
+    const token = "a".repeat(43);
+    const realFetch = globalThis.fetch;
+    let path = "checkout";
+    let saved;
+    const service = licenseService({ read: async () => saved, write: async v => { saved = v; } },
+      () => origin, { loginOnly: true });
+    globalThis.fetch = async (url, init) => {
+      assert.equal(url, origin + "/billing/v1/restore-connections");
+      assert.deepEqual(JSON.parse(init.body), { product: "inkmap-pro" });
+      return new Response(JSON.stringify({ url: origin + "/billing/" + path + "/" + flow, token }), { status: 201 });
+    };
+    try {
+      await assert.rejects(service.connect("buy"), /Only Yunfan/);
+      await assert.rejects(service.connect("restore"), /Invalid Yunfan account link/);
+      assert.equal(saved, undefined);
+      path = "login";
+      assert.equal(await service.connect("restore"), origin + "/billing/login/" + flow);
+    } finally {
+      service.dispose();
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("tracks connected account, paid Pro entitlement, and sign-out", async () => {
+    let saved;
+    const storage = { read: async () => saved, write: async v => { saved = v; } };
+    const token = "a".repeat(43);
+    const flowId = "0123456789abcdef0123456789abcdef";
+    let entitlementBody = { connected: true, active: false, entitlement: "inkmap.pro", pending: true, account: "138****8000" };
+    let deleted = false;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (url === "https://billing.example.com/billing/v1/connections") {
+        return new Response(JSON.stringify({ url: `https://billing.example.com/billing/checkout/${flowId}`, token }), { status: 201 });
+      }
+      if (url === "https://billing.example.com/billing/v1/entitlement" && init?.method === "DELETE") {
+        deleted = true;
+        return new Response(null, { status: 204 });
+      }
+      if (url === "https://billing.example.com/billing/v1/entitlement") {
+        return new Response(JSON.stringify(entitlementBody), { status: 200 });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+    const svc = licenseService(storage, () => "https://billing.example.com");
+    try {
+      const checkoutUrl = await svc.connect("buy");
+      assert.equal(checkoutUrl, `https://billing.example.com/billing/checkout/${flowId}`);
+
+      const signedInFree = await svc.state();
+      assert.equal(signedInFree.pro, false);
+      assert.equal(signedInFree.connected, true);
+      assert.equal(signedInFree.account, "138****8000");
+
+      entitlementBody = { connected: true, active: true, entitlement: "inkmap.pro", pending: false, account: "138****8000" };
+      await waitFor(async () => (await svc.state()).pro === true, "polled paid entitlement", 6000);
+      const paid = await svc.state();
+      assert.equal(paid.pro, true);
+      assert.equal(paid.connected, true);
+      assert.equal(paid.account, "138****8000");
+
+      await svc.deactivate();
+      assert.equal(deleted, true);
+      assert.equal(saved, undefined);
+      const signedOut = await svc.state();
+      assert.equal(signedOut.pro, false);
+      assert.equal(signedOut.connected, undefined);
+      assert.equal(signedOut.account, undefined);
+    } finally {
+      svc.dispose();
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("connects a checkout flow during phone sign-in and returns an inline WeChat QR on orderPro", async () => {
+    let saved;
+    const origin = "https://billing.example.com";
+    const token = "c".repeat(43);
+    const flowId = "fedcba9876543210fedcba9876543210";
+    const checkoutUrl = `${origin}/billing/checkout/${flowId}`;
+    let connected = false;
+    let paid = false;
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (url === `${origin}/billing/v1/connections`) {
+        return Response.json({ url: checkoutUrl, token }, { status: 201 });
+      }
+      if (url === `${checkoutUrl}/sms`) {
+        assert.equal(init.headers.origin, origin);
+        return new Response(null, { status: 204 });
+      }
+      if (url === `${checkoutUrl}/login`) {
+        assert.equal(init.headers.origin, origin);
+        connected = true;
+        return new Response(JSON.stringify({}), {
+          status: 200,
+          headers: { "content-type": "application/json", "set-cookie": "yf_session=s1; Path=/; HttpOnly" },
+        });
+      }
+      if (url === `${checkoutUrl}/order`) {
+        if (!connected || !String(init.headers.cookie ?? "").includes("yf_session=s1")) {
+          return Response.json({ error: "请先登录" }, { status: 401 });
+        }
+        if (paid) return Response.json({ active: true }, { status: 200 });
+        return Response.json({ qr: "iVBORw0KGgo=", amountFen: 2990, expiresAt: "2026-11-13T21:00:00.000Z" }, { status: 200 });
+      }
+      if (url === `${origin}/billing/v1/entitlement`) {
+        return Response.json({ connected: paid, pending: !paid, active: paid, entitlement: "inkmap.pro", account: paid ? "178****9014" : undefined });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+    const svc = licenseService({ read: async () => saved, write: async v => { saved = v; } }, () => origin);
+    try {
+      assert.deepEqual(await svc.orderPro(), { status: "needsPhone" });
+      assert.equal((await svc.sendPhoneCode("17801509014")).ok, true);
+      const signedIn = await svc.signInByPhone("17801509014", "660037");
+      assert.equal(signedIn.ok, true);
+      assert.equal(signedIn.value.account, "178****9014");
+
+      const qrOrder = await svc.orderPro();
+      assert.equal(qrOrder.status, "qr");
+      assert.equal(qrOrder.amountFen, 2990);
+      assert.equal(qrOrder.qr, "data:image/png;base64,iVBORw0KGgo=");
+
+      paid = true;
+      const activeOrder = await svc.orderPro();
+      assert.equal(activeOrder.status, "active");
+      assert.equal(activeOrder.state.pro, true);
+    } finally {
+      svc.dispose();
+      globalThis.fetch = realFetch;
+    }
   });
 });

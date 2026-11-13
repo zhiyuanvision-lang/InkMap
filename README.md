@@ -4,6 +4,10 @@
 
 文档始终是普通 Markdown，Cursor、Codex 等智能体可以直接读写。基于 [simple-mind-map](https://github.com/wanglin2/mind-map) 绘制。
 
+在 ChatGPT 桌面应用的 Codex 模式下，可以从 Markdown 文件的打开菜单选择 **Inkmap Mind Map**，在右侧查看和编辑导图。见 [Codex 桌面版安装说明](packages/codex/README.md)。
+
+其他编辑器和桌面应用的接入方式见 [多平台安装与验收](SIDEBARS.md)。
+
 ## 使用
 
 ```bash
@@ -44,11 +48,11 @@ cursor --install-extension packages/vscode/dist/inkmap.vsix   # VS Code 用 code
 
 在节点里输入 Markdown 语法（如 `**加粗**`、`` `代码` ``）后会按 Markdown 渲染。
 
-### 免费版与 Pro
+### 7 天免费试用与购买
 
-免费版可以完整编辑导图，角落显示一条可关闭的小广告。Pro 终身会员（国内 ¥19.9，海外 $9.9，一次购买、永久使用、包含后续全部更新）去除广告，并解锁：在 Chrome 中编辑、导出 PNG / SVG、7 种额外结构、3 套额外配色、查找替换、演示模式。功能对比见 [插件说明](packages/vscode/README.md)，收款和上架步骤见 [PUBLISHING.md](PUBLISHING.md)。
+首次使用起可免费试用全部功能 7 天，无需登录。到期后需一次性购买 Inkmap Pro 才能继续使用 Inkmap。原始 Markdown 仍可在文本编辑器中打开。购买包含后续更新。收款和上架步骤见 [PUBLISHING.md](PUBLISHING.md)。
 
-激活码用 Ed25519 离线签名（`INK1-` 开头），插件内置公钥校验，不需要服务器。插件中激活码存在编辑器存储里（随设置同步），命令行存在 `~/.inkmap/license`。
+从导图右上角的云帆账号面板登录或购买 Pro。完成付款或登录已购买 Pro 的账号后，客户端会自动同步权益。
 
 ### 文件格式
 
@@ -65,8 +69,6 @@ cursor --install-extension packages/vscode/dist/inkmap.vsix   # VS Code 用 code
 | `packages/web` | 浏览器编辑器（Vite 构建），通过 `Host` 接口读写文档 |
 | `packages/cli` | `inkmap` 命令：本地 HTTP 服务、文件监听、推送外部修改 |
 | `packages/vscode` | VS Code / Cursor 插件：侧边导图（webview 自定义编辑器）和浏览器导图（复用 cli 的服务） |
-| `services/license-worker` | Cloudflare Worker：验证 Creem 付款跳转，按订单号发放激活码 |
-| `scripts` | 生成签名密钥（`license-keygen.mjs`）、批量签发激活码（`license-issue.mjs`） |
 
 `Host` 接口把编辑器和文档来源分开：命令行和插件的浏览器模式用 HTTP 和 SSE，插件的侧边导图用 webview 消息，复用同一个编辑器。
 

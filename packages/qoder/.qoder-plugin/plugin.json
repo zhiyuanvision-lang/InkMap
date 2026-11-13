@@ -1,0 +1,9 @@
+{
+  "name": "inkmap",
+  "displayName": "Inkmap 墨图",
+  "version": "0.1.0",
+  "description": "在 Qoder 中把本地 Markdown 大纲打开为可编辑的思维导图，修改保存回原文件。",
+  "author": { "name": "Inkmap" },
+  "keywords": ["inkmap", "markdown", "markmap", "mindmap", "思维导图", "脑图"],
+  "skills": "./skills"
+}

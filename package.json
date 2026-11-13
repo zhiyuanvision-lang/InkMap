@@ -11,11 +11,22 @@
   "scripts": {
     "build": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build -w inkmap && npm run build -w inkmap-vscode",
     "package:vscode": "npm run package -w inkmap-vscode",
-    "test": "npm test -w @inkmap/core && npm test -w inkmap && npm test -w inkmap-vscode && node --test services/license-worker/test/",
-    "dev": "npm run dev -w @inkmap/web"
+    "package:codex": "npm run build -w @inkmap/core && npm exec -w inkmap -- tsc -p . && npm run build:codex -w @inkmap/web && node scripts/package-codex.mjs",
+    "package:qoder": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build -w inkmap && node scripts/package-qoder.mjs",
+    "package:antigravity": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build -w inkmap && node scripts/package-antigravity.mjs",
+    "package:platforms": "npm run build:sidebars && npm run package:vscode",
+    "test": "npm test -w @inkmap/core && npm test -w inkmap && npm test -w inkmap-vscode",
+    "dev": "npm run dev -w @inkmap/web",
+    "build:sidebars": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build -w inkmap && npm run build:codex -w @inkmap/web && node scripts/package-codex.mjs && npm run build:workbuddy -w @inkmap/web && node scripts/package-sidebars.mjs && node scripts/package-harness.mjs && node scripts/package-qoder.mjs && node scripts/package-antigravity.mjs",
+    "test:sidebars": "node --test scripts/test-codex-sidebar.mjs scripts/test-workbuddy-sidebar.mjs scripts/test-local-editor-package.mjs scripts/test-harness-package.mjs scripts/test-antigravity-package.mjs packages/cli/test/sidebar.test.js"
   },
   "devDependencies": {
     "typescript": "^7.0.2",
     "vitest": "^3.2.7"
+  },
+  "overrides": {
+    "@openai/mcp-extensions": {
+      "zod": "4.6.7"
+    }
   }
 }

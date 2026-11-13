@@ -1,47 +1,49 @@
-import { PRODUCT, type LicenseState, type ProFeature } from "@inkmap/core";
 import * as vscode from "vscode";
-import { licenseService, type LicenseService } from "../../cli/src/license";
-import { isChinese, t } from "./i18n";
+import { YUNFAN_BILLING_ORIGIN } from "@inkmap/core";
+import { licenseService, type CheckoutMode, type LicenseService } from "../../cli/src/license";
+import { t } from "./i18n";
 
-const KEY = "inkmap.license";
+const KEY = "inkmap.billing.session";
 
-/** License kept in global state and synced across machines with Settings Sync. */
 export function extensionLicense(context: vscode.ExtensionContext): LicenseService {
-  context.globalState.setKeysForSync([KEY]);
   return licenseService({
-    read: async () => context.globalState.get<string>(KEY),
-    write: async code => context.globalState.update(KEY, code),
-  });
+    read: () => Promise.resolve(context.secrets.get(KEY)),
+    write: async token => {
+      if (token) await context.secrets.store(KEY, token);
+      else await context.secrets.delete(KEY);
+    },
+  }, () => vscode.workspace.getConfiguration("inkmap").get<string>("billingOrigin")
+    || process.env.INKMAP_BILLING_ORIGIN || process.env.INKMAP_DEFAULT_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN);
 }
 
-export async function promptForCode(license: LicenseService): Promise<LicenseState | undefined> {
-  const code = await vscode.window.showInputBox({ prompt: t("codePrompt"), ignoreFocusOut: true, placeHolder: "INK1-…" });
-  if (!code) return;
-  const result = await license.activate(code);
-  if (!result.ok) {
-    vscode.window.showErrorMessage(t(`reason.${result.reason}`));
-    return;
-  }
-  vscode.window.showInformationMessage(t("activated"));
-  return result.state;
+export async function openCheckout(license: LicenseService, mode: CheckoutMode): Promise<void> {
+  const url = await license.connect(mode);
+  if (!await vscode.env.openExternal(vscode.Uri.parse(url))) throw new Error(t("checkoutFailed"));
 }
 
-/** Explains Pro and offers the store links; resolves true once the user activates. */
-export async function offerPro(license: LicenseService, feature?: ProFeature): Promise<boolean> {
+export async function offerPro(license: LicenseService): Promise<boolean> {
   const state = await license.state();
+  const accountDetail = state.account ? t("accountLine", { account: state.account }) : state.connected ? t("accountConnected") : "";
   if (state.pro) {
-    if (!feature) vscode.window.showInformationMessage(t("alreadyPro", { id: state.id ?? "", date: state.issued ?? "" }));
+    const signOut = t("remove");
+    const detail = [t("proActiveDetail"), accountDetail || t("accountConnected")].join("\n");
+    const pick = await vscode.window.showInformationMessage("Inkmap Pro", { modal: true, detail }, signOut);
+    if (pick === signOut) {
+      await license.deactivate();
+      vscode.window.showInformationMessage(t("removed"));
+    }
     return true;
   }
-  const buyCN = t("buyCN", { price: PRODUCT.priceCN });
-  const buyIntl = t("buyIntl", { price: PRODUCT.priceIntl });
-  const enter = t("enterCode");
-  const buttons = isChinese() ? [buyCN, buyIntl, enter] : [buyIntl, buyCN, enter];
-  const detail = t("proPitch", { cn: PRODUCT.priceCN, intl: PRODUCT.priceIntl });
-  const pick = await vscode.window.showInformationMessage(feature === "browser" ? t("browserLocked") : "Inkmap Pro", { modal: true, detail }, ...buttons);
-  if (pick === enter) return !!(await promptForCode(license));
-  const url = pick === buyCN ? PRODUCT.buyUrlCN : pick === buyIntl ? PRODUCT.buyUrlIntl : undefined;
-  if (pick && !url) vscode.window.showInformationMessage(t("storeSoon"));
-  if (url) await vscode.env.openExternal(vscode.Uri.parse(url));
+  const buy = t("buyPro");
+  const signIn = t(state.connected ? "switchAccount" : "signIn");
+  const detail = accountDetail ? `${accountDetail}\n${t("checkoutHint")}` : t("checkoutHint");
+  const pick = await vscode.window.showInformationMessage("Inkmap Pro", { modal: true, detail }, buy, signIn);
+  if (pick) {
+    try {
+      await openCheckout(license, pick === buy ? "buy" : "restore");
+    } catch (error) {
+      vscode.window.showErrorMessage(error instanceof Error ? error.message : t("checkoutFailed"));
+    }
+  }
   return false;
 }

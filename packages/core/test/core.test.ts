@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { isRich, parse, plainText, serialize, serializeWithLines } from "../src/index";
+import { DAY_MS, hasAccess, isRich, parse, plainText, serialize, serializeWithLines, trialDaysLeft } from "../src/index";
 
 const roundTrip = (md: string) => serialize(parse(md));
 
@@ -87,12 +87,25 @@ describe("line positions", () => {
 describe("helpers", () => {
   it("detects rich markdown", () => {
     expect(isRich("plain 文本")).toBe(false);
+    expect(isRich("Price: $100")).toBe(false);
     expect(isRich("has `code`")).toBe(true);
+    expect(isRich("math $a + b$")).toBe(true);
     expect(isRich("1\\. escaped")).toBe(true);
     expect(isRich("two\nlines")).toBe(true);
   });
 
   it("extracts plain text", () => {
     expect(plainText("**b** `c` ![alt](x.png) \\- d")).toBe("b c alt - d");
+  });
+
+  it("computes trial access and remaining days", () => {
+    const now = 1_000_000;
+    expect(hasAccess({ pro: false }, now)).toBe(false);
+    expect(hasAccess({ pro: false, trialUntil: now }, now)).toBe(false);
+    expect(hasAccess({ pro: false, trialUntil: now + 1 }, now)).toBe(true);
+    expect(hasAccess({ pro: true, trialUntil: 1 }, now)).toBe(true);
+    expect(trialDaysLeft({ pro: false, trialUntil: now - 1 }, now)).toBe(0);
+    expect(trialDaysLeft({ pro: false, trialUntil: now + 1 }, now)).toBe(1);
+    expect(trialDaysLeft({ pro: false, trialUntil: now + 6.2 * DAY_MS }, now)).toBe(7);
   });
 });

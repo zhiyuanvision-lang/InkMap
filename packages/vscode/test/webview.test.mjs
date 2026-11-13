@@ -13,7 +13,7 @@ import { webviewHtml } from "../src/html.ts";
 const WEB_ROOT = fileURLToPath(new URL("../dist/web/", import.meta.url));
 const CHROME = process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
-const TYPES = { ".js": "text/javascript", ".css": "text/css", ".png": "image/png" };
+const TYPES = { ".js": "text/javascript", ".css": "text/css", ".png": "image/png", ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf" };
 const DOC = `---
 title: Demo
 ---
@@ -24,6 +24,7 @@ title: Demo
   - alpha child
 - ![dot](img/dot.png "40")
 - omega
+- 进入候选：$t_{\\text{due}} \\le t_{\\text{now}}$；其余 $a + b$
 `;
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));
@@ -73,24 +74,49 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
   });
 
   /** Opens the editor with a fake extension that keeps the document text and version. */
-  async function open({ lang, ads = [], beforeLoad } = {}) {
+  async function open({ lang, ads = [], chat = false, expired = false, viewState, beforeLoad, markdown = DOC, paidOnSignIn = true } = {}) {
     const page = await browser.newPage();
     await page.setViewport({ width: 1400, height: 900 });
     const errors = [];
     page.on("pageerror", e => errors.push(e.message));
     page.on("console", m => m.type() === "error" && errors.push(m.text()));
-    const ext = { md: DOC, version: 1, sent: [], license: { pro: false }, files: [] };
+    const ext = { md: markdown, version: 1, viewState, sent: [], license: { pro: false, trialUntil: expired ? 1 : Date.now() + 60_000 }, files: [] };
     const reply = msg => page.evaluate(m => window.postMessage(m, "*"), msg);
-    ext.state = () => ({ name: "demo", md: ext.md, version: String(ext.version) });
+    ext.state = () => ({ name: "demo", md: ext.md, version: String(ext.version), ...(ext.viewState && { viewState: ext.viewState }) });
     ext.reply = reply;
     await page.exposeFunction("__toExtension", async msg => {
       ext.sent.push(msg);
-      if (msg.type === "ready") await reply({ type: "doc", doc: ext.state(), license: ext.license, ads });
-      if (msg.type === "activate") {
-        const ok = msg.code === "INK1-good";
-        if (ok) ext.license = { pro: true, id: "abc" };
-        await reply({ type: "activated", id: msg.id, result: ok ? { ok: true, state: ext.license } : { ok: false, reason: "signature" } });
-        if (ok) await reply({ type: "license", state: ext.license });
+      if (msg.type === "ready") await reply({ type: "doc", doc: ext.state(), license: ext.license, ads, chat });
+      if (msg.type === "viewState") ext.viewState = msg.state;
+      if (msg.type === "checkout") {
+        await reply({ type: "checkout", id: msg.id });
+        ext.license = { ...ext.license, pro: paidOnSignIn, connected: true, account: "u***@example.com" };
+        await reply({ type: "license", state: ext.license });
+      }
+      if (msg.type === "orderPro") {
+        await reply({
+          type: "proOrder",
+          id: msg.id,
+          result: {
+            status: "qr",
+            qr: "data:image/png;base64," + PNG.toString("base64"),
+            amountFen: 2990,
+            expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+          },
+        });
+      }
+      if (msg.type === "sendPhoneCode") {
+        await reply({ type: "phoneCodeSent", id: msg.id, result: { ok: true } });
+      }
+      if (msg.type === "signInByPhone") {
+        if (msg.code !== "123456") return reply({ type: "phoneSignIn", id: msg.id, result: { ok: false, reason: "invalid" } });
+        ext.license = { ...ext.license, pro: paidOnSignIn, connected: true, account: "138****8000" };
+        await reply({ type: "phoneSignIn", id: msg.id, result: { ok: true, value: ext.license } });
+      }
+      if (msg.type === "signOut") {
+        ext.license = { pro: false, trialUntil: ext.license.trialUntil ?? 1 };
+        await reply({ type: "license", state: ext.license });
+        await reply({ type: "signedOut", id: msg.id });
       }
       if (msg.type === "saveFile") {
         ext.files.push(msg);
@@ -125,11 +151,65 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
 
   const activeText = page => page.evaluate(() => window.inkmap.mindMap.renderer.activeNodeList.map(n => n.getData("md") ?? n.getData("text")));
 
-  it("loads under the webview CSP and resolves document images", async () => {
+  it("loads under the webview CSP and resolves document images and LaTeX math", async () => {
     const { page, errors } = await open();
     await waitFor(() => page.evaluate(() => [...document.querySelectorAll("#map img")].some(i => i.complete && i.naturalWidth > 0)), "image loaded");
+    assert.equal(await page.evaluate(() => document.querySelectorAll("#map .ink-node .katex").length), 2, "renders inline formulas with KaTeX");
+    assert.equal(await page.$("#ad"), null, "ad popup is gone");
     assert.deepEqual(errors, []);
     await page.close();
+  });
+
+  it("restores expanded nodes and canvas zoom/pan when reopened", async () => {
+    const DEEP = "## Root\n\n- branch\n  - l2\n    - l3\n      - l4\n";
+    const first = await open({ markdown: DEEP });
+    const hasLeaf = page =>
+      page.evaluate(() => {
+        let hit = false;
+        const walk = n => ((hit ||= n.getData("text") === "l4"), (n.children ?? []).forEach(walk));
+        walk(window.inkmap.mindMap.renderer.root);
+        return hit;
+      });
+    assert.equal(await hasLeaf(first.page), false, "deep leaf starts collapsed");
+
+    const branch = await find(first.page, "branch");
+    await branch.evaluate(n => n.active());
+    await first.page.keyboard.down("Shift");
+    await first.page.keyboard.press("Slash");
+    await first.page.keyboard.up("Shift");
+    await waitFor(() => hasLeaf(first.page), "deep leaf expanded");
+    await first.page.evaluate(() => {
+      window.inkmap.mindMap.view.setScale(1.4);
+      window.inkmap.mindMap.view.translateXY(90, -45);
+    });
+    await waitFor(() => first.ext.viewState?.view?.scale === 1.4, "view state saved to host");
+    const savedOffset = await first.page.evaluate(() => {
+      const m = window.inkmap.mindMap;
+      const r = m.renderer.root;
+      return {
+        scale: m.view.scale,
+        dx: m.view.x + (r.left + r.width / 2) * m.view.scale - m.width / 2,
+        dy: m.view.y + (r.top + r.height / 2) * m.view.scale - m.height / 2,
+      };
+    });
+    assert.deepEqual(first.errors, []);
+    await first.page.close();
+
+    const second = await open({ markdown: DEEP, viewState: first.ext.viewState });
+    await waitFor(() => hasLeaf(second.page), "reopened with deep leaf still expanded");
+    const restoredOffset = await second.page.evaluate(() => {
+      const m = window.inkmap.mindMap;
+      const r = m.renderer.root;
+      return {
+        scale: m.view.scale,
+        dx: m.view.x + (r.left + r.width / 2) * m.view.scale - m.width / 2,
+        dy: m.view.y + (r.top + r.height / 2) * m.view.scale - m.height / 2,
+      };
+    });
+    assert.equal(restoredOffset.scale, 1.4);
+    assert.ok(Math.abs(restoredOffset.dx - savedOffset.dx) < 1 && Math.abs(restoredOffset.dy - savedOffset.dy) < 1, "root screen offset restored");
+    assert.deepEqual(second.errors, []);
+    await second.page.close();
   });
 
   it("grows the map when the panel is widened", async () => {
@@ -182,6 +262,116 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     await page.close();
   });
 
+  it("sends the selected node's lines to the chat from a button and the context menu", async () => {
+    const { page, ext, errors } = await open({ lang: "en", chat: true });
+    const centerOf = node => node.evaluate(n => {
+      const r = n.group.node.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    });
+    const chatMessages = () => ext.sent.filter(m => m.type === "addToChat");
+
+    const alpha = await find(page, "alpha child");
+    const box = await centerOf(alpha);
+    await page.mouse.click(box.x, box.y);
+    await waitFor(() => page.evaluate(() => !document.querySelector("#chat-add").hidden), "chat button");
+    const [button, node] = await page.evaluate(() => [
+      document.querySelector("#chat-add").getBoundingClientRect().toJSON(),
+      window.inkmap.mindMap.renderer.activeNodeList[0].group.node.getBoundingClientRect().toJSON(),
+    ]);
+    assert.ok(button.bottom <= node.top && Math.abs(button.right - node.right) < 2, "button sits at the node's top-right corner");
+    await page.click("#chat-add");
+    await waitFor(() => chatMessages().length === 1, "chat message");
+    assert.deepEqual(chatMessages()[0], { type: "addToChat", startLine: 7, endLine: 7 });
+
+    const omega = await centerOf(await find(page, "omega"));
+    await page.mouse.click(omega.x, omega.y, { button: "right" });
+    await waitFor(() => page.evaluate(() => !document.querySelector("#node-menu").hidden), "node menu");
+    await page.click("#menu-add-to-chat");
+    await waitFor(() => chatMessages().length === 2, "second chat message");
+    assert.deepEqual(chatMessages()[1], { type: "addToChat", startLine: 9, endLine: 9 });
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+
+  it("sends only the selected part of a node's text, and answers the chat shortcut", async () => {
+    const { page, ext, errors } = await open({ lang: "en", chat: true });
+    const chatMessages = () => ext.sent.filter(m => m.type === "addToChat");
+
+    // The dot image node is rich Markdown: its text is edited in the source panel.
+    const dot = await find(page, "![dot]");
+    await dot.evaluate(n => n.active());
+    await page.keyboard.down("Control");
+    await page.keyboard.press("e");
+    await page.keyboard.up("Control");
+    await waitFor(() => page.evaluate(() => document.activeElement?.id === "source-text"), "source panel focused");
+    await page.evaluate(() => document.querySelector("#source-text").setSelectionRange(2, 5));
+    await waitFor(() => page.evaluate(() => !document.querySelector("#chat-add").hidden), "chat button for the selection");
+    assert.equal(await page.evaluate(() => document.querySelector("#chat-add kbd").textContent.length > 0), true, "shows the shortcut");
+    await page.click("#chat-add");
+    await waitFor(() => chatMessages().length === 1, "partial chat message");
+    assert.deepEqual(chatMessages()[0], { type: "addToChat", startLine: 8, endLine: 8, text: "dot" });
+
+    // The editor forwards its keybinding as a request; it is answered with the current selection.
+    await ext.reply({ type: "requestChat" });
+    await waitFor(() => chatMessages().length === 2, "answer to the shortcut");
+    assert.deepEqual(chatMessages()[1], { type: "addToChat", startLine: 8, endLine: 8, text: "dot" });
+
+    await page.evaluate(() => {
+      document.querySelector("#source-text").setSelectionRange(0, 0);
+      window.inkmap.mindMap.execCommand("CLEAR_ACTIVE_NODE");
+    });
+    await ext.reply({ type: "requestChat" });
+    await waitFor(() => chatMessages().length === 3, "answer without a selection");
+    assert.deepEqual(chatMessages()[2], { type: "addToChat" }, "nothing selected only opens the chat");
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+
+  it("offers Add to Chat for text selected while editing a node on the canvas", async () => {
+    const { page, ext, errors } = await open({ lang: "en", chat: true });
+    const node = await find(page, "omega");
+    await node.evaluate(n => n.active());
+    await page.keyboard.press("F2");
+    await waitFor(() => page.evaluate(() => document.activeElement?.classList.contains("smm-node-edit-wrap")), "text editor");
+    await page.evaluate(() => document.execCommand("selectAll"));
+    await page.keyboard.press("Home");
+    for (let i = 0; i < 3; i++) await page.keyboard.down("Shift"), await page.keyboard.press("ArrowRight"), await page.keyboard.up("Shift");
+    await waitFor(
+      () =>
+        page.evaluate(() => {
+          const button = document.querySelector("#chat-add");
+          const edit = document.querySelector(".smm-node-edit-wrap");
+          const sel = getSelection();
+          if (button.hidden || !edit || sel.toString() !== "ome") return false;
+          const b = button.getBoundingClientRect();
+          const onTop = Number(getComputedStyle(button).zIndex) > Number(getComputedStyle(edit).zIndex);
+          const overlaps = r => Math.min(b.right, r.right) > Math.max(b.left, r.left) && Math.min(b.bottom, r.bottom) > Math.max(b.top, r.top);
+          const allNodes = [];
+          const walk = n => (allNodes.push(n.group.node.getBoundingClientRect()), (n.children ?? []).forEach(walk));
+          walk(window.inkmap.mindMap.renderer.root);
+          return onTop && !overlaps(edit.getBoundingClientRect()) && allNodes.every(r => !overlaps(r));
+        }),
+      "chat button placed without covering the edit box or any neighbor node",
+    );
+    await page.click("#chat-add");
+    await waitFor(() => ext.sent.some(m => m.type === "addToChat"), "chat message");
+    assert.deepEqual(ext.sent.find(m => m.type === "addToChat"), { type: "addToChat", startLine: 9, endLine: 9, text: "ome" });
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+
+  it("offers no chat entry points where there is no chat", async () => {
+    const { page, errors } = await open({ lang: "en" });
+    const alpha = await find(page, "alpha child");
+    await alpha.evaluate(n => n.active());
+    await sleep(200);
+    assert.equal(await page.evaluate(() => document.querySelector("#chat-add").hidden), true);
+    assert.equal(await page.evaluate(() => document.querySelector("#menu-add-to-chat").hidden), true);
+    assert.equal(await page.$eval("#menu-add-to-chat", button => getComputedStyle(button).display), "none");
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+
   it("leaves undo to the editor's document history", async () => {
     const { page, ext, errors } = await open();
     const node = await find(page, "omega");
@@ -204,29 +394,84 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     await page.close();
   });
 
-  it("shows ads until a license is activated, then exports and presents", async () => {
-    const ads = [{ id: "s1", title: "Sponsor", text: "Hello", url: "https://example.com", locale: "en" }];
+  it("renders a Mermaid source block under the webview CSP and keeps tall flowcharts readable", async () => {
+    const markdown = await readFile(new URL("../../core/test/fixtures/diagrams.md", import.meta.url), "utf8");
+    const tall = "\n- Tall flow\n  ```mermaid\n  flowchart TD\n" +
+      Array.from({ length: 18 }, (_, i) => `    N${i}{判断步骤 ${i}：是否满足当前课程复习条件？} -->|是| N${i + 1}[执行下一步处理 ${i + 1}]`).join("\n") +
+      "\n  ```\n";
+    const { page, errors } = await open({ markdown: markdown + tall });
+    await page.waitForFunction(() => [...document.querySelectorAll(".ink-diagram-image")].filter(image => image.complete && image.naturalWidth > 0).length === 3);
+    const tallInfo = await page.evaluate(() => {
+      const imgs = [...document.querySelectorAll(".ink-diagram-image")];
+      const img = imgs[2];
+      const viewport = img.closest(".ink-diagram-viewport");
+      return {
+        imgWidth: img.width,
+        imgHeight: img.height,
+        viewportHeight: viewport.getBoundingClientRect().height,
+      };
+    });
+    assert.ok(tallInfo.imgWidth >= 180, `tall flowchart stays readable instead of shrinking to a thin strip (${tallInfo.imgWidth}px)`);
+    assert.ok(tallInfo.viewportHeight <= 640 && tallInfo.imgHeight > tallInfo.viewportHeight, "tall flowchart scrolls inside bounded card");
+    await page.click(".ink-diagram-zoom");
+    await waitFor(() => page.evaluate(() => !document.querySelector("#diagram-modal").hidden), "diagram zoom modal opened");
+    const before = await page.evaluate(() => {
+      const world = document.querySelector("#diagram-modal-world");
+      return { transform: world.style.transform, zoom: document.querySelector("#diagram-zoom-level").textContent };
+    });
+    await page.$eval("#diagram-modal-stage", (stage) => {
+      stage.dispatchEvent(new WheelEvent("wheel", { deltaY: -80, ctrlKey: true, clientX: 400, clientY: 300, bubbles: true, cancelable: true }));
+    });
+    const afterZoom = await page.evaluate(() => ({
+      transform: document.querySelector("#diagram-modal-world").style.transform,
+      zoom: document.querySelector("#diagram-zoom-level").textContent,
+    }));
+    assert.notEqual(afterZoom.zoom, before.zoom, "pinch/ctrl-wheel zooms the diagram viewer");
+    assert.notEqual(afterZoom.transform, before.transform, "zoom updates the canvas transform");
+    await page.$eval("#diagram-modal-stage", (stage) => {
+      stage.dispatchEvent(new WheelEvent("wheel", { deltaX: 40, deltaY: 60, bubbles: true, cancelable: true }));
+    });
+    const afterPan = await page.evaluate(() => document.querySelector("#diagram-modal-world").style.transform);
+    assert.notEqual(afterPan, afterZoom.transform, "two-finger scroll pans the diagram viewer");
+    await page.keyboard.press("Escape");
+    await waitFor(() => page.evaluate(() => document.querySelector("#diagram-modal").hidden), "diagram zoom modal closed");
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+
+  it("unlocks an expired trial on sign-in to a paid account, then exports and presents", async () => {
     const { page, ext, errors } = await open({
       lang: "en",
-      ads,
+      expired: true,
       // Webviews refuse fullscreen, so presentation has to run inside the panel.
       beforeLoad: () => (Element.prototype.requestFullscreen = () => Promise.reject(new Error("denied"))),
     });
-    await page.waitForSelector("#ad:not([hidden])", { timeout: 5000 });
-    assert.equal(await page.$eval("#ad .ad-label", el => el.textContent), "Ad");
-    assert.equal(await page.$eval("#ad .ad-remove", el => el.textContent), "Remove ads");
-
-    await page.click("#export");
-    await page.waitForSelector("#upgrade:not([hidden])");
+    await page.waitForSelector("#trial-expired-message:not([hidden])");
+    assert.equal(await page.$eval("#map", el => el.inert), true);
+    await page.click("#pro");
+    await page.waitForSelector("#account-panel", { visible: true });
+    assert.equal(await page.$eval("#account-badge", el => el.textContent), "Trial ended");
+    assert.equal(await page.$eval("#account-text", el => el.textContent), "Signed out");
     assert.equal(ext.files.length, 0);
-    await page.type("#code-input", "INK1-bad");
-    await page.click("#activate-form button[type=submit]");
-    await waitFor(() => page.$eval("#activate-msg", el => el.dataset.state === "error"), "bad code rejected");
-    await page.$eval("#code-input", el => (el.value = ""));
-    await page.type("#code-input", "INK1-good");
-    await page.click("#activate-form button[type=submit]");
-    await waitFor(() => page.$eval("html", el => el.classList.contains("pro")), "pro unlocked");
-    assert.ok(await page.$("#ad[hidden]"));
+    await page.click("#account-sign-in");
+    await page.type("#sign-in-phone", "+86 13800008000");
+    await page.click("#send-phone-code");
+    await page.waitForSelector("#phone-sign-in-status:not([hidden])");
+    assert.equal(await page.$eval("#send-phone-code", el => el.disabled), true);
+    assert.equal(ext.sent.find(msg => msg.type === "sendPhoneCode").phone, "13800008000");
+    await page.type("#sign-in-code", "000000");
+    await page.click(".phone-sign-in button[type=submit]");
+    await page.waitForSelector("#phone-sign-in-status[data-state=error]:not([hidden])");
+    await page.type("#sign-in-code", "123456");
+    await page.click(".phone-sign-in button[type=submit]");
+    await waitFor(() => page.$eval("html", el => el.classList.contains("pro-member")), "pro unlocked");
+    assert.equal(await page.$eval("#upgrade", el => el.hidden), true, "the editor unlocks without a second action");
+    assert.equal(await page.$eval("#account-badge", el => el.textContent), "PRO");
+    assert.equal(await page.$eval("#account-text", el => el.textContent), "138****8000");
+    assert.equal(await page.$eval("#account-buy", el => el.hidden), true);
+    assert.equal(ext.sent.some(msg => msg.type === "checkout"), false);
+    assert.equal(await page.$(".phone-sign-in"), null);
+    assert.equal(await page.$("#ad"), null);
     await page.keyboard.press("Escape");
 
     await page.click("#export");
@@ -241,6 +486,73 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     await page.keyboard.press("Escape");
     await waitFor(() => page.$eval("html", el => !el.classList.contains("presenting")), "presentation ended");
     assert.equal(ext.sent.filter(m => m.type === "save").length, 0, "presenting does not save");
+
+    await page.click("#pro");
+    await page.waitForSelector("#account-panel", { visible: true });
+    await page.click("#sign-out");
+    await waitFor(() => page.$eval("html", el => el.classList.contains("trial-expired")), "re-locked after signing out on expired trial");
+    assert.ok(ext.sent.some(m => m.type === "signOut"));
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
+
+  it("switches between English and Chinese without reloading or losing Pro access", async () => {
+    const { page, ext, errors } = await open({ expired: true });
+    assert.equal(await page.$eval("html", el => el.lang), "en");
+    await page.select(".upgrade-language", "zh");
+    assert.equal(await page.$eval("html", el => el.lang), "zh-CN");
+    await page.click("#upgrade-sign-in");
+    await page.click("#phone-browser-sign-in");
+    await waitFor(() => page.$eval("html", el => el.classList.contains("pro-member")), "pro unlocked");
+    assert.equal(await page.$eval("#account-heading", el => el.textContent), "已登录");
+    await page.select("#bar .language-select", "en");
+    assert.equal(await page.$eval("#account-heading", el => el.textContent), "Signed in");
+    assert.equal(await page.$eval("#account-text", el => el.textContent), "u***@example.com");
+    assert.equal(await page.$eval("html", el => el.classList.contains("pro-member")), true);
+    assert.ok(ext.sent.some(m => m.type === "checkout"));
+    assert.deepEqual(errors, []);
+    await page.evaluate(() => localStorage.removeItem("inkmap.language"));
+    await page.close();
+  });
+
+  it("lets a trial user sign in without enabling Pro", async () => {
+    const { page, ext, errors } = await open({ paidOnSignIn: false });
+    await page.setViewport({ width: 360, height: 620 });
+    await page.focus("#pro");
+    await page.keyboard.press("Enter");
+    await page.waitForSelector("#account-panel", { visible: true });
+    assert.ok(await page.$eval("#account-panel", el => {
+      const { left, right } = el.getBoundingClientRect();
+      return left >= 0 && right <= innerWidth;
+    }), "the account panel fits a narrow sidebar");
+    await page.keyboard.press("Escape");
+    assert.equal(await page.$eval("#pro", el => el.getAttribute("aria-expanded")), "false");
+    assert.equal(await page.evaluate(() => document.activeElement.id), "pro");
+    await page.click("#pro");
+    assert.equal(await page.$eval("#account-sign-in", el => el.textContent), "Sign in by phone");
+    await page.click("#account-sign-in");
+    await page.type("#sign-in-phone", "13800008000");
+    await page.type("#sign-in-code", "123456");
+    await page.click(".phone-sign-in button[type=submit]");
+    await waitFor(() => page.$eval("#account-sign-in", el => el.hidden), "connected trial user");
+    assert.equal(ext.sent.some(msg => msg.type === "checkout"), false);
+    assert.equal(await page.$eval("#account-text", el => el.textContent), "138****8000");
+    assert.equal(await page.$eval("#account-heading", el => el.textContent), "Signed in");
+    assert.equal(await page.$eval("html", el => el.classList.contains("pro-member")), false);
+    assert.equal(await page.$eval("#account-plan-status", el => el.hidden), true, "hides redundant trial status inside account panel");
+    assert.equal(await page.$eval("#account-perks", el => el.hidden), false, "shows Pro perks directly in the account panel");
+    assert.equal(await page.$$eval("#account-perks .account-perks-list li", els => els.length), 7, "displays 7 rich Pro perks");
+    assert.equal(await page.$eval("#switch-account", el => el.hidden), true, "hides redundant switch account button");
+    await page.click("#account-perks-more");
+    await page.waitForSelector("#buy-pro", { visible: true });
+    assert.equal(await page.$eval("#upgrade-sign-in", el => el.hidden), true, "the signed-in user only sees the purchase action");
+    await page.click(".upgrade-close");
+    await page.click("#pro");
+    await page.click("#account-buy");
+    await page.waitForSelector("#account-panel .wechat-pay", { visible: true });
+    assert.equal(await page.$eval("#wechat-pay-amount", el => el.textContent), "¥29.90");
+    assert.match(await page.$eval("#wechat-pay-account", el => el.textContent), /138\*\*\*\*8000/);
+    assert.match(await page.$eval("#wechat-pay-qr", el => el.getAttribute("src")), /^data:image\/png;base64,/);
     assert.deepEqual(errors, []);
     await page.close();
   });

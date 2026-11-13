@@ -2,72 +2,205 @@
   "name": "inkmap-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.2.0",
+  "version": "0.2.4",
   "publisher": "inkmap",
   "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
   "icon": "images/icon.png",
-  "galleryBanner": { "color": "#1f2a44", "theme": "dark" },
+  "galleryBanner": {
+    "color": "#1f2a44",
+    "theme": "dark"
+  },
   "pricing": "Free",
   "qna": false,
-  "engines": { "vscode": "^1.90.0" },
-  "categories": ["Visualization", "Education", "Other"],
-  "keywords": ["markdown", "mind map", "mindmap", "outline", "思维导图", "脑图", "大纲", "markmap", "xmind", "brainstorm"],
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "Education",
+    "Other"
+  ],
+  "keywords": [
+    "markdown",
+    "mind map",
+    "mindmap",
+    "outline",
+    "思维导图",
+    "脑图",
+    "大纲",
+    "markmap",
+    "xmind",
+    "brainstorm"
+  ],
   "main": "./dist/extension.js",
   "activationEvents": [],
   "capabilities": {
-    "untrustedWorkspaces": { "supported": true },
-    "virtualWorkspaces": { "supported": false, "description": "%virtualWorkspaces%" }
+    "untrustedWorkspaces": {
+      "supported": true
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "%virtualWorkspaces%"
+    }
   },
   "contributes": {
     "customEditors": [
       {
         "viewType": "inkmap.mindmap",
         "displayName": "%editor.displayName%",
-        "selector": [{ "filenamePattern": "*.md" }],
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
         "priority": "option"
       }
     ],
     "commands": [
-      { "command": "inkmap.open", "title": "%command.open%", "icon": "$(type-hierarchy)" },
-      { "command": "inkmap.openToSide", "title": "%command.openToSide%", "category": "Inkmap", "icon": "$(type-hierarchy)" },
-      { "command": "inkmap.openInBrowser", "title": "%command.openInBrowser%", "category": "Inkmap", "icon": "$(globe)" },
-      { "command": "inkmap.showSource", "title": "%command.showSource%", "category": "Inkmap", "icon": "$(go-to-file)" },
-      { "command": "inkmap.upgrade", "title": "%command.upgrade%", "category": "Inkmap" },
-      { "command": "inkmap.enterLicense", "title": "%command.enterLicense%", "category": "Inkmap" },
-      { "command": "inkmap.removeLicense", "title": "%command.removeLicense%", "category": "Inkmap" }
+      {
+        "command": "inkmap.open",
+        "title": "%command.open%",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "inkmap.openToSide",
+        "title": "%command.openToSide%",
+        "category": "Inkmap",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "inkmap.openInBrowser",
+        "title": "%command.openInBrowser%",
+        "category": "Inkmap",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "inkmap.showSource",
+        "title": "%command.showSource%",
+        "category": "Inkmap",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "inkmap.addToChat",
+        "title": "%command.addToChat%",
+        "category": "Inkmap"
+      },
+      {
+        "command": "inkmap.upgrade",
+        "title": "%command.upgrade%",
+        "category": "Inkmap"
+      },
+      {
+        "command": "inkmap.restorePro",
+        "title": "%command.restorePro%",
+        "category": "Inkmap"
+      },
+      {
+        "command": "inkmap.signOut",
+        "title": "%command.signOut%",
+        "category": "Inkmap"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "inkmap.addToChat",
+        "key": "ctrl+l",
+        "mac": "cmd+l",
+        "when": "activeCustomEditorId == inkmap.mindmap && inkmap.chatAvailable"
+      }
     ],
     "menus": {
       "editor/title": [
-        { "command": "inkmap.openToSide", "when": "resourceLangId == markdown && activeCustomEditorId != inkmap.mindmap", "group": "navigation" },
-        { "command": "inkmap.openInBrowser", "when": "resourceLangId == markdown || activeCustomEditorId == inkmap.mindmap", "group": "navigation" },
-        { "command": "inkmap.showSource", "when": "activeCustomEditorId == inkmap.mindmap", "group": "navigation" }
+        {
+          "command": "inkmap.openToSide",
+          "when": "resourceLangId == markdown && activeCustomEditorId != inkmap.mindmap",
+          "group": "navigation"
+        },
+        {
+          "command": "inkmap.openInBrowser",
+          "when": "resourceLangId == markdown || activeCustomEditorId == inkmap.mindmap",
+          "group": "navigation"
+        },
+        {
+          "command": "inkmap.showSource",
+          "when": "activeCustomEditorId == inkmap.mindmap",
+          "group": "navigation"
+        }
       ],
       "explorer/context": [
-        { "command": "inkmap.open", "when": "resourceExtname == .md", "group": "navigation@20" },
-        { "command": "inkmap.openInBrowser", "when": "resourceExtname == .md", "group": "navigation@21" }
+        {
+          "command": "inkmap.open",
+          "when": "resourceExtname == .md",
+          "group": "navigation@20"
+        },
+        {
+          "command": "inkmap.openInBrowser",
+          "when": "resourceExtname == .md",
+          "group": "navigation@21"
+        }
       ],
       "editor/context": [
-        { "command": "inkmap.open", "when": "resourceLangId == markdown", "group": "navigation@20" },
-        { "command": "inkmap.openInBrowser", "when": "resourceLangId == markdown", "group": "navigation@21" }
+        {
+          "command": "inkmap.open",
+          "when": "resourceLangId == markdown",
+          "group": "navigation@20"
+        },
+        {
+          "command": "inkmap.openInBrowser",
+          "when": "resourceLangId == markdown",
+          "group": "navigation@21"
+        }
       ],
       "editor/title/context": [
-        { "command": "inkmap.open", "when": "resourceExtname == .md && activeCustomEditorId != inkmap.mindmap", "group": "1_open@20" }
+        {
+          "command": "inkmap.open",
+          "when": "resourceExtname == .md && activeCustomEditorId != inkmap.mindmap",
+          "group": "1_open@20"
+        }
       ],
       "commandPalette": [
-        { "command": "inkmap.open", "when": "editorLangId == markdown" },
-        { "command": "inkmap.openToSide", "when": "editorLangId == markdown" },
-        { "command": "inkmap.openInBrowser", "when": "editorLangId == markdown || activeCustomEditorId == inkmap.mindmap" },
-        { "command": "inkmap.showSource", "when": "activeCustomEditorId == inkmap.mindmap" }
+        {
+          "command": "inkmap.addToChat",
+          "when": "false"
+        },
+        {
+          "command": "inkmap.open",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "inkmap.openToSide",
+          "when": "editorLangId == markdown"
+        },
+        {
+          "command": "inkmap.openInBrowser",
+          "when": "editorLangId == markdown || activeCustomEditorId == inkmap.mindmap"
+        },
+        {
+          "command": "inkmap.showSource",
+          "when": "activeCustomEditorId == inkmap.mindmap"
+        }
       ]
     },
     "configuration": {
       "title": "Inkmap",
       "properties": {
+        "inkmap.billingOrigin": {
+          "type": "string",
+          "scope": "application",
+          "default": "",
+          "description": "%config.billingOrigin%"
+        },
         "inkmap.browser": {
           "type": "string",
-          "enum": ["chrome", "default"],
-          "enumDescriptions": ["%config.browser.chrome%", "%config.browser.default%"],
+          "enum": [
+            "chrome",
+            "default"
+          ],
+          "enumDescriptions": [
+            "%config.browser.chrome%",
+            "%config.browser.default%"
+          ],
           "default": "chrome",
           "description": "%config.browser%"
         },

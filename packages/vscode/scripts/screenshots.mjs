@@ -64,8 +64,8 @@ title: First Month Abroad
   - Emergency numbers and insurance
 `;
 
-const pro = { state: async () => ({ pro: true, id: "a1b2c3d4e5f6", issued: "2026-11-09" }), activate: async () => ({ ok: false, reason: "format" }), deactivate: async () => {}, onChange: () => () => {} };
-const free = { ...pro, state: async () => ({ pro: false }) };
+const pro = { state: async () => ({ pro: true }), onChange: () => () => {} };
+const free = { ...pro, state: async () => ({ pro: false, trialUntil: Date.now() + 7 * 24 * 60 * 60 * 1000 }) };
 
 const dir = await mkdtemp(join(tmpdir(), "inkmap-shots-"));
 await mkdir(out, { recursive: true });
@@ -102,8 +102,8 @@ const only = process.env.SHOTS?.split(",");
 const shots = {
   "editor-zh": { md: ZH, lang: "zh-CN", license: free },
   "editor-en": { md: EN, lang: "en-US", license: free },
-  "upgrade-zh": { md: ZH, lang: "zh-CN", license: free, setup: page => page.click("#pro") },
-  "upgrade-en": { md: EN, lang: "en-US", license: free, setup: page => page.click("#pro") },
+  "upgrade-zh": { md: ZH, lang: "zh-CN", license: free, setup: page => page.evaluate(() => window.inkmap.pro.openUpgrade()) },
+  "upgrade-en": { md: EN, lang: "en-US", license: free, setup: page => page.evaluate(() => window.inkmap.pro.openUpgrade()) },
   "org-chart": { md: EN, lang: "en-US", license: pro, setup: pick("#layout-select", "organizationStructure") },
   "dark-zh": { md: ZH, lang: "zh-CN", license: pro, setup: async page => { await pick("#theme-select", "dusk")(page); await pick("#layout-select", "mindMap")(page); } },
   "timeline": { md: EN, lang: "en-US", license: pro, setup: pick("#layout-select", "timeline") },

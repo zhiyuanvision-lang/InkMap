@@ -81,7 +81,7 @@ export function themeConfig({ palette: p }: ThemeOption) {
     paddingY: 6,
     root: { fillColor: p.root, color: p.rootText, fontSize: 18, fontWeight: "bold", fontFamily: FONT, borderWidth: 0, borderRadius: 8, marginX: 80, marginY: 24 },
     second: { fillColor: p.card, color: p.text, fontSize: 15, fontWeight: "bold", fontFamily: FONT, borderColor: p.second, borderWidth: 1.5, borderRadius: 6, marginX: 60, marginY: 16 },
-    node: { fillColor: p.card, color: p.text, fontSize: 14, fontFamily: FONT, borderColor: p.border, borderWidth: 1, borderRadius: 6, marginX: 50, marginY: 10 },
+    node: { fillColor: p.card, color: p.text, fontSize: 14, fontFamily: FONT, borderColor: p.border, borderWidth: 1, borderRadius: 6, marginX: 50, marginY: 12 },
   };
 }
 

@@ -5,13 +5,22 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit -p . && vite build"
+    "build": "tsc --noEmit -p . && vite build",
+    "build:codex": "vite build --mode codex",
+    "build:workbuddy": "vite build --mode workbuddy"
   },
   "dependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.5",
+    "@openai/mcp-extensions": "0.2.1",
+    "dompurify": "3.4.17",
+    "katex": "^0.16.8",
     "marked": "^15.0.12",
-    "simple-mind-map": "0.14.0"
+    "mermaid": "^12.3.0",
+    "simple-mind-map": "0.14.0",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "vite": "^6.0.0"
+    "vite": "^6.0.0",
+    "vite-plugin-singlefile": "2.3.4"
   }
 }
