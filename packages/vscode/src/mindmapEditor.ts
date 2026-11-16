@@ -6,7 +6,7 @@ import * as vscode from "vscode";
 import type { LicenseService } from "../../cli/src/license";
 import { addLinesToChat, chatAvailable, openChat, docDir, docName, replaceText, type DocState } from "./documents";
 import { webviewHtml } from "./html";
-import { t } from "./i18n";
+import { isChinese, t } from "./i18n";
 
 const VIEW_STATE_PREFIX = "inkmap.viewState:";
 
@@ -200,6 +200,6 @@ async function editorHtml(webview: vscode.Webview, webRoot: vscode.Uri, assets: 
     assetBase: assets ? webview.asWebviewUri(assets).toString() + "/" : "",
     cspSource: webview.cspSource,
     nonce: randomBytes(16).toString("base64"),
-    locale: vscode.env.language,
+    locale: isChinese() ? "zh-cn" : vscode.env.language,
   });
 }

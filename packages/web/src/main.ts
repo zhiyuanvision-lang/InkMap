@@ -19,7 +19,7 @@ import {
 } from "@inkmap/core";
 import { collectBranchFolds, collectExpand, markdownOf, nodeData, toMind, toOutlineDoc, type MindNode, type MindNodeData } from "./convert";
 import type { DocState, Host } from "./host";
-import { applyI18n, setLocale, t } from "./i18n";
+import { applyI18n, detectDefaultLocale, locale, setLocale, t } from "./i18n";
 import nodesCss from "./nodes.css?inline";
 import { createPro } from "./pro";
 import { createRenderer } from "./render";
@@ -44,7 +44,7 @@ document.head.append(nodeStyle);
 export async function start(host: Host) {
   let savedLanguage: string | null = null;
   try { savedLanguage = localStorage.getItem("inkmap.language"); } catch { /* storage can be unavailable */ }
-  const defaultLang = /^zh\b/i.test(host.locale || navigator.language || "") ? "zh" : "en";
+  const defaultLang = detectDefaultLocale(host.locale);
   setLocale(savedLanguage === "zh" || savedLanguage === "en" ? savedLanguage : defaultLang);
   applyI18n();
   const status = $("#status");
@@ -233,7 +233,8 @@ export async function start(host: Host) {
     return chosen && (!chosen.pro || pro.isPro()) ? chosen : THEMES[0];
   }
 
-  const title = doc.md.match(/^---\n[\s\S]*?^title:\s*["']?(.+?)["']?\s*$/m)?.[1] ?? doc.name;
+  const titleOf = (md: string) => md.match(/^---\n[\s\S]*?^title:\s*["']?(.+?)["']?\s*$/m)?.[1] ?? doc.name;
+  let title = titleOf(doc.md);
   document.title = `${title} · Inkmap`;
 
   let theme = themeOf(doc.md);
@@ -253,20 +254,22 @@ export async function start(host: Host) {
   let hadRealMapRect = false;
   {
     const initialRect = origGetMapRect();
-    hadRealMapRect = initialRect.width > 0 && initialRect.height > 0;
+    hadRealMapRect = initialRect.width >= 160 && initialRect.height >= 160;
   }
   mapEl.getBoundingClientRect = () => {
     const r = origGetMapRect();
-    if (r.width > 0 && r.height > 0) return r;
-    const w = window.innerWidth > 0 ? window.innerWidth : 960;
-    const h = window.innerHeight > 0 ? window.innerHeight : 720;
+    if (r.width >= 160 && r.height >= 160) return r;
+    const w = window.innerWidth >= 160 ? window.innerWidth : 960;
+    const h = window.innerHeight >= 160 ? window.innerHeight : 720;
     return new DOMRect(0, 0, w, h);
   };
 
-  const initialData = await buildData(doc.md, (path, depth) => initialFolds?.[path.join("\u0000")] ?? depth < INITIAL_LEVELS);
+  const initialData = await buildData(doc.md, (path, depth) =>
+    depth === 0 ? true : (initialFolds?.[path.join("\u0000")] ?? depth < INITIAL_LEVELS),
+  );
   {
     const r = origGetMapRect();
-    if (r.width > 0 && r.height > 0) hadRealMapRect = true;
+    if (r.width >= 160 && r.height >= 160) hadRealMapRect = true;
   }
 
   const mindMap = new MindMap({
@@ -409,12 +412,17 @@ export async function start(host: Host) {
   /** Replaces the map with `md`, keeping folds; `local` edits are then saved like any other edit. */
   async function load(md: string, local: boolean) {
     finishInlineEdit(false);
+    title = titleOf(md);
+    document.title = `${title} · Inkmap`;
     const folds = collectExpand(mindMap.getData(false));
     const data = await buildData(md, (path, depth) => folds.get(path.join("\u0000")) ?? depth < INITIAL_LEVELS);
     closeSource();
     mindMap.updateData(data);
     applyLook(md);
-    if (local) scheduleSave();
+    if (local) {
+      host.onMapMarkdownChange?.(currentMarkdown());
+      scheduleSave();
+    }
   }
 
   async function applyExternal(next: DocState) {
@@ -437,7 +445,10 @@ export async function start(host: Host) {
     pendingExternalDoc = undefined;
     saving = saving.then(() => applyExternal(next)).catch(() => {});
   }
-  mindMap.on("data_change", scheduleSave);
+  mindMap.on("data_change", () => {
+    host.onMapMarkdownChange?.(currentMarkdown());
+    scheduleSave();
+  });
   host.onExternalChange(next => {
     saving = saving.then(async () => {
       const localChanges = currentMarkdown() !== savedMap && next.md !== lastMd;
@@ -593,10 +604,28 @@ export async function start(host: Host) {
   }
 
   let revealing = false;
+  const blurExternalInput = () => {
+    const activeEl = document.activeElement;
+    if (
+      activeEl instanceof HTMLElement &&
+      activeEl !== document.body &&
+      !activeEl.classList.contains("smm-node-edit-wrap") &&
+      activeEl !== inlineEdit
+    ) {
+      activeEl.blur();
+    }
+  };
+  mindMap.on("node_mousedown", blurExternalInput);
+  mindMap.on("svg_mousedown", blurExternalInput);
   if (host.select) {
     mindMap.on("node_click", (node: any) => {
+      blurExternalInput();
+      if (revealing) return;
       const line = nodeLines().get(node.getData("uid"));
-      if (line !== undefined) host.select!(line);
+      if (line !== undefined) {
+        const range = chatRange([node]);
+        host.select!(line, range?.endLine ?? line);
+      }
     });
   }
   host.onReveal?.(line => {
@@ -605,16 +634,19 @@ export async function start(host: Host) {
     for (const [uid, start] of nodeLines()) {
       if (start <= line && start > bestLine) [best, bestLine] = [uid, start];
     }
-    if (!best || mindMap.renderer.activeNodeList[0]?.getData("uid") === best) return;
+    if (!best) return;
     const uid = best;
     mindMap.renderer.expandToNodeUid(uid, () => {
       const node = mindMap.renderer.findNodeByUid(uid);
       if (!node) return;
       revealing = true;
-      mindMap.execCommand("CLEAR_ACTIVE_NODE");
-      node.active();
+      if (mindMap.renderer.activeNodeList[0]?.getData("uid") !== uid) {
+        mindMap.renderer.clearActiveNodeList();
+        node.active();
+      }
       revealing = false;
-      if (!node.checkIsInClient?.(40)) mindMap.renderer.moveNodeToCenter(node, false);
+      mindMap.resize();
+      mindMap.renderer.moveNodeToCenter(node, false);
     });
   });
   const toggleSource = () => {
@@ -624,6 +656,8 @@ export async function start(host: Host) {
     else showToast(t("selectNode"));
   };
   mindMap.keyCommand.addShortcut("Control+e", toggleSource);
+  mindMap.keyCommand.addShortcut("Alt+Up", () => mindMap.execCommand("UP_NODE"));
+  mindMap.keyCommand.addShortcut("Alt+Down", () => mindMap.execCommand("DOWN_NODE"));
 
   const expandSubtree = (nodes: any[] = mindMap.renderer.activeNodeList) => {
     if (!nodes.length) return showToast(t("selectNode"));
@@ -643,8 +677,17 @@ export async function start(host: Host) {
   };
   mindMap.on("node_contextmenu", (e: MouseEvent, node: any) => {
     e.preventDefault();
+    blurExternalInput();
     const active = mindMap.renderer.activeNodeList;
     menuNodes = active.includes(node) ? [...active] : [node];
+    const isRootOnly = menuNodes.every((n: any) => n?.isRoot);
+    const ro = readOnly();
+    $("#menu-insert-child").hidden = ro;
+    $("#menu-insert-sibling").hidden = ro || isRootOnly;
+    $("#menu-insert-parent").hidden = ro || isRootOnly;
+    $("#menu-move-up").hidden = ro || isRootOnly;
+    $("#menu-move-down").hidden = ro || isRootOnly;
+    $("#menu-remove-node").hidden = ro || isRootOnly;
     nodeMenu.hidden = false;
     nodeMenu.style.left = `${Math.min(e.clientX, innerWidth - nodeMenu.offsetWidth - 8)}px`;
     nodeMenu.style.top = `${Math.min(e.clientY, innerHeight - nodeMenu.offsetHeight - 8)}px`;
@@ -665,6 +708,8 @@ export async function start(host: Host) {
   const isMac = /Mac|iPhone|iPad/.test(navigator.platform);
   const chatKey = isMac ? "⌘L" : "Ctrl+L";
   $("#menu-source-kbd").textContent = isMac ? "⌘E" : "Ctrl+E";
+  $("#menu-up-kbd").textContent = isMac ? "⌘↑" : "Ctrl+↑";
+  $("#menu-down-kbd").textContent = isMac ? "⌘↓" : "Ctrl+↓";
   chatAdd.innerHTML = `<span>${t("addToChat")}</span><kbd>${chatKey}</kbd>`;
   chatAdd.title = t("addToChatTitle");
   chatMenuItem.innerHTML = `<span>${t("addToChat")}</span><kbd>${chatKey}</kbd>`;
@@ -754,11 +799,16 @@ export async function start(host: Host) {
   /** Collects bounding boxes of all rendered nodes except `skip`, so the floating chip can avoid covering neighbor text. */
   function otherNodeRects(skip: Set<any>): { left: number; right: number; top: number; bottom: number }[] {
     const out: { left: number; right: number; top: number; bottom: number }[] = [];
+    const mapRect = origGetMapRect();
+    const minX = mapRect.width >= 160 ? mapRect.left : 0;
+    const maxX = mapRect.width >= 160 ? mapRect.right : innerWidth;
+    const minY = mapRect.height >= 160 ? mapRect.top : 0;
+    const maxY = mapRect.height >= 160 ? mapRect.bottom : innerHeight;
     const walk = (n: any) => {
       if (!n) return;
       if (!skip.has(n)) {
         const r: DOMRect | undefined = n.group?.node.getBoundingClientRect();
-        if (r && r.width > 0 && r.bottom > 0 && r.top < innerHeight && r.right > 0 && r.left < innerWidth) out.push(r);
+        if (r && r.width > 0 && r.bottom > minY && r.top < maxY && r.right > minX && r.left < maxX) out.push(r);
       }
       if (n.getData?.("expand") !== false) (n.children ?? []).forEach(walk);
     };
@@ -891,6 +941,7 @@ export async function start(host: Host) {
   function remember(key: "layout" | "theme", value: string) {
     if (readOnly()) return;
     meta = { ...meta, frontMatter: withDocumentSetting(meta.frontMatter, key, value) };
+    host.onMapMarkdownChange?.(currentMarkdown());
     scheduleSave();
   }
 
@@ -911,7 +962,7 @@ export async function start(host: Host) {
   fillPickers();
   const languageSelects = document.querySelectorAll<HTMLSelectElement>(".language-select");
   languageSelects.forEach(select => {
-    select.value = savedLanguage === "zh" ? "zh" : "en";
+    select.value = locale();
     select.addEventListener("change", () => {
       const next = select.value === "zh" ? "zh" : "en";
       try { localStorage.setItem("inkmap.language", next); } catch { /* still switch for this session */ }
@@ -920,6 +971,18 @@ export async function start(host: Host) {
       applyI18n();
       pro.refreshLanguage();
       fillPickers();
+      setStatus((status.dataset.state as any) || "saved", synced());
+      chatAdd.innerHTML = `<span>${t("addToChat")}</span><kbd>${chatKey}</kbd>`;
+      chatAdd.title = t("addToChatTitle");
+      chatMenuItem.innerHTML = `<span>${t("addToChat")}</span><kbd>${chatKey}</kbd>`;
+      document.querySelectorAll<HTMLButtonElement>(".ink-diagram-zoom").forEach(btn => {
+        btn.textContent = t("zoomDiagram");
+      });
+      document.querySelectorAll<HTMLButtonElement>(".ink-diagram-edit").forEach(btn => {
+        const hasError = Boolean(btn.parentElement?.parentElement?.querySelector(".ink-diagram-error"));
+        btn.textContent = hasError ? t("diagramInvalid") : t("editDiagram");
+      });
+      host.refreshLanguage?.();
     });
   });
 
@@ -950,12 +1013,19 @@ export async function start(host: Host) {
 
   // ---- presentation -----------------------------------------------------
 
+  const presentBar = $("#present-bar");
+  const presentStep = $("#present-step");
+  const presentPrev = $<HTMLButtonElement>("#present-prev");
+  const presentNext = $<HTMLButtonElement>("#present-next");
+  const presentExit = $<HTMLButtonElement>("#present-exit");
+
   async function present() {
     if (!pro.allow("present")) return;
     hideMenus();
     closeSource();
     search.close();
     document.documentElement.classList.add("presenting");
+    if (presentBar) presentBar.hidden = false;
     try {
       await mindMap.el.requestFullscreen();
     } catch {
@@ -963,6 +1033,14 @@ export async function start(host: Host) {
       mindMap.demonstrate._enter();
     }
   }
+  presentPrev?.addEventListener("click", () => mindMap.demonstrate?.prev());
+  presentNext?.addEventListener("click", () => mindMap.demonstrate?.next());
+  presentExit?.addEventListener("click", () => mindMap.demonstrate?.exit());
+  mindMap.on("demonstrate_jump", (cur: number, total: number) => {
+    if (presentStep) presentStep.textContent = `${cur + 1} / ${total}`;
+    if (presentPrev) presentPrev.disabled = cur <= 0;
+    if (presentNext) presentNext.disabled = cur >= total - 1;
+  });
   // The plugin listens for a vendor-prefixed event that current Chromium no longer fires.
   document.addEventListener("fullscreenchange", () => {
     const demo = mindMap.demonstrate;
@@ -971,15 +1049,16 @@ export async function start(host: Host) {
   });
   mindMap.on("exit_demonstrate", () => {
     document.documentElement.classList.remove("presenting");
+    if (presentBar) presentBar.hidden = true;
   });
 
   // The map sizes its SVG only on creation; editor panels change size whenever splits are dragged or closed.
   let resizeFrame = 0;
-  const syncViewportResize = () => {
+    const syncViewportResize = () => {
     cancelAnimationFrame(resizeFrame);
     resizeFrame = requestAnimationFrame(() => {
       const { width, height } = origGetMapRect();
-      if (width <= 0 || height <= 0) return;
+      if (width < 160 || height < 160) return;
       if (!hadRealMapRect) {
         hadRealMapRect = true;
         retriedVisibleDiagrams.clear();
@@ -993,6 +1072,9 @@ export async function start(host: Host) {
         return;
       }
       mindMap.resize();
+      if (otherNodeRects(new Set()).length === 0) {
+        mindMap.view.fit();
+      }
     });
   };
   new ResizeObserver(syncViewportResize).observe(mindMap.el);
@@ -1020,7 +1102,38 @@ export async function start(host: Host) {
   }
   click("#undo", () => (host.history ? host.history.undo() : mindMap.execCommand("BACK")));
   click("#redo", () => (host.history ? host.history.redo() : mindMap.execCommand("FORWARD")));
-  click("#fit", () => mindMap.view.fit());
+  click("#fit", () => {
+    mindMap.resize();
+    mindMap.view.fit();
+  });
+  click("#menu-insert-child", () => {
+    const nodes = menuNodes;
+    hideMenus();
+    if (nodes.length) mindMap.execCommand("INSERT_CHILD_NODE", true, nodes);
+  });
+  click("#menu-insert-sibling", () => {
+    const nodes = menuNodes;
+    hideMenus();
+    if (nodes.length) mindMap.execCommand("INSERT_NODE", true, nodes);
+  });
+  click("#menu-insert-parent", () => {
+    const nodes = menuNodes;
+    hideMenus();
+    if (nodes.length) mindMap.execCommand("INSERT_PARENT_NODE", true, nodes);
+  });
+  click("#menu-move-up", () => {
+    hideMenus();
+    mindMap.execCommand("UP_NODE");
+  });
+  click("#menu-move-down", () => {
+    hideMenus();
+    mindMap.execCommand("DOWN_NODE");
+  });
+  click("#menu-remove-node", () => {
+    const nodes = menuNodes;
+    hideMenus();
+    if (nodes.length) mindMap.execCommand("REMOVE_NODE", nodes);
+  });
   click("#menu-source", () => {
     const node = menuNodes[0];
     hideMenus();
@@ -1087,8 +1200,12 @@ export async function start(host: Host) {
         mindMap.view.x = mindMap.width / 2 + saved.dx - (root.left + root.width / 2) * saved.scale;
         mindMap.view.y = mindMap.height / 2 + saved.dy - (root.top + root.height / 2) * saved.scale;
         mindMap.view.transform();
-        mindMap.emit("scale", saved.scale);
-        mindMap.emit("translate");
+        if (otherNodeRects(new Set()).length === 0) {
+          mindMap.view.fit();
+        } else {
+          mindMap.emit("scale", saved.scale);
+          mindMap.emit("translate");
+        }
       }
       viewReady = true;
       return;

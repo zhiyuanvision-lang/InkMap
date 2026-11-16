@@ -2,13 +2,15 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { getUiCapability, registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { hasAccess, PRODUCT, YUNFAN_BILLING_ORIGIN } from "@inkmap/core";
 import { adFeed, fileSessionStorage, licenseService } from "./license.js";
-import { createMcpWorkspaceManager } from "./mcp-files.js";
+import { createMcpWorkspaceManager, writeTargetSelection } from "./mcp-files.js";
 import { fileSource, serve, type Served } from "./server.js";
 
 const UI = "ui://inkmap/markdown.html";
@@ -29,19 +31,20 @@ function openSystemBrowser(url: string) {
 }
 
 export async function createInkmapMcpServer(options: { html?: string; billingOrigin?: () => string } = {}) {
-  const html = options.html ?? await readFile(HTML, "utf8").catch(error => {
+  const loadHtml = async () => options.html ?? await readFile(HTML, "utf8").catch(error => {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       throw new Error("MCP App editor assets are missing. Run npm run build:sidebars.");
     }
     throw error;
   });
+  await loadHtml();
   const billingOrigin = options.billingOrigin ?? (() => process.env.INKMAP_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN);
   const billing = licenseService(fileSessionStorage(), billingOrigin, { loginOnly: true });
   let browserBilling: ReturnType<typeof licenseService> | undefined;
   const fallbackEditors = new Map<string, Promise<Served>>();
   const ads = adFeed(PRODUCT.adFeedUrl);
   const workspaces = createMcpWorkspaceManager();
-  const server = new McpServer({ name: "inkmap", version: "0.2.6" });
+  const server = new McpServer({ name: "inkmap", version: "0.2.8" });
 
   function isAntigravityHost(): boolean {
     const clientName = server.server.getClientVersion()?.name ?? "";
@@ -50,33 +53,75 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     return false;
   }
 
+  function isCursorHost(): boolean {
+    const clientName = server.server.getClientVersion()?.name ?? "";
+    return /cursor/i.test(clientName);
+  }
+
+  function hasIdeEditorExtension(): boolean {
+    const clientName = server.server.getClientVersion()?.name ?? "";
+    let extDir: string | null = null;
+    if (/cursor/i.test(clientName)) {
+      extDir = join(process.env.INKMAP_CURSOR_CONFIG_DIR || join(homedir(), ".cursor"), "extensions");
+    } else if (/visual studio code|vscode/i.test(clientName)) {
+      extDir = join(homedir(), ".vscode", "extensions");
+    }
+    if (!extDir || !existsSync(extDir)) return false;
+    try {
+      return readdirSync(extDir).some(entry => entry.toLowerCase().startsWith("inkmap.inkmap-vscode"));
+    } catch {
+      return false;
+    }
+  }
+
   function hostSupportsEmbeddedUi(): boolean {
     if (getUiCapability(server.server.getClientCapabilities())) return true;
     if (isAntigravityHost()) return true;
     return false;
   }
 
-  async function openFallbackBrowserEditor(filePath: string): Promise<string | undefined> {
+  async function waitForEditorBridgeAck(seq: number, timeoutMs = 280): Promise<boolean> {
+    if (!seq) return false;
+    const inkmapDir = process.env.INKMAP_HOME || join(homedir(), ".inkmap");
+    const ackPath = join(inkmapDir, "antigravity-target-ack.json");
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      try {
+        const raw = JSON.parse(await readFile(ackPath, "utf8"));
+        if (raw && raw.ok === true && Number(raw.seq) >= seq) {
+          return true;
+        }
+      } catch {}
+      await new Promise(r => setTimeout(r, 45));
+    }
+    return false;
+  }
+
+  async function openFallbackBrowserEditor(filePath: string, launchSystemBrowser = true): Promise<string | undefined> {
     if (!existsSync(WEB_ROOT)) return undefined;
-    let pending = fallbackEditors.get(filePath);
+    let pending = fallbackEditors.get("__workspace__");
     if (!pending) {
-      browserBilling ??= licenseService(fileSessionStorage(), billingOrigin);
       pending = (async () => {
         const source = await fileSource(filePath);
         return serve({
           source,
           webRoot: WEB_ROOT,
           port: 0,
-          license: browserBilling,
-          ads,
+          license: billing,
+          ads: async () => [],
           sidebar: false,
+          loginOnly: true,
+          ideWorkspace: true,
         });
       })();
-      fallbackEditors.set(filePath, pending);
-      pending.catch(() => fallbackEditors.delete(filePath));
+      fallbackEditors.set("__workspace__", pending);
+      pending.catch(() => fallbackEditors.delete("__workspace__"));
     }
     const served = await pending;
-    openSystemBrowser(served.url);
+    await served.switchToFile?.(filePath).catch(() => {});
+    if (launchSystemBrowser) {
+      openSystemBrowser(served.url);
+    }
     return served.url;
   }
 
@@ -91,7 +136,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   registerAppResource(server, "Inkmap Markdown editor", UI, {
     _meta: { ui: { prefersBorder: false } },
   }, async () => ({
-    contents: [{ uri: UI, mimeType: RESOURCE_MIME_TYPE, text: html }],
+    contents: [{ uri: UI, mimeType: RESOURCE_MIME_TYPE, text: await loadHtml() }],
   }));
 
   // OpenAI Codex Desktop file-viewer entrypoint
@@ -106,7 +151,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     },
   }, async () => ({ content: [] }));
 
-  // Universal / Google Antigravity MCP App entrypoint (with automatic local browser fallback for Cursor / Claude Code)
+  // Universal / Google Antigravity MCP App entrypoint (with automatic right-pane tab support for Cursor / VS Code)
   registerAppTool(server, "inkmap_open", {
     title: "Inkmap",
     description: "Open and edit a local Markdown (.md, .markmap.md) outline as an interactive Inkmap mind map.",
@@ -125,20 +170,31 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
       },
     },
   }, async ({ path, workspace }) => {
+    const cursorHost = isCursorHost();
+    const openInRightEditor = hasIdeEditorExtension() || cursorHost;
     const [opened, license] = await Promise.all([
-      workspaces.open({ path, workspace, fromModel: true }),
+      workspaces.open({ path, workspace, fromModel: true, openInEditorPane: openInRightEditor }),
       billing.state(),
     ]);
+    let ackedByExtension = false;
+    if (openInRightEditor && opened.currentFile && opened.targetSeq) {
+      ackedByExtension = await waitForEditorBridgeAck(opened.targetSeq, 260);
+    }
     let editorUrl: string | undefined;
-    if (opened.currentFile && !hostSupportsEmbeddedUi()) {
-      editorUrl = await openFallbackBrowserEditor(opened.currentFile).catch(() => undefined);
+    if (opened.currentFile && (cursorHost || (!openInRightEditor && !hostSupportsEmbeddedUi()))) {
+      const shouldLaunchSystemBrowser = !cursorHost && !openInRightEditor && !hostSupportsEmbeddedUi();
+      editorUrl = await openFallbackBrowserEditor(opened.currentFile, shouldLaunchSystemBrowser).catch(() => undefined);
     }
     const includeDoc = Buffer.byteLength(opened.doc.md, "utf8") <= INLINE_DOC_LIMIT;
-    const summary = editorUrl
-      ? `Opened ${opened.currentFile} in Inkmap interactive mind map at ${editorUrl} (live two-way synced with your Markdown file).`
-      : opened.currentFile
-        ? `Opened ${opened.currentFile} in Inkmap mind map.`
-        : "Opened Inkmap mind map panel.";
+    const summary = ackedByExtension && opened.currentFile
+      ? `Opened ${opened.currentFile} in the editor pane as an Inkmap mind map.`
+      : cursorHost && editorUrl && opened.currentFile
+        ? `Opened ${opened.currentFile} in Inkmap at ${editorUrl}. IMPORTANT: Call the open_resource tool from cursor-app-control with uri "${editorUrl}" so the mind map opens directly in the right-hand editor pane.`
+        : editorUrl
+          ? `Opened ${opened.currentFile} in Inkmap interactive mind map at ${editorUrl} (live two-way synced with your Markdown file).`
+          : opened.currentFile
+            ? `Opened ${opened.currentFile} in Inkmap mind map.`
+            : "Opened Inkmap mind map panel.";
     return {
       content: [{ type: "text", text: summary }],
       structuredContent: {
@@ -148,6 +204,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
         currentFileUri: opened.currentFileUri,
         targetSeq: opened.targetSeq,
         license: { ...license },
+        ...(openInRightEditor && { openedInEditorPane: true }),
         ...(editorUrl && { editorUrl }),
         ...(includeDoc && { doc: opened.doc }),
       },
@@ -223,6 +280,39 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   }, async ({ file, state }) => {
     const saved = await workspaces.saveView({ file, state });
     return { content: [], structuredContent: { ...saved } };
+  });
+
+  server.registerTool("inkmap_open_browser", {
+    title: "Open current Markdown mind map in standalone browser window",
+    inputSchema: {
+      file: z.string().optional(),
+    },
+    annotations: { readOnlyHint: true },
+    _meta: appOnly,
+  }, async ({ file }) => {
+    const opened = await workspaces.open({ path: file, fromModel: false });
+    if (!opened.currentFile) throw new Error("未选择 Markdown 文件。");
+    const url = await openFallbackBrowserEditor(opened.currentFile);
+    return { content: [], structuredContent: { url: url ?? "" } };
+  });
+
+  server.registerTool("inkmap_focus_editor", {
+    title: "Focus or reopen Markdown mind map in IDE editor pane",
+    inputSchema: {
+      file: z.string().optional(),
+    },
+    annotations: { readOnlyHint: true },
+    _meta: appOnly,
+  }, async ({ file }) => {
+    const opened = await workspaces.open({ path: file, fromModel: false });
+    if (!opened.currentFile) throw new Error("未选择 Markdown 文件。");
+    const payload = await writeTargetSelection(opened.currentFile, undefined, { openInEditorPane: true });
+    const acked = await waitForEditorBridgeAck(payload.seq, 280);
+    if (acked) {
+      return { content: [], structuredContent: { ok: true, handledBy: "extension" } };
+    }
+    const url = await openFallbackBrowserEditor(opened.currentFile, false);
+    return { content: [], structuredContent: { ok: true, handledBy: "glass", url: url ?? "" } };
   });
 
   // App-only membership & sign-in tools

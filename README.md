@@ -8,7 +8,28 @@
 
 其他编辑器和桌面应用的接入方式见 [多平台安装与验收](SIDEBARS.md)。
 
-## 使用
+## 一键安装（支持 Claude / Cursor / Codex / Antigravity / VS Code）
+
+### 1. 自动配置本机所有 AI 客户端（MCP App + 编辑器扩展）
+
+在终端执行一行命令，自动检测并安装到本机已有的 **Claude Desktop、Claude Code、Cursor、Google Antigravity、OpenAI Codex Desktop**：
+
+```bash
+npx -y inkmap-mcp@latest install
+```
+
+### 2. VS Code / Cursor / Trae / Windsurf 插件市场安装
+
+- **VS Code 官方市场**：[Inkmap on VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=inkmap.inkmap-vscode)
+- **Open VSX 市场（Cursor / Windsurf / Trae）**：[Inkmap on Open VSX](https://open-vsx.org/extension/inkmap/inkmap-vscode)
+
+### 3. 本地命令行直接用浏览器打开
+
+```bash
+npx -y inkmap-mcp@latest path/to/outline.md
+```
+
+### 4. 源码构建与开发安装
 
 ```bash
 npm install
@@ -17,13 +38,6 @@ npm install -g ./packages/cli   # 安装 inkmap 命令
 
 inkmap path/to/outline.md        # 打开浏览器编辑
 inkmap outline.md --port 5000 --no-open
-```
-
-### VS Code / Cursor 插件
-
-```bash
-npm run package:vscode
-cursor --install-extension packages/vscode/dist/inkmap.vsix   # VS Code 用 code --install-extension
 ```
 
 打开 `.md` 文件后，编辑器右上角有两个按钮（资源管理器右键菜单和命令面板里也有）：
@@ -48,11 +62,16 @@ cursor --install-extension packages/vscode/dist/inkmap.vsix   # VS Code 用 code
 
 在节点里输入 Markdown 语法（如 `**加粗**`、`` `代码` ``）后会按 Markdown 渲染。
 
-### 7 天免费试用与购买
+### 7 天免费试用与 Pro 终身版购买（跨端账号同步）
 
-首次使用起可免费试用全部功能 7 天，无需登录。到期后需一次性购买 Inkmap Pro 才能继续使用 Inkmap。原始 Markdown 仍可在文本编辑器中打开。购买包含后续更新。收款和上架步骤见 [PUBLISHING.md](PUBLISHING.md)。
+首次使用起可免登录试用全部功能 7 天。到期后一次性买断 **Inkmap Pro 终身版**（**¥29.90 微信扫码一次买断**，包含后续全部更新）即可永久使用，原始 Markdown 文件始终可在任意文本编辑器中打开。
 
-从导图右上角的云帆账号面板登录或购买 Pro。完成付款或登录已购买 Pro 的账号后，客户端会自动同步权益。
+- **开通入口**：
+  1. **官方网站购买与下载**：[https://zhiyuanv.com/software.html#inkmap-pricing](https://zhiyuanv.com/software.html#inkmap-pricing)
+  2. **独立浏览器工作台 / VS Code 插件内购买**：运行 `npx -y inkmap-mcp@latest 你的文件.md` 或在 VS Code 扩展导图右上角点击 **「购买 Pro」**。
+- **在 AI 客户端（MCP App）内同步权益**：
+  - 遵循各客户端商店规范，内嵌 MCP App 面板仅提供中性的 **「登录」** 按钮（不展示价格与外链）。
+  - 您在官网或独立工作台完成购买后，在 Claude、Codex、Cursor、Antigravity、VS Code 任一客户端右上角点击 **「登录」** 并验证同一账号，Pro 终身权益即刻自动跨端同步。
 
 ### 文件格式
 

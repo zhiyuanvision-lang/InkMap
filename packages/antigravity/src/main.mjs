@@ -168,7 +168,7 @@ export function createAntigravitySidecar({
   webRoot = defaultWebRoot,
   billingOrigin = () => process.env.INKMAP_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN,
 } = {}) {
-  const license = licenseService(fileSessionStorage(), billingOrigin);
+  const license = licenseService(fileSessionStorage(), billingOrigin, { loginOnly: true });
   let activeFile = null;
 
   async function allowedRoots(workspaceUris = []) {
@@ -442,17 +442,10 @@ export function createAntigravitySidecar({
 
   app.api("/api/license", async () => await license.state(), "GET");
 
-  app.api("/api/checkout", async data => {
-    const mode = data?.mode === "buy" ? "buy" : "restore";
-    const url = await license.connect(mode);
+  app.api("/api/checkout", async () => {
+    const url = await license.connect("restore");
     openExternalUrl(url);
     return { url };
-  }, "POST");
-
-  app.api("/api/order-pro", async () => {
-    const result = await license.orderPro();
-    if (result.status === "redirect") openExternalUrl(result.url);
-    return { result };
   }, "POST");
 
   app.api("/api/phone-send", async data => {

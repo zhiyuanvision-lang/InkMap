@@ -1,6 +1,6 @@
 {
   "name": "inkmap",
-  "version": "0.2.6",
+  "version": "0.2.8",
   "description": "Edit a Markdown outline as a mind map in the browser, with changes written back to the file",
   "type": "module",
   "bin": {

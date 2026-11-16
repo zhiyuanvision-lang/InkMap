@@ -95,6 +95,9 @@ test("inkmap-mcp npm tarball works standalone with zero dependencies across inst
 
   const cursorJson = JSON.parse(await readFile(join(cursorDir, "mcp.json"), "utf8"));
   assert.equal(cursorJson.mcpServers.inkmap.command, process.execPath);
+  const cursorExtDir = join(cursorDir, "extensions", `inkmap.inkmap-vscode-${cliPkg.version}`);
+  assert.ok(existsSync(join(cursorExtDir, "dist", "extension.js")), "Cursor native right-pane extension must be installed");
+  assert.ok(existsSync(join(cursorExtDir, "dist", "web", "app.js")), "Cursor extension web assets must be installed");
 
   const claudeCodeJson = JSON.parse(await readFile(claudeCodeCfg, "utf8"));
   assert.equal(claudeCodeJson.mcpServers.inkmap.type, "stdio");

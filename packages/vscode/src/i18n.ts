@@ -44,7 +44,14 @@ const en: Record<Key, string> = {
   saveExport: "Export",
 };
 
-export const isChinese = () => /^zh/i.test(vscode.env.language);
+export const isChinese = () => {
+  if (/^zh/i.test(vscode.env.language)) return true;
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    if (/^Asia\/(Shanghai|Chongqing|Harbin|Urumqi)$/i.test(tz)) return true;
+  } catch {}
+  return false;
+};
 
 export function t(key: Key, vars: Record<string, string> = {}): string {
   return (isChinese() ? zh : en)[key].replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");

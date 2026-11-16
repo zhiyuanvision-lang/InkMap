@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.8
+
+- Unified Email verification code registration & sign-in for both domestic and international users, plus automatic language/timezone detection (`zh` / `Asia/Shanghai`).
+- Docked 3-column Browser IDE Workspace (Project File Tree + Live Markdown Split Pane with line numbers & active line highlight + Mind Map) with two-way line-to-node selection sync and complete node context menu shortcuts (`Tab`, `Enter`, `⇧Tab`, `⌘↑`, `⌘↓`, `⌫`).
+- Redesigned account & membership popover with direct links to official pricing & web checkout (`zhiyuanv.com/software.html`), on-screen presentation playback controls (`Prev / Next / Exit`), and Cursor 3.30 Glass editor bridge support.
+
 ## 0.2.4
 
 - Inline WeChat Pay checkout and phone verification directly inside the account popover, unlocking Pro automatically upon payment.

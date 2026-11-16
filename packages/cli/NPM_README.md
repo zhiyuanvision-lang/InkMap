@@ -93,7 +93,18 @@ npx -y inkmap-mcp@latest install claude --workspace ~/projects
 npx -y inkmap-mcp@latest 你的文档.markmap.md
 ```
 
-### 3. 卸载配置
+### 3. 7 天免费试用与 Pro 终身版开通（跨客户端账号同步）
+
+- **7 天全功能免费试用**：首次安装后即可免登录使用全部功能 7 天。
+- **如何购买与激活 Inkmap Pro 终身版（¥29.90 一次买断 · 永久使用）**：
+  1. **前往官网或独立工作台开通**：
+     - **官方网站直达**：[https://zhiyuanv.com/software.html#inkmap-pricing](https://zhiyuanv.com/software.html#inkmap-pricing)（¥29.90 微信扫码一次买断，免费包含后续全部更新）；
+     - **或本地独立浏览器 / VS Code 扩展内开通**：在终端运行 `npx -y inkmap-mcp@latest 你的文档.md` 或在 VS Code 扩展内点击右上角 **「购买 Pro」**。
+  2. **在各 AI 客户端内一键同步权益**：
+     - 遵循各客户端应用商店规范，Claude / ChatGPT Codex / Cursor / Antigravity 的对话内嵌导图面板仅展示「登录」入口（不展示价格与付款链接）。
+     - 您在官网或独立工作台开通 Pro 后，只需在任意客户端导图右上角点击 **「登录」** 并验证同一账号，**Pro 终身权益即刻自动跨端同步**！
+
+### 4. 卸载配置
 
 ```bash
 npx -y inkmap-mcp@latest uninstall
@@ -101,9 +112,18 @@ npx -y inkmap-mcp@latest uninstall
 
 ---
 
+## Free Trial & Lifetime Pro (Cross-Client Sync)
+
+- **7-Day Free Trial**: Enjoy full access to all features for 7 days from first use — no credit card or sign-in required.
+- **How to Upgrade & Sync Pro Across All Clients (US\$15.00 Lifetime)**:
+  1. **Purchase Lifetime Pro on the Official Website**: Visit [https://zhiyuanv.com/software.html#inkmap-pricing](https://zhiyuanv.com/software.html#inkmap-pricing) (**US\$15.00** one-time purchase via international bank card, all future updates included), or run `npx -y inkmap-mcp@latest notes.md` in your browser and click **Buy Pro**.
+  2. **Sign In Anywhere to Sync**: Inside embedded MCP App panels (Claude Desktop, OpenAI Codex, Cursor, Google Antigravity), click **Sign in** in the top-right corner with the same account — your Lifetime Pro entitlement syncs automatically across every client and device.
+
+---
+
 ## Links & License
 
-- **Website & Downloads**: https://www.zhiyuanv.com/software.html
-- **VS Code Extension**: [Inkmap on VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=inkmap.inkmap-vscode)
+- **Official Website & Pricing**: [https://zhiyuanv.com/software.html#inkmap-pricing](https://zhiyuanv.com/software.html#inkmap-pricing)
+- **VS Code Extension**: [Inkmap on VS Code Marketplace](https://marketplace.visualstudio.com/items?itemName=inkmap.inkmap-vscode) | [Open VSX Registry](https://open-vsx.org/extension/inkmap/inkmap-vscode)
 - **Pricing**: 7-day full-featured free trial; one-time lifetime Pro license linked to your account across devices.
 - **License**: Proprietary EULA (`SEE LICENSE IN LICENSE.md`); bundled open-source notices in `THIRD_PARTY_NOTICES.md`.

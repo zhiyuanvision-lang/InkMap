@@ -68,7 +68,24 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
 
   function maskPhone(phone: string): string {
     const clean = phone.trim();
+    const at = clean.indexOf("@");
+    if (at > 0 && at < clean.length - 1) {
+      const local = [...clean.slice(0, at)];
+      const domain = clean.slice(at + 1);
+      return `${local.length <= 1 ? "***" : local[0] + "***"}@${domain}`.slice(0, 64);
+    }
     return /^1\d{10}$/.test(clean) ? `${clean.slice(0, 3)}****${clean.slice(7)}` : clean.slice(0, 32);
+  }
+
+  function clientLocale(): "zh" | "en" {
+    const raw = (process.env.INKMAP_LOCALE || process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "").trim();
+    if (/^zh\b/i.test(raw)) return "zh";
+    if (/^en\b/i.test(process.env.INKMAP_LOCALE || "")) return "en";
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      if (/^Asia\/(Shanghai|Chongqing|Harbin|Urumqi)$/i.test(tz)) return "zh";
+    } catch {}
+    return "en";
   }
 
   function writeSession<T>(operation: () => Promise<T>): Promise<T> {
@@ -99,7 +116,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     return { origin, url, token: data.token, ...(cookie && { cookie }) };
   }
 
-  function checkoutPost(checkoutUrl: string, action: "sms" | "login" | "order", origin: string, body: object, token?: string, cookie?: string) {
+  function checkoutPost(checkoutUrl: string, action: "sms" | "login" | "email/send" | "email/verify" | "order", origin: string, body: object, token?: string, cookie?: string) {
     return fetch(checkoutUrl + "/" + action, {
       method: "POST",
       headers: {
@@ -115,9 +132,17 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
   }
 
   function phoneRequest(origin: string, action: "send" | "verify", phone: string, code?: string) {
+    const isEmail = phone.includes("@");
+    const locale = clientLocale();
     return fetch(origin + "/billing/v1/phone-sign-in/" + action, {
-      method: "POST", headers: { "content-type": "application/json" }, redirect: "error",
-      body: JSON.stringify({ product: PRODUCT.id, phone, code }), signal: AbortSignal.timeout(12_000),
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "accept-language": locale === "zh" ? "zh-CN,zh;q=0.9" : "en-US,en;q=0.9",
+      },
+      redirect: "error",
+      body: JSON.stringify({ product: PRODUCT.id, phone, ...(isEmail && { email: phone, locale }), code }),
+      signal: AbortSignal.timeout(12_000),
     });
   }
 
@@ -339,7 +364,9 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       return { status: "needsPhone" };
     },
     async sendPhoneCode(phone) {
-      if (typeof phone !== "string" || !phone.trim() || phone.length > 40) return phoneFailure(400);
+      if (typeof phone !== "string" || !phone.trim() || phone.length > 254) return phoneFailure(400);
+      const isEmail = phone.includes("@");
+      const locale = clientLocale();
       try {
         const origin = billingOrigin(getOrigin());
         if (!loginOnly) {
@@ -347,10 +374,12 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
             if (!pendingCheckout || pendingCheckout.origin !== origin) {
               pendingCheckout = await createCheckoutFlow(origin);
             }
-            let smsRes = await checkoutPost(pendingCheckout.url, "sms", origin, { phone }, pendingCheckout.token, pendingCheckout.cookie);
+            const sendAction = isEmail ? "email/send" : "sms";
+            const sendBody = isEmail ? { email: phone, locale } : { phone };
+            let smsRes = await checkoutPost(pendingCheckout.url, sendAction, origin, sendBody, pendingCheckout.token, pendingCheckout.cookie);
             if (smsRes.status === 410 || smsRes.status === 404) {
               pendingCheckout = await createCheckoutFlow(origin);
-              smsRes = await checkoutPost(pendingCheckout.url, "sms", origin, { phone }, pendingCheckout.token, pendingCheckout.cookie);
+              smsRes = await checkoutPost(pendingCheckout.url, sendAction, origin, sendBody, pendingCheckout.token, pendingCheckout.cookie);
             }
             pendingCheckout.cookie = mergeCookies(pendingCheckout.cookie, smsRes);
             return smsRes.status === 204 ? { ok: true, value: undefined } : phoneFailure(smsRes.status);
@@ -365,8 +394,9 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       }
     },
     async signInByPhone(phone, code) {
-      if (typeof phone !== "string" || !phone.trim() || phone.length > 40 ||
+      if (typeof phone !== "string" || !phone.trim() || phone.length > 254 ||
           typeof code !== "string" || !/^\d{6}$/.test(code)) return phoneFailure(400);
+      const isEmail = phone.includes("@");
       const version = generation;
       try {
         const origin = billingOrigin(getOrigin());
@@ -374,7 +404,9 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
         let checkoutUrl: string | undefined;
         let cookie: string | undefined;
         if (pendingCheckout && pendingCheckout.origin === origin && !loginOnly) {
-          const loginRes = await checkoutPost(pendingCheckout.url, "login", origin, { phone, code }, pendingCheckout.token, pendingCheckout.cookie);
+          const verifyAction = isEmail ? "email/verify" : "login";
+          const verifyBody = isEmail ? { email: phone, code } : { phone, code };
+          const loginRes = await checkoutPost(pendingCheckout.url, verifyAction, origin, verifyBody, pendingCheckout.token, pendingCheckout.cookie);
           if (!loginRes.ok) {
             if (loginRes.status === 410 || loginRes.status === 404) pendingCheckout = undefined;
             return phoneFailure(loginRes.status);

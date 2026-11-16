@@ -41,6 +41,8 @@ await Promise.all([
   mkdir(join(pkgDir, "dist", "bundles", "codex", ".agents", "plugins"), { recursive: true }),
   mkdir(join(pkgDir, "dist", "bundles", "codex", "inkmap-codex", ".codex-plugin"), { recursive: true }),
   mkdir(join(pkgDir, "dist", "bundles", "codex", "inkmap-codex", "assets"), { recursive: true }),
+  mkdir(join(pkgDir, "dist", "bundles", "vscode", "dist"), { recursive: true }),
+  mkdir(join(pkgDir, "dist", "bundles", "vscode", "images"), { recursive: true }),
 ]);
 
 const assetFiles = await readdir(join(webDist, "assets"));
@@ -62,6 +64,9 @@ const agyBundle = join(pkgDir, "dist", "bundles", "antigravity");
 const agySidecar = join(agyBundle, "sidecars", "inkmap");
 const codexBundle = join(pkgDir, "dist", "bundles", "codex");
 const codexPlugin = join(codexBundle, "inkmap-codex");
+const vscodeBundle = join(pkgDir, "dist", "bundles", "vscode");
+const vscodeRawPkg = JSON.parse(await readFile(join(vscodeDir, "package.json"), "utf8"));
+const { private: _omitPrivate, scripts: _omitScripts, dependencies: _omitDeps, devDependencies: _omitDevDeps, ...vscodeCleanPkg } = vscodeRawPkg;
 
 const [cliBuild] = await Promise.all([
   build({
@@ -103,6 +108,21 @@ const [cliBuild] = await Promise.all([
     format: "esm",
     outfile: join(agySidecar, "select.mjs"),
   }),
+  build({
+    absWorkingDir: root,
+    entryPoints: [join(vscodeDir, "src", "extension.ts")],
+    bundle: true,
+    platform: "node",
+    target: "node20",
+    format: "cjs",
+    external: ["vscode"],
+    define: { "process.env.INKMAP_DEFAULT_BILLING_ORIGIN": JSON.stringify(process.env.INKMAP_BILLING_ORIGIN ?? "") },
+    outfile: join(vscodeBundle, "dist", "extension.js"),
+  }),
+  writeJSON(join(vscodeBundle, "package.json"), { ...vscodeCleanPkg, version }),
+  copyFile(join(vscodeDir, "package.nls.json"), join(vscodeBundle, "package.nls.json")),
+  copyFile(join(vscodeDir, "package.nls.zh-cn.json"), join(vscodeBundle, "package.nls.zh-cn.json")),
+  copyFile(join(vscodeDir, "images", "icon.png"), join(vscodeBundle, "images", "icon.png")),
   writeFile(join(pkgDir, "dist", "web", "index.html"), cleanHtml, "utf8"),
   writeFile(join(pkgDir, "dist", "web", "app.css"), inlinedCss, "utf8"),
   copyFile(codexHtml, join(cliDist, "codex.html")),
@@ -240,14 +260,22 @@ await Promise.all([
       "markdown",
       "mindmap",
       "mind-map",
+      "mind map",
       "markmap",
+      "mermaid",
+      "flowchart",
+      "diagram",
       "outline",
+      "xmind",
       "claude",
       "codex",
       "cursor",
+      "vscode",
       "antigravity",
       "思维导图",
       "脑图",
+      "大纲",
+      "流程图",
     ],
   }),
 ]);

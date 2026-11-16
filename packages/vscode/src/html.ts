@@ -24,6 +24,7 @@ export function webviewHtml(html: string, { webBase, assetBase, cspSource, nonce
   return html
     .replace(/ crossorigin/g, "")
     .replace(/(src|href)="\.\/assets\//g, `$1="${webBase}/assets/`)
+    .replace(/(src|href)="\.\/(app\.(?:js|css))"/g, `$1="${webBase}/$2"`)
     .replace(/<script /g, `<script nonce="${nonce}" `)
     .replace("<head>", `<head>\n  ${head}`);
 }

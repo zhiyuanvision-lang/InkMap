@@ -17,23 +17,38 @@
 
 在 Markdown 中保留带有 `mermaid` 语言标记的围栏代码块，Inkmap 会在节点中预览流程图或状态图。点击图下方的「编辑流程图源码」，即可修改节点文字、状态、连线或备注，改动会同步回原文件。
 
-## 7 天免费试用与购买
+## 7 天免费试用与 Inkmap Pro 终身会员
 
-首次使用起可免登录试用全部功能 7 天。到期后需一次性购买 Inkmap Pro 才能继续使用。原始 Markdown 文件仍可在文本编辑器中打开。
+首次安装起可**免登录免费试用全部 Pro 功能 7 天**。原始 Markdown 文件始终保存在本地，随时可在任意文本编辑器中打开。
 
-试用包含 Chrome 全屏编辑、PNG 和 SVG 导出、更多导图结构与配色、查找替换及演示模式。购买包含后续更新。
+### Inkmap Pro 终身会员价格与权益
+
+- **中国大陆买断价格**：**¥29.90**（一次付费 · 终身永久使用 · 无任何自动续费）
+- **立即购买入口**：[**👉 点击前往官方收银台开通 Inkmap Pro（¥29.90 终身版）**](https://zhiyuanv.com/billing/purchase/inkmap-pro?start=1) ｜ [**🌐 访问中文官网定价与权益页**](https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing)
+
+| Pro 终身会员核心权益 | 权益详情说明 |
+| --- | --- |
+| **1. Markdown 与思维导图实时双向同步** | 在导图上增删改节点实时写回 `.md` 原文件；在左侧源码修改即时刷新导图，行号与节点双向联动定位 |
+| **2. Mermaid 流程图 / 状态图预览与编辑** | 节点内直接高清渲染 Mermaid 流程图与状态图，支持放大预览与一键打开图表源码编辑 |
+| **3. 浏览器三栏 IDE 工作台全屏编辑** | 支持在 Chrome 等浏览器中打开「左侧项目目录树 + 中间 Markdown 源码 + 右侧思维导图」三栏全屏工作台 |
+| **4. 9 种专业导图结构与护眼深色主题** | 解锁组织结构图、目录组织图、时间轴（横向/交错/竖向）、鱼骨图、向左逻辑图及多套配色（含夜色深色主题） |
+| **5. 高清 PNG 与矢量 SVG 一键导出** | 一键导出带完整公式、表格与流程图的透明/高清 PNG 图片及矢量 SVG，直接放入文档与 PPT |
+| **6. 富文本节点与全图查找批量替换** | 完整支持 LaTeX 数学公式、Markdown 表格、代码块、图片，支持整张导图关键字查找与一键全部替换 |
+| **7. 逐节点聚焦演示放映模式** | 一键进入全屏演示模式，按分支/节点逐步聚焦放映，适合技术评审、课程讲解与汇报 |
+| **8. 一次买断 · 跨平台全客户端通用** | 登录同一账号即可在 **VS Code、Cursor、Claude Desktop、OpenAI Codex、Google Antigravity** 等多端自动同步 Pro 权益，免费包含后续全部更新 |
 
 ![组织结构图](images/org-chart.png)
 
 ![深色主题](images/dark-zh.png)
 
-### 购买与激活
+### 购买与激活方式
 
-1. 点导图工具栏右侧的云帆账号入口，选择「购买 Pro」，或运行命令 **Inkmap: 升级到 Inkmap Pro**。
-2. 浏览器直接打开 Inkmap Pro 结账页，登录云帆平台账号并微信扫码付款。
-3. 付款后返回编辑器，Pro 会自动解锁。换设备或编辑器时，点「登录」并使用同一个云帆账号，已有权益会自动同步。
+1. **官网或插件内直接购买**：
+   - 点击 [**立即购买 Inkmap Pro（¥29.90）**](https://zhiyuanv.com/billing/purchase/inkmap-pro?start=1) 或访问 [https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing](https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing)；也可点击导图工具栏右上角账号按钮选择「购买 Pro」（或运行命令 **Inkmap: 升级到 Inkmap Pro**）。
+2. **微信扫码或验证码登录开通**：支持手机号验证码 / 邮箱登录并微信扫码支付（**¥29.90 一次买断**）。
+3. **跨端自动同步**：付款后返回编辑器自动解锁 Pro。在其他电脑或 AI 客户端（Claude、Codex、Cursor、Antigravity）中点击右上角「登录」使用同一账号，已有 Pro 权益自动同步。
 
-购买后 7 天内可申请全额退款。
+支持购买后 14 天内无理由全额退款。
 
 ![购买与恢复权益](images/upgrade-zh.png)
 
@@ -85,21 +100,36 @@ Edit Markdown outlines as mind maps. Every change in the map is written straight
 
 Keep flowcharts and state diagrams in fenced `mermaid` blocks. Inkmap renders them in the map. Select **Edit diagram source** to change labels, states, transitions or notes and sync the edits back to the Markdown document.
 
-### 7-day free trial and purchase
+### 7-Day Free Trial & Inkmap Pro Lifetime License
 
-Try all features for 7 days from first use without signing in. After the trial, a one-time Inkmap Pro purchase is required to continue using Inkmap. Your Markdown files remain accessible in your text editor.
+Try all Pro features free for **7 days** from first use — no sign-in required. Your Markdown files are always saved locally as standard plain-text `.md` files.
 
-The trial includes full-screen editing in Chrome, PNG and SVG export, additional layouts and themes, find and replace, and presentation mode. Purchase includes future updates.
+#### Inkmap Pro Price & Lifetime Benefits
+
+- **Lifetime License Price**: **US\$15.00** (One-time payment · Use forever · No recurring subscription)
+- **Purchase Links**: [**👉 Buy Inkmap Pro Now (US\$15.00 Lifetime Checkout)**](https://zhiyuanv.com/billing/purchase/inkmap-pro?start=1) ｜ [**🌐 Official Website & Pricing Details**](https://zhiyuanv.com/software.html?lang=en#inkmap-pricing)
+
+| Inkmap Pro Lifetime Benefit | What's Included |
+| --- | --- |
+| **1. Two-Way Live Markdown & Mind Map Sync** | Every edit on the canvas writes back to `.md` cleanly; clicking a line in Markdown locates and selects the node in the map, and vice versa |
+| **2. Mermaid Flowcharts & State Diagrams** | Render Mermaid flowcharts and state diagrams directly inside nodes with zoom preview and one-click diagram source editing |
+| **3. Full-Screen 3-Column Browser IDE Workspace** | Open in Chrome/Safari with a Cursor-style Project File Tree Explorer + resizable live Markdown split pane + interactive mind map |
+| **4. 9 Professional Layouts & Dark Themes** | Unlock Org Chart, Catalog, Alternating/Vertical Timelines, Fishbone, Left Logic Chart, and 4 color themes including Dusk dark mode |
+| **5. High-Resolution PNG & Vector SVG Export** | One-click export to crisp PNG images and standalone vector SVGs (including math, tables, and diagrams) ready for slides and docs |
+| **6. Rich Nodes & Global Find & Replace** | Full support for LaTeX math, Markdown tables, code blocks, images, plus whole-map search and batch replace |
+| **7. Step-by-Step Presentation Mode** | Present your mind map node by node in fullscreen with keyboard or on-screen playback controls |
+| **8. Pay Once · Sync Across All Clients** | Sign in with the same account to sync Lifetime Pro across **VS Code, Cursor, Claude Desktop, OpenAI Codex, and Google Antigravity**, including all future updates |
 
 ![Timeline layout](images/timeline.png)
 
-#### Buying and activating
+#### Buying and Activating
 
-1. Open the account panel on the right of the map toolbar and choose **Buy Pro**, or run **Inkmap: Get Inkmap Pro**.
-2. In the Inkmap Pro checkout, sign in to Yunfan and pay with WeChat Pay.
-3. Return to the editor. Pro unlocks automatically. On another device or editor, choose **Sign in** and use the same Yunfan account to sync your access.
+1. **Purchase on the Official Website or In-Extension**:
+   - Click [**Buy Inkmap Pro (US\$15.00)**](https://zhiyuanv.com/billing/purchase/inkmap-pro?start=1) or visit [https://zhiyuanv.com/software.html?lang=en#inkmap-pricing](https://zhiyuanv.com/software.html?lang=en#inkmap-pricing), or open the account panel on the top-right of the Inkmap toolbar and choose **Buy Pro** (or run **Inkmap: Get Inkmap Pro**).
+2. **Complete One-Time Checkout**: Sign in with your email verification code and pay **US\$15.00** once by bank card (no recurring fees).
+3. **Sync Across All Devices & AI Clients**: Return to the editor and Pro unlocks automatically. On any other machine or inside Claude Desktop, OpenAI Codex, Cursor, or Google Antigravity, click **Sign in** in the top-right corner with the same account to sync your Pro access automatically.
 
-You can request a full refund within 7 days of purchase.
+Backed by a 14-day full refund guarantee.
 
 ![Buy or restore Pro](images/upgrade-en.png)
 

@@ -1,10 +1,11 @@
 import { execFileSync, spawnSync } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { deflateRawSync } from "node:zlib";
 
-export type InstallTarget = "claude" | "claude-code" | "cursor" | "antigravity" | "codex";
+export type InstallTarget = "claude" | "claude-code" | "cursor" | "vscode" | "antigravity" | "codex";
 
 export interface InstallOptions {
   targets?: InstallTarget[];
@@ -29,15 +30,116 @@ require("./cli.cjs").main(["mcp", ...process.argv.slice(2)]).catch(err => {
 });
 `;
 
+const CRC_TABLE = (() => {
+  const table = new Uint32Array(256);
+  for (let i = 0; i < 256; i++) {
+    let c = i;
+    for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+    table[i] = c >>> 0;
+  }
+  return table;
+})();
+
+function crc32(buf: Buffer): number {
+  let c = 0xffffffff;
+  for (let i = 0; i < buf.length; i++) {
+    c = CRC_TABLE[(c ^ buf[i]!) & 0xff]! ^ (c >>> 8);
+  }
+  return (c ^ 0xffffffff) >>> 0;
+}
+
+function buildZipBuffer(entries: Array<{ name: string; data: Buffer }>): Buffer {
+  const localParts: Buffer[] = [];
+  const centralParts: Buffer[] = [];
+  let offset = 0;
+
+  for (const entry of entries) {
+    const nameBuf = Buffer.from(entry.name.replace(/\\/g, "/"), "utf8");
+    const raw = entry.data;
+    const compressed = deflateRawSync(raw, { level: 6 });
+    const useDeflate = compressed.length < raw.length;
+    const payload = useDeflate ? compressed : raw;
+    const method = useDeflate ? 8 : 0;
+    const crc = crc32(raw);
+
+    const local = Buffer.alloc(30 + nameBuf.length);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x0800, 6);
+    local.writeUInt16LE(method, 8);
+    local.writeUInt16LE(0, 10);
+    local.writeUInt16LE(0x5970, 12);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(payload.length, 18);
+    local.writeUInt32LE(raw.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    local.writeUInt16LE(0, 28);
+    nameBuf.copy(local, 30);
+
+    const central = Buffer.alloc(46 + nameBuf.length);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0x0800, 8);
+    central.writeUInt16LE(method, 10);
+    central.writeUInt16LE(0, 12);
+    central.writeUInt16LE(0x5970, 14);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(payload.length, 20);
+    central.writeUInt32LE(raw.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt16LE(0, 30);
+    central.writeUInt16LE(0, 32);
+    central.writeUInt16LE(0, 34);
+    central.writeUInt16LE(0, 36);
+    central.writeUInt32LE(0, 38);
+    central.writeUInt32LE(offset, 42);
+    nameBuf.copy(central, 46);
+
+    localParts.push(local, payload);
+    centralParts.push(central);
+    offset += local.length + payload.length;
+  }
+
+  const centralBuf = Buffer.concat(centralParts);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(0, 4);
+  eocd.writeUInt16LE(0, 6);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralBuf.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  eocd.writeUInt16LE(0, 20);
+
+  return Buffer.concat([...localParts, centralBuf, eocd]);
+}
+
 function normalizeTarget(raw: string): InstallTarget | "all" | null {
   const key = raw.trim().toLowerCase();
   if (key === "all") return "all";
   if (key === "claude" || key === "claude-desktop" || key === "claudedesktop") return "claude";
   if (key === "claude-code" || key === "claudecode") return "claude-code";
   if (key === "cursor") return "cursor";
+  if (key === "vscode" || key === "code" || key === "vs-code") return "vscode";
   if (key === "antigravity" || key === "agy") return "antigravity";
   if (key === "codex" || key === "chatgpt") return "codex";
   return null;
+}
+
+function isChineseTerminalLocale(): boolean {
+  const explicit = (process.env.INKMAP_LOCALE || "").toLowerCase();
+  if (explicit.startsWith("zh")) return true;
+  if (explicit.startsWith("en")) return false;
+  const envLang = (process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "").toLowerCase();
+  if (envLang.startsWith("zh")) return true;
+  try {
+    const loc = Intl.DateTimeFormat().resolvedOptions().locale || "";
+    if (/^zh\b/i.test(loc)) return true;
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    if (/^Asia\/(Shanghai|Chongqing|Harbin|Urumqi)$/i.test(tz)) return true;
+  } catch {}
+  return false;
 }
 
 function getInkmapHome(): string {
@@ -61,12 +163,48 @@ function getCursorDir(): string {
   return process.env.INKMAP_CURSOR_CONFIG_DIR || join(homedir(), ".cursor");
 }
 
+function getVscodeDir(): string {
+  return process.env.INKMAP_VSCODE_CONFIG_DIR || join(homedir(), ".vscode");
+}
+
 function getClaudeCodeConfigPath(): string {
   return process.env.INKMAP_CLAUDE_CODE_CONFIG || join(homedir(), ".claude.json");
 }
 
 function getAntigravityConfigDir(): string {
   return process.env.ANTIGRAVITY_CONFIG_DIR || join(homedir(), ".gemini", "config");
+}
+
+function findCursorCommand(): string | null {
+  if (process.env.INKMAP_ISOLATED_DETECT) return null;
+  if (spawnSync("cursor", ["--version"], { stdio: "ignore" }).status === 0) return "cursor";
+  if (process.platform === "darwin") {
+    for (const dir of ["/Applications", join(homedir(), "Applications")]) {
+      const cmd = join(dir, "Cursor.app/Contents/Resources/app/bin/cursor");
+      if (existsSync(cmd)) return cmd;
+    }
+  } else if (process.platform === "win32") {
+    const localApp = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+    const cmd = join(localApp, "Programs", "cursor", "resources", "app", "bin", "cursor.cmd");
+    if (existsSync(cmd)) return cmd;
+  }
+  return null;
+}
+
+function findVscodeCommand(): string | null {
+  if (process.env.INKMAP_ISOLATED_DETECT) return null;
+  if (spawnSync("code", ["--version"], { stdio: "ignore" }).status === 0) return "code";
+  if (process.platform === "darwin") {
+    for (const dir of ["/Applications", join(homedir(), "Applications")]) {
+      const cmd = join(dir, "Visual Studio Code.app/Contents/Resources/app/bin/code");
+      if (existsSync(cmd)) return cmd;
+    }
+  } else if (process.platform === "win32") {
+    const localApp = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+    const cmd = join(localApp, "Programs", "Microsoft VS Code", "bin", "code.cmd");
+    if (existsSync(cmd)) return cmd;
+  }
+  return null;
 }
 
 function findCodexCommand(): string | null {
@@ -96,7 +234,7 @@ function detectInstalledTargets(): InstallTarget[] {
   if (existsSync(claudeCodeCfg) || (!process.env.INKMAP_ISOLATED_DETECT && spawnSync("claude", ["--version"], { stdio: "ignore" }).status === 0)) {
     found.push("claude-code");
   }
-  if (existsSync(getCursorDir())) {
+  if (existsSync(getCursorDir()) || Boolean(findCursorCommand())) {
     found.push("cursor");
   }
   const agyDir = getAntigravityConfigDir();
@@ -179,6 +317,91 @@ function stageStandaloneMcpApp(): { serverScript: string; appDir: string } {
   }
 
   throw new Error("未找到已构建的 MCP App 资源（codex.html）。/ Built MCP App assets are missing.");
+}
+
+function installIdeExtension(editorDir: string, cliCmd: string | null): string | null {
+  const vscodeBundle = join(DIST_DIR, "bundles", "vscode");
+  const bundledWeb = join(DIST_DIR, "web");
+  if (!existsSync(join(vscodeBundle, "package.json")) || !existsSync(join(vscodeBundle, "dist", "extension.js"))) {
+    return null;
+  }
+
+  const extPkg = JSON.parse(readFileSync(join(vscodeBundle, "package.json"), "utf8")) as { version: string };
+  const version = extPkg.version || "0.2.8";
+  const staging = mkdtempSync(join(tmpdir(), "inkmap-vsix-"));
+
+  try {
+    const extStaging = join(staging, "extension");
+    cpSync(vscodeBundle, extStaging, { recursive: true });
+    if (existsSync(bundledWeb)) {
+      cpSync(bundledWeb, join(extStaging, "dist", "web"), { recursive: true });
+    }
+    for (const doc of ["LICENSE.md", "THIRD_PARTY_NOTICES.md", "README.md"]) {
+      const src = join(PKG_ROOT, doc);
+      if (existsSync(src)) cpSync(src, join(extStaging, doc));
+    }
+
+    if (cliCmd) {
+      const contentTypesXml = `<?xml version="1.0" encoding="utf-8"?>\n<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension=".css" ContentType="text/css"/><Default Extension=".html" ContentType="text/html"/><Default Extension=".js" ContentType="application/javascript"/><Default Extension=".json" ContentType="application/json"/><Default Extension=".md" ContentType="text/markdown"/><Default Extension=".png" ContentType="image/png"/><Default Extension=".vsixmanifest" ContentType="text/xml"/></Types>`;
+      const vsixManifest = `<?xml version="1.0" encoding="utf-8"?>\n<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011"><Metadata><Identity Language="en-US" Id="inkmap-vscode" Version="${version}" Publisher="inkmap" /><DisplayName>Inkmap — Markdown Mind Map</DisplayName><Description xml:space="preserve">Edit Markdown mind maps with two-way sync.</Description><Categories>Visualization,Education,Other</Categories><Properties><Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.90.0" /><Property Id="Microsoft.VisualStudio.Code.ExtensionKind" Value="ui,workspace" /><Property Id="Microsoft.VisualStudio.Code.ExecutesCode" Value="true" /></Properties><License>extension/LICENSE.md</License><Icon>extension/images/icon.png</Icon></Metadata><Installation><InstallationTarget Id="Microsoft.VisualStudio.Code"/></Installation><Dependencies/><Assets><Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" /><Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true" /><Asset Type="Microsoft.VisualStudio.Services.Content.License" Path="extension/LICENSE.md" Addressable="true" /><Asset Type="Microsoft.VisualStudio.Services.Icons.Default" Path="extension/images/icon.png" Addressable="true" /></Assets></PackageManifest>`;
+
+      const entries: Array<{ name: string; data: Buffer }> = [
+        { name: "[Content_Types].xml", data: Buffer.from(contentTypesXml, "utf8") },
+        { name: "extension.vsixmanifest", data: Buffer.from(vsixManifest, "utf8") },
+      ];
+      const walk = (dir: string, prefix: string) => {
+        for (const item of readdirSync(dir, { withFileTypes: true })) {
+          const full = join(dir, item.name);
+          const rel = `${prefix}/${item.name}`;
+          if (item.isDirectory()) walk(full, rel);
+          else if (item.isFile()) entries.push({ name: rel, data: readFileSync(full) });
+        }
+      };
+      walk(extStaging, "extension");
+
+      const vsixPath = join(staging, `inkmap-${version}.vsix`);
+      writeFileSync(vsixPath, buildZipBuffer(entries));
+      try {
+        execFileSync(cliCmd, ["--install-extension", vsixPath, "--force"], { stdio: "pipe" });
+        return join(editorDir, "extensions", `inkmap.inkmap-vscode-${version}`);
+      } catch {
+        // Fall through to direct directory unpack if CLI IPC fails
+      }
+    }
+
+    const extRoot = join(editorDir, "extensions");
+    mkdirSync(extRoot, { recursive: true });
+    for (const old of readdirSync(extRoot)) {
+      if (old.toLowerCase().startsWith("inkmap.inkmap-vscode")) {
+        rmSync(join(extRoot, old), { recursive: true, force: true });
+      }
+    }
+    const dest = join(extRoot, `inkmap.inkmap-vscode-${version}`);
+    cpSync(extStaging, dest, { recursive: true });
+    return dest;
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
+}
+
+function uninstallIdeExtension(editorDir: string, cliCmd: string | null): boolean {
+  let removed = false;
+  if (cliCmd) {
+    try {
+      execFileSync(cliCmd, ["--uninstall-extension", "inkmap.inkmap-vscode"], { stdio: "pipe" });
+      removed = true;
+    } catch {}
+  }
+  const extRoot = join(editorDir, "extensions");
+  if (existsSync(extRoot)) {
+    for (const entry of readdirSync(extRoot)) {
+      if (entry.toLowerCase().startsWith("inkmap.inkmap-vscode")) {
+        rmSync(join(extRoot, entry), { recursive: true, force: true });
+        removed = true;
+      }
+    }
+  }
+  return removed;
 }
 
 function buildMcpEntry(
@@ -335,7 +558,7 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
   const result: InstallResult = { installed: [], removed: [] };
 
   if (options.uninstall) {
-    const toRemove: InstallTarget[] = explicitTargets ?? ["claude", "claude-code", "cursor", "antigravity", "codex"];
+    const toRemove: InstallTarget[] = explicitTargets ?? ["claude", "claude-code", "cursor", "vscode", "antigravity", "codex"];
     for (const target of toRemove) {
       if (target === "claude") {
         const cfg = join(getClaudeDesktopDir(), "claude_desktop_config.json");
@@ -345,7 +568,13 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
         if (removeMcpJsonConfig(cfg)) result.removed.push({ target, location: cfg });
       } else if (target === "cursor") {
         const cfg = join(getCursorDir(), "mcp.json");
-        if (removeMcpJsonConfig(cfg)) result.removed.push({ target, location: cfg });
+        const removedMcp = removeMcpJsonConfig(cfg);
+        const removedExt = uninstallIdeExtension(getCursorDir(), findCursorCommand());
+        if (removedMcp || removedExt) result.removed.push({ target, location: cfg });
+      } else if (target === "vscode") {
+        if (uninstallIdeExtension(getVscodeDir(), findVscodeCommand())) {
+          result.removed.push({ target, location: join(getVscodeDir(), "extensions") });
+        }
       } else if (target === "antigravity") {
         const dir = join(getAntigravityConfigDir(), "plugins", "inkmap");
         if (existsSync(dir)) {
@@ -382,7 +611,8 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
     log("[inkmap] 未在默认目录检测到已安装的 AI 客户端，可指定客户端名称强制生成配置：");
     log("  npx -y inkmap-mcp@latest install claude        # Claude Desktop (macOS / Windows / Ubuntu)");
     log("  npx -y inkmap-mcp@latest install claude-code   # Claude Code CLI");
-    log("  npx -y inkmap-mcp@latest install cursor        # Cursor");
+    log("  npx -y inkmap-mcp@latest install cursor        # Cursor (MCP + 右侧原生编辑器标签)");
+    log("  npx -y inkmap-mcp@latest install vscode        # VS Code (原生编辑器扩展)");
     log("  npx -y inkmap-mcp@latest install antigravity   # Google Antigravity");
     log("  npx -y inkmap-mcp@latest install codex         # OpenAI Codex Desktop");
     return result;
@@ -408,11 +638,27 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
     } else if (target === "cursor") {
       const cfg = join(getCursorDir(), "mcp.json");
       upsertMcpJsonConfig(cfg, serverScript, workspaces, false);
+      const extLoc = installIdeExtension(getCursorDir(), findCursorCommand());
+      const cursorServerDir = join(homedir(), ".cursor-server");
+      if (existsSync(cursorServerDir)) {
+        try {
+          installIdeExtension(cursorServerDir, null);
+        } catch {}
+      }
       result.installed.push({
         target,
-        location: cfg,
-        note: "在 Cursor Settings -> MCP 中可查看 inkmap 状态",
+        location: extLoc ? `${cfg} + ${extLoc}` : cfg,
+        note: "已同时安装 MCP 服务与右侧主编辑区导图扩展（Reload Window 后对话可直接打开右侧导图标签）",
       });
+    } else if (target === "vscode") {
+      const extLoc = installIdeExtension(getVscodeDir(), findVscodeCommand());
+      if (extLoc) {
+        result.installed.push({
+          target,
+          location: extLoc,
+          note: "已在 VS Code 安装原生 Inkmap 思维导图编辑器扩展",
+        });
+      }
     } else if (target === "antigravity") {
       const loc = await installAntigravityPlugin();
       result.installed.push({
@@ -435,10 +681,39 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
     }
   }
 
-  log(`[inkmap] 安装完成（Node: ${process.execPath}）：`);
-  for (const item of result.installed) {
-    log(`  ✓ ${item.target.padEnd(12)} -> ${item.location}`);
-    if (item.note) log(`    ${item.note}`);
+  const zhLocale = isChineseTerminalLocale();
+  if (zhLocale) {
+    log(`[inkmap] 安装完成（Node: ${process.execPath}）：`);
+    for (const item of result.installed) {
+      log(`  ✓ ${item.target.padEnd(12)} -> ${item.location}`);
+      if (item.note) log(`    ${item.note}`);
+    }
+    log("");
+    log("──────────────────────────────────────────────────────────────────────");
+    log("🎁 7 天免费试用与 Inkmap Pro 终身会员开通：");
+    log("  • 首次使用享 7 天全功能免费试用（无需登录）");
+    log("  • 开通 Pro 终身版（¥29.90 微信支付一次买断，免费包含后续全部更新）：");
+    log("    👉 官方网站开通: https://zhiyuanv.com/software.html#inkmap-pricing");
+    log("    👉 或终端独立打开: npx -y inkmap-mcp@latest 你的文档.md （右上角点击「购买 Pro」）");
+    log("  • 跨端同步：在官网购买后，在任意客户端（Cursor / Claude / Codex / Antigravity / VS Code）");
+    log("    导图右上角点击「登录」输入同一邮箱验证，Pro 终身权益即刻自动同步激活！");
+    log("──────────────────────────────────────────────────────────────────────");
+  } else {
+    log(`[inkmap] Installation complete (Node: ${process.execPath}):`);
+    for (const item of result.installed) {
+      log(`  ✓ ${item.target.padEnd(12)} -> ${item.location}`);
+    }
+    log("");
+    log("──────────────────────────────────────────────────────────────────────");
+    log("🎁 7-Day Free Trial & Inkmap Pro Lifetime License:");
+    log("  • Enjoy a 7-day full-featured free trial from first use (no sign-in required)");
+    log("  • Upgrade to Inkmap Pro Lifetime (US$15.00 one-time purchase, all future updates included):");
+    log("    👉 Official Website: https://zhiyuanv.com/software.html?lang=en#inkmap-pricing");
+    log("    👉 Or run standalone in browser: npx -y inkmap-mcp@latest notes.md (click 'Buy Pro')");
+    log("  • Cross-Client Sync: After purchasing on the website, click 'Sign in' in the top-right");
+    log("    corner inside Claude, Codex, Cursor, Antigravity, or VS Code with the same email");
+    log("    account to sync your Lifetime Pro access automatically!");
+    log("──────────────────────────────────────────────────────────────────────");
   }
   return result;
 }
@@ -459,7 +734,8 @@ export async function runInstallCli(argv: string[], uninstall = false) {
   (默认省略)     自动检测本机已安装的客户端并一键配置 / Auto-detect installed clients
   claude         Claude Desktop (Ubuntu / macOS / Windows)
   claude-code    Claude Code CLI (~/.claude.json)
-  cursor         Cursor (~/.cursor/mcp.json)
+  cursor         Cursor (MCP + 右侧主编辑区原生导图扩展)
+  vscode         VS Code (原生导图编辑器扩展)
   antigravity    Google Antigravity (~/.gemini/config/plugins/inkmap)
   codex          OpenAI Codex Desktop
 
@@ -480,7 +756,7 @@ export async function runInstallCli(argv: string[], uninstall = false) {
     }
     const normalized = normalizeTarget(arg);
     if (!normalized) {
-      throw new Error(`未知客户端目标: ${arg}（支持: claude, claude-code, cursor, antigravity, codex, all）`);
+      throw new Error(`未知客户端目标: ${arg}（支持: claude, claude-code, cursor, vscode, antigravity, codex, all）`);
     }
     if (normalized === "all") {
       explicitAll = true;

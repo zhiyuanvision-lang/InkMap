@@ -2,7 +2,7 @@
   "name": "inkmap-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.2.4",
+  "version": "0.2.8",
   "publisher": "inkmap",
   "homepage": "https://zhiyuanv.com/software.html",
   "repository": {
@@ -30,16 +30,40 @@
     "markdown",
     "mind map",
     "mindmap",
+    "mind-map",
+    "markmap",
+    "mermaid",
     "outline",
+    "diagram",
+    "flowchart",
+    "xmind",
+    "brainstorm",
+    "katex",
+    "latex",
+    "preview",
+    "cursor",
+    "claude",
+    "codex",
+    "mcp",
     "思维导图",
     "脑图",
     "大纲",
-    "markmap",
-    "xmind",
-    "brainstorm"
+    "流程图",
+    "组织结构图",
+    "时间轴",
+    "鱼骨图",
+    "笔记",
+    "双向同步",
+    "可视化"
   ],
   "main": "./dist/extension.js",
-  "activationEvents": [],
+  "extensionKind": [
+    "ui",
+    "workspace"
+  ],
+  "activationEvents": [
+    "*"
+  ],
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": true
@@ -220,8 +244,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "test": "node --test test/",
-    "package": "npm run build && vsce package --no-dependencies --allow-missing-repository --no-rewrite-relative-links -o dist/inkmap.vsix",
-    "package:release": "npm run build && vsce package --no-dependencies --allow-missing-repository --baseImagesUrl \"$INKMAP_IMAGES_URL\" --baseContentUrl \"$INKMAP_CONTENT_URL\" -o dist/inkmap.vsix",
+    "package": "npm run build && vsce package --no-dependencies --allow-star-activation --allow-missing-repository --no-rewrite-relative-links -o dist/inkmap.vsix",
+    "package:release": "npm run build && vsce package --no-dependencies --allow-star-activation --allow-missing-repository --baseImagesUrl \"$INKMAP_IMAGES_URL\" --baseContentUrl \"$INKMAP_CONTENT_URL\" -o dist/inkmap.vsix",
     "vscode:prepublish": "npm run build"
   },
   "dependencies": {

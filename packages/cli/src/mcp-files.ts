@@ -101,7 +101,11 @@ async function findGitRoot(filePath: string): Promise<string> {
   return dirname(filePath);
 }
 
-export async function writeTargetSelection(filePath: string, workspaceDir?: string) {
+export async function writeTargetSelection(
+  filePath: string,
+  workspaceDir?: string,
+  extra?: { openInEditorPane?: boolean },
+) {
   const real = await realpath(filePath);
   const info = await lstat(real);
   if (!info.isFile() || info.size > MAX_BYTES || !/\.md$/i.test(real)) {
@@ -117,6 +121,7 @@ export async function writeTargetSelection(filePath: string, workspaceDir?: stri
     workspace,
     seq: Date.now(),
     updatedAt: new Date().toISOString(),
+    ...(extra?.openInEditorPane && { openInEditorPane: true }),
   };
   const tmp = `${statePath}.${process.pid}.${Date.now()}`;
   try {
@@ -365,13 +370,15 @@ export function createMcpWorkspaceManager() {
   }
 
   return {
-    async open(options: { path?: string; workspace?: string; fromModel?: boolean } = {}) {
+    async open(options: { path?: string; workspace?: string; fromModel?: boolean; openInEditorPane?: boolean } = {}) {
       const extraUris = options.workspace ? [options.workspace] : [];
       let explicitFile: string | null = null;
       if (options.path?.trim()) {
         explicitFile = await assertAllowedFile(options.path, extraUris, Boolean(options.fromModel));
         if (options.fromModel) {
-          const saved = await writeTargetSelection(explicitFile, options.workspace);
+          const saved = await writeTargetSelection(explicitFile, options.workspace, {
+            openInEditorPane: options.openInEditorPane,
+          });
           internalSeq = Math.max(internalSeq, saved.seq);
         } else {
           internalSeq = Math.max(internalSeq + 1, Date.now());
@@ -384,6 +391,10 @@ export function createMcpWorkspaceManager() {
       if (!chosen) {
         const activeGroup = files.filter(f => f.group === "active");
         chosen = (activeGroup[0] || files[0])?.path || null;
+      }
+      if (chosen && !explicitFile && options.fromModel && options.openInEditorPane) {
+        const saved = await writeTargetSelection(chosen, options.workspace, { openInEditorPane: true });
+        internalSeq = Math.max(internalSeq, saved.seq);
       }
       if (!chosen) {
         return {

@@ -1,11 +1,73 @@
 import { hasAccess, sanitizeViewState, type Ad, type ViewState } from "@inkmap/core";
 import { createHash, randomBytes } from "node:crypto";
 import { watch } from "node:fs";
-import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { homedir } from "node:os";
-import { basename, dirname, extname, join, normalize, resolve, sep } from "node:path";
+import { basename, delimiter, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
 import type { LicenseService } from "./license.js";
+
+const SKIP_SCAN_DIRS = new Set([
+  ".git", ".hg", ".svn", "node_modules", "dist", "dist-codex", "dist-workbuddy",
+  "build", "out", ".next", ".nuxt", ".agents", ".agent", ".gemini", ".codex",
+  ".venv", "venv", "target", "coverage", ".tmp",
+]);
+
+function insideRoot(root: string, target: string): boolean {
+  if (root === target) return true;
+  const rel = relative(root, target);
+  return Boolean(rel && !isAbsolute(rel) && rel !== ".." && !rel.startsWith(".." + sep));
+}
+
+async function findProjectRoot(filePath: string): Promise<string> {
+  let cur = dirname(filePath);
+  const home = await realpath(homedir()).catch(() => homedir());
+  while (cur && cur !== dirname(cur) && cur !== home) {
+    try {
+      await lstat(join(cur, ".git"));
+      return cur;
+    } catch {}
+    cur = dirname(cur);
+  }
+  return dirname(filePath);
+}
+
+async function scanProjectMarkdownFiles(rootDir: string, maxFiles = 200, maxDepth = 4): Promise<string[]> {
+  const found: string[] = [];
+  async function walk(dir: string, depth: number) {
+    if (depth > maxDepth || found.length >= maxFiles) return;
+    let entries;
+    try {
+      entries = await readdir(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (found.length >= maxFiles) break;
+      if (entry.name.startsWith(".")) continue;
+      const full = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        if (!SKIP_SCAN_DIRS.has(entry.name)) await walk(full, depth + 1);
+      } else if (entry.isFile() && /\.md$/i.test(entry.name)) {
+        try {
+          const st = await lstat(full);
+          if (st.isFile() && st.size <= 5 * 1024 * 1024) {
+            const real = await realpath(full);
+            if (real === full && insideRoot(rootDir, real)) found.push(real);
+          }
+        } catch {}
+      }
+    }
+  }
+  await walk(rootDir, 0);
+  found.sort((a, b) => {
+    const aM = /\.markmap\.md$/i.test(a) ? 0 : 1;
+    const bM = /\.markmap\.md$/i.test(b) ? 0 : 1;
+    if (aM !== bM) return aM - bM;
+    return a.localeCompare(b);
+  });
+  return found;
+}
 
 const MAX_BODY = 20 * 1024 * 1024;
 const TYPES: Record<string, string> = {
@@ -55,10 +117,15 @@ export interface ServeOptions {
   sidebarPurchase?: boolean;
   /** An embedding desktop host can open the account flow in the system browser. */
   sidebarAccountNavigation?: boolean;
+  /** Restrict account UI to sign-in / restore only (for MCP App store compliance). */
+  loginOnly?: boolean;
+  /** Auto-open the 3-column IDE workspace (file tree + left Markdown + right mind map) on load. */
+  ideWorkspace?: boolean;
 }
 
 export interface Served {
   url: string;
+  switchToFile?: (filePath: string) => Promise<void>;
   close(): Promise<void>;
 }
 
@@ -125,16 +192,24 @@ function within(root: string, rel: string): string | null {
   return full.startsWith(base) ? full : null;
 }
 
-export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", log = () => {}, license, ads, sidebar = false, sidebarPurchase = false, sidebarAccountNavigation = false }: ServeOptions): Promise<Served> {
+export async function serve({ source: initialSource, webRoot, port = 4377, host = "127.0.0.1", log = () => {}, license, ads, sidebar = false, sidebarPurchase = false, sidebarAccountNavigation = false, loginOnly = false, ideWorkspace = false }: ServeOptions): Promise<Served> {
   if (sidebar && host !== "127.0.0.1") throw new Error("The sidebar bridge requires loopback.");
   const prefix = sidebar ? `/s/${randomBytes(24).toString("hex")}/` : "/";
+  let activeSource = initialSource;
   let bound: number;
-  let current = await source.read();
+  let current = await activeSource.read();
   let version = hash(current);
-  let viewState = await source.readView?.();
+  let viewState = await activeSource.readView?.();
   const clients = new Set<ServerResponse>();
+  const canPurchase = !loginOnly && (!sidebar || sidebarPurchase);
 
-  const docState = () => ({ name: source.name, md: current, version, ...(viewState && { viewState }) });
+  const docState = () => ({
+    name: activeSource.name,
+    md: current,
+    version,
+    ...(activeSource.key && { currentFile: activeSource.key }),
+    ...(viewState && { viewState }),
+  });
   const send = (event: string, data: unknown) => {
     const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
     for (const res of clients) res.write(payload);
@@ -148,7 +223,7 @@ export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", 
     return result;
   }
   async function refresh() {
-    const text = await source.read();
+    const text = await activeSource.read();
     if (hash(text) === version) return;
     current = text;
     version = hash(text);
@@ -156,12 +231,80 @@ export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", 
   }
 
   let pending: NodeJS.Timeout | undefined;
-  const unwatch = source.watch(() => {
+  let unwatch = activeSource.watch(() => {
     clearTimeout(pending);
     pending = setTimeout(async () => {
       void serialized(refresh).catch(() => {}); // Atomic editor saves can briefly replace the file.
     }, 80);
   });
+
+  async function collectWorkspaceFiles() {
+    const roots = new Map<string, { path: string; name: string; active: boolean }>();
+    if (activeSource.key) {
+      const realKey = await realpath(activeSource.key).catch(() => activeSource.key!);
+      const projRoot = await realpath(await findProjectRoot(realKey)).catch(() => dirname(realKey));
+      roots.set(projRoot, { path: projRoot, name: basename(projRoot), active: true });
+    }
+    const envRoots = (process.env.INKMAP_WORKSPACES || "").split(delimiter).filter(Boolean);
+    for (const raw of envRoots) {
+      const real = await realpath(resolve(raw)).catch(() => null);
+      if (real && !roots.has(real)) {
+        roots.set(real, { path: real, name: basename(real), active: roots.size === 0 });
+      }
+    }
+    const items: Array<{ path: string; label: string; group: "active" | "project" }> = [];
+    const seen = new Set<string>();
+    for (const root of roots.values()) {
+      const files = await scanProjectMarkdownFiles(root.path);
+      for (const f of files) {
+        if (seen.has(f)) continue;
+        seen.add(f);
+        const rel = relative(root.path, f);
+        items.push({
+          path: f,
+          label: `${root.name} / ${rel}`,
+          group: root.active ? "active" : "project",
+        });
+      }
+    }
+    if (activeSource.key && !seen.has(activeSource.key)) {
+      items.unshift({
+        path: activeSource.key,
+        label: `${basename(activeSource.dir)} / ${basename(activeSource.key)}`,
+        group: "active",
+      });
+    }
+    return { roots: [...roots.values()], files: items };
+  }
+
+  async function switchSourceToFile(candidatePath: string) {
+    if (!candidatePath || typeof candidatePath !== "string" || !/\.md$/i.test(candidatePath)) {
+      throw new Error("请选择 .md 或 .markmap.md 文件。");
+    }
+    const realTarget = await realpath(resolve(candidatePath));
+    const st = await lstat(realTarget);
+    if (!st.isFile() || st.size > 5 * 1024 * 1024) {
+      throw new Error("请选择 5 MiB 以内的 Markdown 文件。");
+    }
+    const { roots } = await collectWorkspaceFiles();
+    if (roots.length > 0 && !roots.some(r => insideRoot(r.path, realTarget))) {
+      throw new Error("该文件不在当前项目工作区内。");
+    }
+    if (activeSource.key === realTarget) return;
+    clearTimeout(pending);
+    unwatch();
+    activeSource = await fileSource(realTarget, log);
+    current = await activeSource.read();
+    version = hash(current);
+    viewState = await activeSource.readView?.();
+    unwatch = activeSource.watch(() => {
+      clearTimeout(pending);
+      pending = setTimeout(async () => {
+        void serialized(refresh).catch(() => {});
+      }, 80);
+    });
+    broadcast();
+  }
 
   const json = (res: ServerResponse, status: number, body: unknown) => {
     res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
@@ -210,18 +353,26 @@ export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", 
         url.pathname = "/" + url.pathname.slice(prefix.length);
       }
       if (url.pathname === "/api/doc" && req.method === "GET") {
-        viewState = (await source.readView?.()) ?? viewState;
+        viewState = (await activeSource.readView?.()) ?? viewState;
         if (sidebar) await serialized(refresh);
         return json(res, 200, docState());
       }
+      if (url.pathname === "/api/files" && req.method === "GET") {
+        const { files } = await collectWorkspaceFiles();
+        return json(res, 200, { currentFile: activeSource.key ?? null, files });
+      }
       if (url.pathname === "/api/capabilities" && req.method === "GET") {
-        return json(res, 200, { purchase: !sidebar || sidebarPurchase, ...(sidebarAccountNavigation && { accountNavigation: "host" }) });
+        return json(res, 200, {
+          purchase: canPurchase,
+          ...(ideWorkspace && { ideWorkspace: true }),
+          ...(sidebarAccountNavigation && { accountNavigation: "host" }),
+        });
       }
       if (url.pathname === "/api/view" && req.method === "PUT") {
         const cleaned = sanitizeViewState(JSON.parse(await readBody(req)));
         if (cleaned) {
           viewState = cleaned;
-          await source.writeView?.(cleaned).catch(() => {});
+          await activeSource.writeView?.(cleaned).catch(() => {});
         }
         return json(res, 200, { ok: true });
       }
@@ -234,7 +385,7 @@ export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", 
           await refresh();
           if (baseVersion !== version) return json(res, 409, docState());
           if (md !== current) {
-            await source.write(md);
+            await activeSource.write(md);
             current = md;
             version = hash(md);
             if (sidebar) broadcast();
@@ -249,17 +400,24 @@ export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", 
         const local = reqHost && /^(127\.0\.0\.1|localhost|\[::1\]):[0-9]+$/.test(reqHost);
         return Boolean(local && origin === "http://" + reqHost && req.headers["content-type"] === "application/json");
       };
+      if (url.pathname === "/api/open" && req.method === "POST") {
+        if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });
+        const { file } = JSON.parse(await readBody(req));
+        await serialized(() => switchSourceToFile(String(file ?? "")));
+        const { files } = await collectWorkspaceFiles();
+        return json(res, 200, { currentFile: activeSource.key ?? null, files, doc: docState() });
+      }
       if (url.pathname === "/api/checkout" && req.method === "POST") {
         if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });
         const { mode } = JSON.parse(await readBody(req));
         if (mode !== "buy" && mode !== "restore") return json(res, 400, { error: "invalid checkout mode" });
-        if (sidebar && !sidebarPurchase && mode === "buy") return json(res, 403, { error: "forbidden" });
+        if (!canPurchase && mode === "buy") return json(res, 403, { error: "forbidden" });
         if (!license) return json(res, 503, { error: "Inkmap checkout is unavailable." });
         return json(res, 200, { url: await license.connect(mode) });
       }
       if (url.pathname === "/api/order-pro" && req.method === "POST") {
         if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });
-        if (sidebar && !sidebarPurchase) return json(res, 403, { error: "forbidden" });
+        if (!canPurchase) return json(res, 403, { error: "forbidden" });
         if (!license) return json(res, 503, { error: "Inkmap checkout is unavailable." });
         if (typeof license.orderPro !== "function") return json(res, 501, { fallback: true });
         return json(res, 200, { result: await license.orderPro() });
@@ -291,9 +449,9 @@ export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", 
       }
       if (url.pathname === "/favicon.ico") return void res.writeHead(204).end();
       if (url.pathname.startsWith("/doc-assets/")) {
-        let asset = within(source.dir, url.pathname.slice("/doc-assets/".length));
+        let asset = within(activeSource.dir, url.pathname.slice("/doc-assets/".length));
         if (sidebar && asset) {
-          const root = await realpath(source.dir);
+          const root = await realpath(activeSource.dir);
           asset = await realpath(asset).catch(() => null);
           if (asset && (!asset.startsWith(root + sep) || !/\.(?:png|jpe?g|gif|webp)$/i.test(asset))) asset = null;
         }
@@ -322,6 +480,7 @@ export async function serve({ source, webRoot, port = 4377, host = "127.0.0.1", 
 
   return {
     url: `http://${host}:${bound}${prefix}`,
+    switchToFile: (filePath: string) => serialized(() => switchSourceToFile(filePath)),
     close: () =>
       new Promise<void>(done => {
         clearTimeout(pending);

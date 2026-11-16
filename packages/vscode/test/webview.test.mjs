@@ -66,7 +66,12 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     });
     await new Promise(ok => server.listen(0, "127.0.0.1", ok));
     origin = `http://127.0.0.1:${server.address().port}`;
-    browser = await puppeteer.launch({ executablePath: CHROME, headless: true, args: ["--no-first-run"] });
+    browser = await puppeteer.launch({
+      executablePath: CHROME,
+      headless: true,
+      args: ["--no-first-run", "--lang=en-US"],
+      env: { ...process.env, TZ: "UTC", LANG: "en_US.UTF-8" },
+    });
   });
   after(async () => {
     await browser?.close();
@@ -77,6 +82,10 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
   async function open({ lang, ads = [], chat = false, expired = false, viewState, beforeLoad, markdown = DOC, paidOnSignIn = true } = {}) {
     const page = await browser.newPage();
     await page.setViewport({ width: 1400, height: 900 });
+    if (lang === "en") {
+      await page.emulateTimezone("UTC");
+      await page.evaluateOnNewDocument(() => Object.defineProperty(navigator, "language", { get: () => "en-US" }));
+    }
     const errors = [];
     page.on("pageerror", e => errors.push(e.message));
     page.on("console", m => m.type() === "error" && errors.push(m.text()));
@@ -134,7 +143,7 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     });
     if (beforeLoad) await page.evaluateOnNewDocument(beforeLoad);
     await page.goto(lang ? `${origin}/?lang=${lang}` : origin);
-    await page.waitForFunction(() => window.inkmap?.mindMap);
+    await page.waitForFunction(() => window.inkmap?.mindMap?.renderer?.root);
     return { page, ext, errors };
   }
 
@@ -497,7 +506,7 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
   });
 
   it("switches between English and Chinese without reloading or losing Pro access", async () => {
-    const { page, ext, errors } = await open({ expired: true });
+    const { page, ext, errors } = await open({ lang: "en", expired: true });
     assert.equal(await page.$eval("html", el => el.lang), "en");
     await page.select(".upgrade-language", "zh");
     assert.equal(await page.$eval("html", el => el.lang), "zh-CN");
@@ -516,7 +525,7 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
   });
 
   it("lets a trial user sign in without enabling Pro", async () => {
-    const { page, ext, errors } = await open({ paidOnSignIn: false });
+    const { page, ext, errors } = await open({ lang: "en", paidOnSignIn: false });
     await page.setViewport({ width: 360, height: 620 });
     await page.focus("#pro");
     await page.keyboard.press("Enter");
@@ -529,7 +538,7 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     assert.equal(await page.$eval("#pro", el => el.getAttribute("aria-expanded")), "false");
     assert.equal(await page.evaluate(() => document.activeElement.id), "pro");
     await page.click("#pro");
-    assert.equal(await page.$eval("#account-sign-in", el => el.textContent), "Sign in by phone");
+    assert.equal(await page.$eval("#account-sign-in", el => el.textContent), "Sign in with Email");
     await page.click("#account-sign-in");
     await page.type("#sign-in-phone", "13800008000");
     await page.type("#sign-in-code", "123456");
@@ -539,10 +548,10 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     assert.equal(await page.$eval("#account-text", el => el.textContent), "138****8000");
     assert.equal(await page.$eval("#account-heading", el => el.textContent), "Signed in");
     assert.equal(await page.$eval("html", el => el.classList.contains("pro-member")), false);
-    assert.equal(await page.$eval("#account-plan-status", el => el.hidden), true, "hides redundant trial status inside account panel");
+    assert.equal(await page.$eval("#account-plan-status", el => el.hidden), false, "shows current trial status card inside account panel");
     assert.equal(await page.$eval("#account-perks", el => el.hidden), false, "shows Pro perks directly in the account panel");
     assert.equal(await page.$$eval("#account-perks .account-perks-list li", els => els.length), 7, "displays 7 rich Pro perks");
-    assert.equal(await page.$eval("#switch-account", el => el.hidden), true, "hides redundant switch account button");
+    assert.equal(await page.$eval("#switch-account", el => el.hidden), false, "shows switch account button when signed in");
     await page.click("#account-perks-more");
     await page.waitForSelector("#buy-pro", { visible: true });
     assert.equal(await page.$eval("#upgrade-sign-in", el => el.hidden), true, "the signed-in user only sees the purchase action");

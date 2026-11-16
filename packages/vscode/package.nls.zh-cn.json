@@ -1,6 +1,6 @@
 {
-  "displayName": "Inkmap 墨图 — Markdown 思维导图",
-  "description": "将 Markdown 编辑为思维导图，支持 LaTeX 公式和流程图，改动实时写回文档。",
+  "displayName": "Inkmap 墨图 — Markdown 思维导图 / 脑图 / Markmap 编辑器",
+  "description": "将 Markdown (.md / .markmap.md) 实时双向编辑为思维导图与脑图大纲，支持 Mermaid 流程图、LaTeX 公式与高清 PNG/SVG 导出。",
   "virtualWorkspaces": "Inkmap 需要编辑磁盘上的 Markdown 文件。",
   "editor.displayName": "Inkmap 思维导图",
   "command.open": "Open as Inkmap",

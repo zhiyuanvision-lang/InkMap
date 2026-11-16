@@ -1,8 +1,14 @@
-import { browserLocale } from "./host";
+import { locale } from "./i18n";
 
-export const sidebarText = (zh: string, en: string) => browserLocale() === "zh" ? zh : en;
+export const sidebarText = (zh: string, en: string) => locale() === "zh" ? zh : en;
 
 export function sidebarGate(message: string) {
+  if (!document.getElementById("sidebar-opening-hide-style")) {
+    const st = document.createElement("style");
+    st.id = "sidebar-opening-hide-style";
+    st.textContent = `.sidebar-opening #bar, .sidebar-opening #map { display: none !important; }`;
+    document.head.appendChild(st);
+  }
   const panel = document.createElement("section");
   panel.className = "sidebar-gate";
   const title = document.createElement("h1");

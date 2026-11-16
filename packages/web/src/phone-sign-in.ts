@@ -78,7 +78,16 @@ export function createPhoneSignIn(
   }
 
   function normalizedPhone() {
-    const number = phone.value.normalize("NFKC").replace(/[\s\-–‑]/g, "").replace(/^(?:\+86|0086|86(?=1\d{10}$))/, "");
+    const raw = phone.value.normalize("NFKC").trim();
+    if (raw.includes("@")) {
+      const email = raw.toLowerCase();
+      if (email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return email;
+      failure("invalid", false);
+      render();
+      phone.focus();
+      return;
+    }
+    const number = raw.replace(/[\s\-–‑]/g, "").replace(/^(?:\+86|0086|86(?=1\d{10}$))/, "");
     if (/^1[3-9]\d{9}$/.test(number)) return number;
     failure("invalid", false);
     render();
