@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.8
+## 0.2.9
 
 - Unified Email verification code registration & sign-in for both domestic and international users, plus automatic language/timezone detection (`zh` / `Asia/Shanghai`).
 - Docked 3-column Browser IDE Workspace (Project File Tree + Live Markdown Split Pane with line numbers & active line highlight + Mind Map) with two-way line-to-node selection sync and complete node context menu shortcuts (`Tab`, `Enter`, `⇧Tab`, `⌘↑`, `⌘↓`, `⌫`).
