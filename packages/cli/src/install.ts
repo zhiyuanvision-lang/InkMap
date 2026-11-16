@@ -140,11 +140,16 @@ function stageStandaloneMcpApp(): { serverScript: string; appDir: string } {
 
   const bundledCli = join(DIST_DIR, "cli.cjs");
   const bundledHtml = join(DIST_DIR, "codex.html");
+  const bundledWeb = join(DIST_DIR, "web");
   const monorepoAntigravity = resolve(PKG_ROOT, "..", "..", "dist", "sidebars", "inkmap-antigravity", "inkmap");
 
   if (existsSync(bundledCli) && existsSync(bundledHtml)) {
     cpSync(bundledCli, join(appDir, "cli.cjs"));
     cpSync(bundledHtml, join(appDir, "codex.html"));
+    if (existsSync(bundledWeb)) {
+      rmSync(join(appDir, "web"), { recursive: true, force: true });
+      cpSync(bundledWeb, join(appDir, "web"), { recursive: true });
+    }
     writeFileSync(join(appDir, "server.cjs"), SERVER_WRAPPER, { mode: 0o755 });
     for (const notice of ["LICENSE.md", "THIRD_PARTY_NOTICES.md"]) {
       const src = join(PKG_ROOT, notice);
@@ -156,6 +161,11 @@ function stageStandaloneMcpApp(): { serverScript: string; appDir: string } {
   if (existsSync(join(monorepoAntigravity, "server.cjs")) && existsSync(join(monorepoAntigravity, "codex.html"))) {
     cpSync(join(monorepoAntigravity, "server.cjs"), join(appDir, "server.cjs"));
     cpSync(join(monorepoAntigravity, "codex.html"), join(appDir, "codex.html"));
+    const sidecarWeb = join(monorepoAntigravity, "sidecars", "inkmap", "web");
+    if (existsSync(sidecarWeb)) {
+      rmSync(join(appDir, "web"), { recursive: true, force: true });
+      cpSync(sidecarWeb, join(appDir, "web"), { recursive: true });
+    }
     for (const notice of ["LICENSE.md", "THIRD_PARTY_NOTICES.md"]) {
       const src = join(monorepoAntigravity, notice);
       if (existsSync(src)) cpSync(src, join(appDir, notice));

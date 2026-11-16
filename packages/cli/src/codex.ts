@@ -1,16 +1,32 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
+import { getUiCapability, registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
+import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { hasAccess, YUNFAN_BILLING_ORIGIN } from "@inkmap/core";
-import { fileSessionStorage, licenseService } from "./license.js";
+import { hasAccess, PRODUCT, YUNFAN_BILLING_ORIGIN } from "@inkmap/core";
+import { adFeed, fileSessionStorage, licenseService } from "./license.js";
 import { createMcpWorkspaceManager } from "./mcp-files.js";
+import { fileSource, serve, type Served } from "./server.js";
 
 const UI = "ui://inkmap/markdown.html";
 const HTML = new URL("./codex.html", import.meta.url);
+const WEB_ROOT = fileURLToPath(new URL("./web/", import.meta.url));
 const INLINE_DOC_LIMIT = 256 * 1024;
 const appOnly = { ui: { visibility: ["app" as const] } };
+
+function openSystemBrowser(url: string) {
+  if (process.env.INKMAP_NO_OPEN === "1") return;
+  const [cmd, args] =
+    process.platform === "darwin"
+      ? ["open", [url]]
+      : process.platform === "win32"
+        ? ["cmd", ["/c", "start", "", url]]
+        : ["xdg-open", [url]];
+  spawn(cmd, args, { stdio: "ignore", detached: true }).unref();
+}
 
 export async function createInkmapMcpServer(options: { html?: string; billingOrigin?: () => string } = {}) {
   const html = options.html ?? await readFile(HTML, "utf8").catch(error => {
@@ -21,8 +37,56 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   });
   const billingOrigin = options.billingOrigin ?? (() => process.env.INKMAP_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN);
   const billing = licenseService(fileSessionStorage(), billingOrigin, { loginOnly: true });
+  let browserBilling: ReturnType<typeof licenseService> | undefined;
+  const fallbackEditors = new Map<string, Promise<Served>>();
+  const ads = adFeed(PRODUCT.adFeedUrl);
   const workspaces = createMcpWorkspaceManager();
-  const server = new McpServer({ name: "inkmap", version: "0.2.5" });
+  const server = new McpServer({ name: "inkmap", version: "0.2.6" });
+
+  function isAntigravityHost(): boolean {
+    const clientName = server.server.getClientVersion()?.name ?? "";
+    if (/antigravity/i.test(clientName)) return true;
+    if (/[/\\]plugins[/\\]inkmap[/\\]/.test(process.argv[1] ?? "")) return true;
+    return false;
+  }
+
+  function hostSupportsEmbeddedUi(): boolean {
+    if (getUiCapability(server.server.getClientCapabilities())) return true;
+    if (isAntigravityHost()) return true;
+    return false;
+  }
+
+  async function openFallbackBrowserEditor(filePath: string): Promise<string | undefined> {
+    if (!existsSync(WEB_ROOT)) return undefined;
+    let pending = fallbackEditors.get(filePath);
+    if (!pending) {
+      browserBilling ??= licenseService(fileSessionStorage(), billingOrigin);
+      pending = (async () => {
+        const source = await fileSource(filePath);
+        return serve({
+          source,
+          webRoot: WEB_ROOT,
+          port: 0,
+          license: browserBilling,
+          ads,
+          sidebar: false,
+        });
+      })();
+      fallbackEditors.set(filePath, pending);
+      pending.catch(() => fallbackEditors.delete(filePath));
+    }
+    const served = await pending;
+    openSystemBrowser(served.url);
+    return served.url;
+  }
+
+  async function disposeAll() {
+    billing.dispose();
+    browserBilling?.dispose();
+    const editors = [...fallbackEditors.values()];
+    fallbackEditors.clear();
+    await Promise.allSettled(editors.map(async p => (await p).close()));
+  }
 
   registerAppResource(server, "Inkmap Markdown editor", UI, {
     _meta: { ui: { prefersBorder: false } },
@@ -42,10 +106,10 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     },
   }, async () => ({ content: [] }));
 
-  // Universal / Google Antigravity MCP App entrypoint (model + app + aux_pane + global)
+  // Universal / Google Antigravity MCP App entrypoint (with automatic local browser fallback for Cursor / Claude Code)
   registerAppTool(server, "inkmap_open", {
     title: "Inkmap",
-    description: "Open and edit a local Markdown (.md, .markmap.md) outline as an interactive Inkmap mind map in the side pane.",
+    description: "Open and edit a local Markdown (.md, .markmap.md) outline as an interactive Inkmap mind map.",
     inputSchema: {
       path: z.string().optional().describe("Absolute or workspace-relative path to a .md or .markmap.md file. Omit to open the active or most recent Markdown outline."),
       workspace: z.string().optional().describe("Optional workspace root directory path."),
@@ -65,10 +129,16 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
       workspaces.open({ path, workspace, fromModel: true }),
       billing.state(),
     ]);
+    let editorUrl: string | undefined;
+    if (opened.currentFile && !hostSupportsEmbeddedUi()) {
+      editorUrl = await openFallbackBrowserEditor(opened.currentFile).catch(() => undefined);
+    }
     const includeDoc = Buffer.byteLength(opened.doc.md, "utf8") <= INLINE_DOC_LIMIT;
-    const summary = opened.currentFile
-      ? `Opened ${opened.currentFile} in Inkmap mind map.`
-      : "Opened Inkmap mind map panel.";
+    const summary = editorUrl
+      ? `Opened ${opened.currentFile} in Inkmap interactive mind map at ${editorUrl} (live two-way synced with your Markdown file).`
+      : opened.currentFile
+        ? `Opened ${opened.currentFile} in Inkmap mind map.`
+        : "Opened Inkmap mind map panel.";
     return {
       content: [{ type: "text", text: summary }],
       structuredContent: {
@@ -78,6 +148,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
         currentFileUri: opened.currentFileUri,
         targetSeq: opened.targetSeq,
         license: { ...license },
+        ...(editorUrl && { editorUrl }),
         ...(includeDoc && { doc: opened.doc }),
       },
     };
@@ -184,12 +255,14 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     return { content: [] };
   });
 
-  return { server, billing, workspaces };
+  return { server, billing, workspaces, dispose: disposeAll };
 }
 
 export async function serveCodex() {
-  const { server, billing } = await createInkmapMcpServer();
+  const { server, dispose } = await createInkmapMcpServer();
   const transport = new StdioServerTransport();
-  server.server.onclose = () => billing.dispose();
+  server.server.onclose = () => {
+    void dispose();
+  };
   await server.connect(transport);
 }

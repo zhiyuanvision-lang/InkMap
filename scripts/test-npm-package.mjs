@@ -76,6 +76,7 @@ test("inkmap-mcp npm tarball works standalone with zero dependencies across inst
     INKMAP_CLAUDE_CODE_CONFIG: claudeCodeCfg,
     ANTIGRAVITY_CONFIG_DIR: agyConfigDir,
     INKMAP_ISOLATED_DETECT: "1",
+    INKMAP_NO_OPEN: "1",
   };
 
   execFileSync(process.execPath, [binPath, "install", "--workspace", workspaceDir], {
@@ -128,6 +129,9 @@ test("inkmap-mcp npm tarball works standalone with zero dependencies across inst
       });
       assert.equal(opened.structuredContent.mode, "mcp-workspace");
       assert.ok(opened.structuredContent.doc.md.includes("# Inkmap NPM Test"));
+      assert.match(opened.structuredContent.editorUrl, /^http:\/\/127\.0\.0\.1:\d+\//);
+      const fallbackDoc = await (await fetch(opened.structuredContent.editorUrl + "api/doc")).json();
+      assert.ok(fallbackDoc.md.includes("# Inkmap NPM Test"));
     } finally {
       await client.close();
     }
