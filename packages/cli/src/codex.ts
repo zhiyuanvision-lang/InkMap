@@ -22,7 +22,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   const billingOrigin = options.billingOrigin ?? (() => process.env.INKMAP_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN);
   const billing = licenseService(fileSessionStorage(), billingOrigin, { loginOnly: true });
   const workspaces = createMcpWorkspaceManager();
-  const server = new McpServer({ name: "inkmap", version: "0.2.4" });
+  const server = new McpServer({ name: "inkmap", version: "0.2.5" });
 
   registerAppResource(server, "Inkmap Markdown editor", UI, {
     _meta: { ui: { prefersBorder: false } },

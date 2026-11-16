@@ -11,8 +11,8 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 const npmOut = join(root, "dist", "npm");
-const vscodePkg = JSON.parse(await readFile(join(root, "packages", "vscode", "package.json"), "utf8"));
-const tgzPath = join(npmOut, `inkmap-mcp-${vscodePkg.version}.tgz`);
+const cliPkg = JSON.parse(await readFile(join(root, "packages", "cli", "package.json"), "utf8"));
+const tgzPath = join(npmOut, `inkmap-mcp-${cliPkg.version}.tgz`);
 
 test("inkmap-mcp npm tarball works standalone with zero dependencies across install, mcp, and browser modes", async t => {
   assert.ok(existsSync(tgzPath), `Expected ${tgzPath} to exist; run npm run package:npm first.`);
@@ -31,7 +31,7 @@ test("inkmap-mcp npm tarball works standalone with zero dependencies across inst
   const pkg = JSON.parse(await readFile(join(pkgRoot, "package.json"), "utf8"));
   const serverManifest = JSON.parse(await readFile(join(pkgRoot, "server.json"), "utf8"));
   assert.equal(pkg.name, "inkmap-mcp");
-  assert.equal(pkg.version, vscodePkg.version);
+  assert.equal(pkg.version, cliPkg.version);
   assert.equal(pkg.dependencies, undefined, "npm package must have zero external dependencies");
   assert.equal(pkg.mcpName, serverManifest.name);
   for (const required of ["LICENSE.md", "THIRD_PARTY_NOTICES.md", "README.md", "dist/cli.cjs", "dist/codex.html", "dist/web/index.html", "dist/web/app.js"]) {
@@ -40,7 +40,7 @@ test("inkmap-mcp npm tarball works standalone with zero dependencies across inst
 
   // 2. --version check in isolated directory
   const verOut = execFileSync(process.execPath, [binPath, "--version"], { cwd: sandbox, encoding: "utf8" }).trim();
-  assert.equal(verOut, vscodePkg.version);
+  assert.equal(verOut, cliPkg.version);
 
   // 3. Auto-detect `inkmap install` across simulated Ubuntu/macOS client directories
   const fakeHome = join(sandbox, "home");

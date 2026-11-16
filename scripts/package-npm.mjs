@@ -13,8 +13,8 @@ const webDist = join(root, "packages", "web", "dist");
 const agySource = join(root, "packages", "antigravity");
 const vscodeDir = join(root, "packages", "vscode");
 
-const vscodePkg = JSON.parse(await readFile(join(vscodeDir, "package.json"), "utf8"));
-const version = vscodePkg.version;
+const cliPkg = JSON.parse(await readFile(join(root, "packages", "cli", "package.json"), "utf8"));
+const version = cliPkg.version;
 
 const writeJSON = (path, value) => writeFile(path, JSON.stringify(value, null, 2) + "\n", "utf8");
 
@@ -182,7 +182,7 @@ const webNotices = await readFile(join(vscodeDir, "THIRD_PARTY_NOTICES.md"), "ut
 await writeFile(join(pkgDir, "THIRD_PARTY_NOTICES.md"), webNotices + "\n" + bundledLicenses.join("\n"), "utf8");
 
 // Official MCP Registry manifest + zero-dependency package.json
-const mcpName = "io.github.zhiyuanvision-lang/inkmap";
+const mcpName = "io.github.zhiyuanvision-lang/inkmap-markdown-mindmap-markmap";
 await Promise.all([
   writeJSON(join(pkgDir, "server.json"), {
     $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",

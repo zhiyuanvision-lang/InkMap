@@ -1,9 +1,9 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.zhiyuanvision-lang/inkmap",
+  "name": "io.github.zhiyuanvision-lang/inkmap-markdown-mindmap-markmap",
   "title": "Inkmap Mind Map",
   "description": "Interactive two-way Markdown mind map editor & MCP App for local .md and .markmap.md files.",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "websiteUrl": "https://www.zhiyuanv.com/software.html",
   "repository": {
     "url": "https://github.com/zhiyuanvision-lang/InkMap",
@@ -13,7 +13,7 @@
     {
       "registryType": "npm",
       "identifier": "inkmap-mcp",
-      "version": "0.2.4",
+      "version": "0.2.5",
       "transport": {
         "type": "stdio"
       },
