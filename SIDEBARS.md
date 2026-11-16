@@ -20,15 +20,16 @@ npm run test:sidebars
 | Codex 桌面文件查看器 | `dist/sidebars/inkmap-codex-desktop.zip` |
 | WorkBuddy 自定义菜单 | `dist/sidebars/inkmap-workbuddy.zip` |
 | Qoder 桌面端对话插件 | `dist/sidebars/inkmap-qoder-0.1.0.zip` |
-| Antigravity 2.0 右侧面板插件 | `dist/sidebars/inkmap-antigravity-0.1.0.zip` |
+| Antigravity 2.0 MCP App 插件 | `dist/sidebars/inkmap-antigravity-0.2.0.zip` |
 
 ## Google Antigravity 2.0
 
-解压 `inkmap-antigravity-0.1.0.zip`，在解压后的目录运行 `node install.mjs`（安装到 `~/.gemini/config/plugins/inkmap`）。只构建该插件可运行 `npm run package:antigravity`。
+解压 `inkmap-antigravity-0.2.0.zip`，在解压后的目录运行 `node install.mjs`（安装到 `~/.gemini/config/plugins/inkmap`）。只构建该插件可运行 `npm run package:antigravity`。
 
-安装后有两种打开方式：
-1. 在会话右侧辅助面板点击顶部 `+` 按钮选择 **Inkmap**，从导图工具栏左侧下拉框切换当前工作区或已注册项目中的 `.markmap.md` / `.md` 文件，点击「源码」可在右侧并排打开 Markdown 原文件。
-2. 在对话中请 AI 用 Inkmap 打开指定 Markdown 文件，点击 AI 回复中的 `[Inkmap](sidecar://inkmap/inkmap/)` 胶囊按钮即可在右侧打开对应导图。选中导图节点后可点击「发送到对话」将对应 Markdown 片段附加到当前会话输入框。
+安装后支持以下打开与交互方式：
+1. **AI 自动弹出**：在对话中请 AI 用 Inkmap 打开指定 Markdown 文件，AI 调用 `inkmap_open` 工具后，右侧辅助面板会自动展开或刷新对应思维导图。
+2. **界面直接点开**：点击右侧辅助面板顶部 `+` 按钮选择 **Inkmap**（或点击左侧边栏 **Inkmap**），从导图工具栏左侧下拉框切换当前工作区或已注册项目中的 `.markmap.md` / `.md` 文件；点击「左MD/右导图」可开启源码与导图同屏对比编辑，点击「原文件」可在右侧并排打开原生文件视图。
+3. **节点发送到对话**：选中导图节点后点击「发送到对话」，可将对应 Markdown 片段作为上下文胶囊附加到当前会话输入框。
 
 ## Qoder 桌面端
 

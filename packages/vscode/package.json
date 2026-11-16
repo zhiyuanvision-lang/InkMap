@@ -4,6 +4,11 @@
   "description": "%description%",
   "version": "0.2.4",
   "publisher": "inkmap",
+  "homepage": "https://zhiyuanv.com/software.html",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zhiyuanvision-lang/InkMap.git"
+  },
   "license": "SEE LICENSE IN LICENSE.md",
   "private": true,
   "icon": "images/icon.png",

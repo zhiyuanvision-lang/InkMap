@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "inkmap": {
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/server.cjs"]
+    }
+  }
+}

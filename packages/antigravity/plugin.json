@@ -1,9 +1,11 @@
 {
   "name": "inkmap",
   "displayName": "Inkmap",
-  "version": "0.1.0",
-  "description": "将本地工作区中的 Markdown (.md, .markmap.md) 大纲作为可交互的思维导图在 Antigravity 右侧辅助面板中打开与实时编辑。Open and edit local Markdown outlines as mind maps in the Antigravity side pane.",
+  "version": "0.2.0",
+  "description": "MCP App mind map editor for local Markdown (.md, .markmap.md) outlines: auto-opens in the Antigravity side pane with live file write-back and Mermaid diagram editing. 在右侧面板自动打开并实时编辑 Markdown 思维导图。",
   "logo": "assets/logo.svg",
+  "homepage": "https://www.zhiyuanv.com/software.html",
+  "repository": "https://github.com/zhiyuanvision-lang/InkMap",
   "suggestedPrompts": [
     "用 Inkmap 在右侧打开当前项目的 Markdown 思维导图",
     "把这份设计文档整理成 Markdown 大纲并用 Inkmap 打开",

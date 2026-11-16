@@ -3,7 +3,7 @@
   "args": ["main.mjs"],
   "restart_policy": "always",
   "display_name": "Inkmap",
-  "description": "Interactive mind map editor for local Markdown (.md, .markmap.md) outlines with live file write-back in the Antigravity auxiliary pane.",
+  "description": "Interactive mind map editor for local Markdown (.md, .markmap.md) outlines with live file write-back in the Antigravity auxiliary pane and sidebar.",
   "has_web_ui": true,
   "agent_permissions": {
     "allows_user_interactions": false
@@ -14,6 +14,11 @@
       {
         "path": "/",
         "entrypoint": "SIDECAR_UI_ENTRYPOINT_AUX_PANE",
+        "title": "Inkmap"
+      },
+      {
+        "path": "/?view=sidebar",
+        "entrypoint": "SIDECAR_UI_ENTRYPOINT_SIDEBAR",
         "title": "Inkmap"
       }
     ]

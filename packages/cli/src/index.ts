@@ -1,17 +1,24 @@
 import { spawn } from "node:child_process";
+import { delimiter, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { PRODUCT, YUNFAN_BILLING_ORIGIN } from "@inkmap/core";
 import { adFeed, fileSessionStorage, licenseService } from "./license.js";
 import { fileSource, serve } from "./server.js";
 
+export const INKMAP_VERSION = "0.2.4";
 const WEB_ROOT = fileURLToPath(new URL("./web/", import.meta.url));
 
-const USAGE = `用法：inkmap <文件.md> [--port 端口] [--no-open] [--sidebar [--sidebar-purchase]]
+const USAGE = `Inkmap v${INKMAP_VERSION} — Markdown 交互思维导图编辑器 & MCP App
 
-在浏览器中以思维导图编辑 Markdown 大纲，修改会写回该文件；
-文件在别处被修改时，页面会自动刷新。
---sidebar 输出可粘贴到侧栏浏览器的本机地址。
---sidebar-purchase 在支持外部结账的侧栏启用购买入口。`;
+用法 / Usage：
+  npx -y inkmap-mcp@latest install [claude|claude-code|cursor|antigravity|codex] [--workspace <目录>]
+      一键自动检测并配置本机 AI 客户端（支持 Ubuntu / macOS / Windows）
+  npx -y inkmap-mcp@latest uninstall [客户端...]
+      从指定或全部客户端移除 Inkmap 配置
+  npx -y inkmap-mcp@latest mcp [--workspace <目录>]
+      以标准 MCP App (stdio) 模式启动服务
+  npx -y inkmap-mcp@latest <文件.md> [--port 端口] [--no-open] [--sidebar [--sidebar-purchase]]
+      在本地浏览器中以思维导图打开并实时双向编辑 Markdown 文件`;
 
 function openBrowser(url: string) {
   const [cmd, args] =
@@ -19,11 +26,52 @@ function openBrowser(url: string) {
   spawn(cmd, args, { stdio: "ignore", detached: true }).unref();
 }
 
+function appendEnvWorkspaces(dirs: string[]) {
+  if (dirs.length === 0) return;
+  const resolved = dirs.map(d => resolve(d));
+  const current = (process.env.INKMAP_WORKSPACES || "").split(delimiter).filter(Boolean);
+  process.env.INKMAP_WORKSPACES = [...new Set([...current, ...resolved])].join(delimiter);
+}
+
 export async function main(argv: string[]) {
-  if (argv.length === 1 && argv[0] === "mcp") {
+  if (argv.length === 0 && !process.stdin.isTTY) {
     const { serveCodex } = await import("./codex.js");
     return serveCodex();
   }
+  if (argv[0] === "-v" || argv[0] === "--version") {
+    console.log(INKMAP_VERSION);
+    return;
+  }
+  if (argv[0] === "install") {
+    const { runInstallCli } = await import("./install.js");
+    return runInstallCli(argv.slice(1), false);
+  }
+  if (argv[0] === "uninstall") {
+    const { runInstallCli } = await import("./install.js");
+    return runInstallCli(argv.slice(1), true);
+  }
+  if (argv[0] === "mcp") {
+    const extraWorkspaces: string[] = [];
+    for (let i = 1; i < argv.length; i++) {
+      const arg = argv[i];
+      if (arg === "-w" || arg === "--workspace") {
+        const val = argv[++i];
+        if (!val) throw new Error("--workspace 需要目录路径");
+        extraWorkspaces.push(...val.split(delimiter).filter(Boolean));
+      } else if (arg.startsWith("--workspace=")) {
+        extraWorkspaces.push(...arg.slice("--workspace=".length).split(delimiter).filter(Boolean));
+      } else if (arg === "-h" || arg === "--help") {
+        console.log(USAGE);
+        return;
+      } else {
+        throw new Error(`未知 mcp 参数：${arg}\n\n${USAGE}`);
+      }
+    }
+    appendEnvWorkspaces(extraWorkspaces);
+    const { serveCodex } = await import("./codex.js");
+    return serveCodex();
+  }
+
   let file: string | undefined;
   let port: number | undefined;
   let open = true;

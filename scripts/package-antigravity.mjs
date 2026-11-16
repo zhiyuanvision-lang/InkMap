@@ -7,8 +7,10 @@ import { fileURLToPath } from "node:url";
 const root = fileURLToPath(new URL("../", import.meta.url));
 const out = join(root, "dist", "sidebars");
 const source = join(root, "packages", "antigravity");
-const notices = join(root, "packages", "vscode");
+const cli = join(root, "packages", "cli", "dist");
+const codexHtml = join(root, "packages", "web", "dist-codex", "index.html");
 const webDist = join(root, "packages", "web", "dist");
+const notices = join(root, "packages", "vscode");
 const manifest = JSON.parse(await readFile(join(source, "plugin.json"), "utf8"));
 const bundleName = `inkmap-antigravity-${manifest.version}`;
 const filename = `${bundleName}.zip`;
@@ -54,8 +56,11 @@ try {
     .replace(/<link\b[^>]*href="\.\/assets\/index-[^"]+\.css"[^>]*>\s*/g, "")
     .replace("</head>", () => `  <style>${inlinedCss}</style>\n  <script defer src="/app.js"></script>\n</head>`);
 
-  await Promise.all([
+  const [, , , , , , , , , , , , , mcpBuild] = await Promise.all([
+    copyFile(codexHtml, join(cli, "codex.html")),
+    copyFile(codexHtml, join(plugin, "codex.html")),
     copyFile(join(source, "plugin.json"), join(plugin, "plugin.json")),
+    copyFile(join(source, "mcp_config.json"), join(plugin, "mcp_config.json")),
     copyFile(join(source, "README.md"), join(plugin, "README.md")),
     copyFile(join(source, "README.md"), join(bundle, "README.md")),
     copyFile(join(source, "install.mjs"), join(bundle, "install.mjs")),
@@ -64,8 +69,20 @@ try {
     cp(join(source, "skills"), join(plugin, "skills"), { recursive: true }),
     copyFile(join(notices, "images", "icon.svg"), join(plugin, "assets", "logo.svg")),
     copyFile(join(notices, "LICENSE.md"), join(plugin, "LICENSE.md")),
-    copyFile(join(notices, "THIRD_PARTY_NOTICES.md"), join(plugin, "THIRD_PARTY_NOTICES.md")),
     writeFile(join(sidecarWeb, "index.html"), cleanHtml, "utf8"),
+    build({
+      absWorkingDir: root,
+      entryPoints: [join(cli, "codex.js")],
+      bundle: true,
+      platform: "node",
+      target: "node22",
+      format: "cjs",
+      outfile: join(plugin, "server.cjs"),
+      define: { "import.meta.url": "inkmapModuleUrl" },
+      banner: { js: 'const inkmapModuleUrl = require("node:url").pathToFileURL(__filename).href;' },
+      footer: { js: 'module.exports.serveCodex().catch(error => { console.error(error); process.exitCode = 1; });' },
+      metafile: true,
+    }),
     writeFile(join(sidecarWeb, "app.css"), inlinedCss, "utf8"),
     build({
       entryPoints: [join(webDist, "assets", jsEntry)],
@@ -95,6 +112,23 @@ try {
       outfile: join(sidecar, "select.mjs"),
     }),
   ]);
+
+  const licenses = new Set(["node_modules/@openai/mcp-extensions"]);
+  for (const input of Object.keys(mcpBuild.metafile.inputs)) {
+    const p = input.replaceAll("\\", "/");
+    const packageDir = /^(.*node_modules\/(?:@[^/]+\/)?[^/]+)/.exec(p)?.[1];
+    if (packageDir) licenses.add(packageDir);
+  }
+  const bundledLicenses = await Promise.all([...licenses].sort().map(async dir => {
+    const p = join(root, dir);
+    const pkg = JSON.parse(await readFile(join(p, "package.json"), "utf8"));
+    const licenseFile = (await readdir(p)).find(file => /^(licen[cs]e|copying)(\.|$)/i.test(file));
+    if (!licenseFile) throw new Error(`Missing bundled license for ${pkg.name}`);
+    const license = (await readFile(join(p, licenseFile), "utf8")).trim();
+    return `## ${pkg.name} ${pkg.version}\n\n\`\`\`text\n${license}\n\`\`\`\n`;
+  }));
+  const webNotices = await readFile(join(notices, "THIRD_PARTY_NOTICES.md"), "utf8");
+  await writeFile(join(plugin, "THIRD_PARTY_NOTICES.md"), webNotices + "\n" + bundledLicenses.join("\n"));
 
   const archive = join(staging, filename);
   execFileSync("zip", ["-q", "-r", archive, bundleName, "-x", "*/.DS_Store"], { cwd: staging });

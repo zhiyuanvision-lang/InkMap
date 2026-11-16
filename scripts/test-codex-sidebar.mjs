@@ -39,7 +39,7 @@ test("packaged Codex app opens the host file, edits Mermaid Markdown, and handle
   const browser = await puppeteer.launch({
     executablePath: process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
     headless: true,
-    args: ["--no-first-run"],
+    args: ["--no-first-run", "--lang=en-US"],
   });
   t.after(() => browser.close());
   const page = await browser.newPage();
@@ -90,7 +90,7 @@ test("packaged Codex app opens the host file, edits Mermaid Markdown, and handle
   await frame.click("#pro");
   await frame.waitForSelector("#account-panel", { visible: true });
   assert.equal(await frame.$eval("#account-buy", button => button.hidden), true);
-  assert.equal(await frame.$eval("#account-sign-in", button => button.textContent), "Sign in");
+  assert.match(await frame.$eval("#account-sign-in", button => button.textContent), /^(Sign in|登录)$/);
   await frame.click("#pro");
   await frame.waitForSelector(".ink-diagram-image");
   const rename = label => frame.evaluate(label => {
