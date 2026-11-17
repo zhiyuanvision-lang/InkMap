@@ -104,7 +104,7 @@ async function findGitRoot(filePath: string): Promise<string> {
 export async function writeTargetSelection(
   filePath: string,
   workspaceDir?: string,
-  extra?: { openInEditorPane?: boolean },
+  extra?: { openInEditorPane?: boolean; editorUrl?: string },
 ) {
   const real = await realpath(filePath);
   const info = await lstat(real);
@@ -122,6 +122,7 @@ export async function writeTargetSelection(
     seq: Date.now(),
     updatedAt: new Date().toISOString(),
     ...(extra?.openInEditorPane && { openInEditorPane: true }),
+    ...(extra?.editorUrl && { editorUrl: extra.editorUrl }),
   };
   const tmp = `${statePath}.${process.pid}.${Date.now()}`;
   try {

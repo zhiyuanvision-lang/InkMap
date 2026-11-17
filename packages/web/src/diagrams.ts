@@ -43,25 +43,20 @@ async function initEngine() {
       suppressErrorRendering: true,
       maxTextSize: 50_000,
       maxEdges: 500,
-      layout: "elk",
       look: "classic",
       theme: "base",
       fontFamily: FONT_FAMILY,
       fontSize: 13,
       flowchart: {
         htmlLabels: false,
-        wrappingWidth: 210,
-        minNodeWidth: 88,
-        padding: 11,
-        diagramPadding: 12,
-        subGraphTitleMargin: { top: 8, bottom: 10 },
-      },
-      elk: {
-        mergeEdges: false,
-        layeringStrategy: "COFFMAN_GRAHAM",
-        layeringLayerBound: 3,
-        nodePlacementStrategy: "BRANDES_KOEPF",
-        cycleBreakingStrategy: "DEPTH_FIRST",
+        curve: "basis",
+        wrappingWidth: 260,
+        minNodeWidth: 96,
+        nodeSpacing: 36,
+        rankSpacing: 38,
+        padding: 12,
+        diagramPadding: 16,
+        subGraphTitleMargin: { top: 10, bottom: 12 },
       },
       state: {
         padding: 10,
@@ -95,14 +90,14 @@ async function initEngine() {
         noteTextColor: "#1f2329",
       },
       themeCSS: `
-        .node rect, .node circle, .node ellipse, .statediagram-state rect.basic { rx: 8px; ry: 8px; stroke-width: 1.5px; }
-        .node polygon { fill: #fff7e8 !important; stroke: #dc8b28 !important; stroke-width: 1.5px !important; stroke-linejoin: round; }
-        .cluster rect { fill: #f8fafc !important; stroke: #cbd5e1 !important; stroke-width: 1.2px !important; stroke-dasharray: 5 3; rx: 10px; ry: 10px; }
-        .cluster-label text, .cluster text { font-weight: 600 !important; fill: #334155 !important; }
+        .node rect, .node circle, .node ellipse, .statediagram-state rect.basic { rx: 10px; ry: 10px; stroke-width: 1.5px; }
+        .node polygon { fill: #fffbeb !important; stroke: #d97706 !important; stroke-width: 1.6px !important; stroke-linejoin: round; }
+        .cluster rect { fill: #f8fafc !important; stroke: #cbd5e1 !important; stroke-width: 1.3px !important; stroke-dasharray: 6 4; rx: 12px; ry: 12px; }
+        .cluster-label text, .cluster text { font-weight: 650 !important; fill: #1e293b !important; font-size: 13px !important; }
         .edgePaths path, .transition { stroke: #64748b !important; stroke-width: 1.5px !important; }
         .arrowheadPath, marker path { fill: #64748b !important; stroke: #64748b !important; }
-        .edgeLabel rect, .labelBkg { fill: #ffffff !important; stroke: #e2e8f0 !important; stroke-width: 0.8px !important; opacity: 0.96 !important; rx: 4px; ry: 4px; }
-        .edgeLabel text, .edgeLabel tspan { fill: #475569 !important; font-size: 11.5px !important; }
+        .edgeLabel rect, .labelBkg { fill: #ffffff !important; stroke: #e2e8f0 !important; stroke-width: 1px !important; opacity: 0.98 !important; rx: 6px; ry: 6px; }
+        .edgeLabel text, .edgeLabel tspan { fill: #334155 !important; font-size: 11.5px !important; font-weight: 500 !important; }
       `,
     });
     return engine;

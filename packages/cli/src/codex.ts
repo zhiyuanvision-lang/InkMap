@@ -44,7 +44,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   const fallbackEditors = new Map<string, Promise<Served>>();
   const ads = adFeed(PRODUCT.adFeedUrl);
   const workspaces = createMcpWorkspaceManager();
-  const server = new McpServer({ name: "inkmap", version: "0.2.9" });
+  const server = new McpServer({ name: "inkmap", version: "0.3.0" });
 
   function isAntigravityHost(): boolean {
     const clientName = server.server.getClientVersion()?.name ?? "";
@@ -199,7 +199,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     const summary = ackedByExtension && opened.currentFile
       ? `Opened ${opened.currentFile} in the editor pane as an Inkmap mind map.`
       : cursorHost && editorUrl && opened.currentFile
-        ? `Opened ${opened.currentFile} in Inkmap at ${editorUrl}. IMPORTANT: Call the open_resource tool from cursor-app-control with uri "${editorUrl}" so the mind map opens directly in the right-hand editor pane.`
+        ? `Opened ${opened.currentFile} in Inkmap at ${editorUrl}. IMPORTANT: Immediately call browser_navigate (from cursor-ide-browser) with {"url": "${editorUrl}", "newTab": true, "position": "side"} so the mind map opens and activates visibly in the right-hand preview pane (fallback to open_resource with uri "${editorUrl}" only if browser_navigate is unavailable), and include the clickable link [在右侧预览区打开思维导图](${editorUrl}) in your reply.`
         : editorUrl
           ? `Opened ${opened.currentFile} in Inkmap interactive mind map at ${editorUrl} (live two-way synced with your Markdown file).`
           : opened.currentFile
@@ -215,6 +215,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
         targetSeq: opened.targetSeq,
         license: { ...license },
         ...(openInRightEditor && { openedInEditorPane: true }),
+        ...(ackedByExtension && { ackedByExtension: true }),
         ...(editorUrl && { editorUrl }),
         ...(includeDoc && { doc: opened.doc }),
       },
@@ -323,7 +324,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
       openInEditorPane: true,
       ...(url && { editorUrl: url }),
     });
-    const acked = await waitForEditorBridgeAck(payload.seq, 2000);
+    const acked = await waitForEditorBridgeAck(payload.seq, 450);
     if (acked) {
       return { content: [], structuredContent: { ok: true, handledBy: "extension", url: url ?? "" } };
     }

@@ -175,7 +175,7 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     const hasLeaf = page =>
       page.evaluate(() => {
         let hit = false;
-        const walk = n => ((hit ||= n.getData("text") === "l4"), (n.children ?? []).forEach(walk));
+        const walk = n => { if (n) { hit ||= n.getData("text") === "l4"; (n.children ?? []).forEach(walk); } };
         walk(window.inkmap.mindMap.renderer.root);
         return hit;
       });

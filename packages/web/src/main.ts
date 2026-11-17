@@ -125,6 +125,7 @@ export async function start(host: Host) {
     diagramPanning = null;
     diagramStage.classList.remove("is-panning");
     diagramModal.hidden = true;
+    try { document.body.focus({ preventScroll: true }); } catch {}
   };
   $("#diagram-zoom-in").addEventListener("click", () => zoomDiagramBy(1.25));
   $("#diagram-zoom-out").addEventListener("click", () => zoomDiagramBy(1 / 1.25));
@@ -272,6 +273,24 @@ export async function start(host: Host) {
     if (r.width >= 160 && r.height >= 160) hadRealMapRect = true;
   }
 
+  document.body.tabIndex = -1;
+  document.body.style.outline = "none";
+  const nodeMenu = $("#node-menu");
+  const exportMenu = $("#export-menu");
+  let menuNodes: any[] = [];
+  const hideMenus = () => {
+    nodeMenu.hidden = true;
+    exportMenu.hidden = true;
+    menuNodes = [];
+  };
+  const isExternalTextInput = (el: EventTarget | Element | null): boolean => {
+    if (!(el instanceof Element)) return false;
+    if (el.classList.contains("smm-node-edit-wrap")) return false;
+    const tag = el.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON" || tag === "A") return true;
+    return (el as HTMLElement).isContentEditable === true;
+  };
+
   const mindMap = new MindMap({
     el: mapEl,
     readonly: readOnly(),
@@ -281,6 +300,19 @@ export async function start(host: Host) {
     nodeTextEditZIndex: 5,
     enableShortcutOnlyWhenMouseInSvg: false,
     enableAutoEnterTextEditWhenKeydown: true,
+    customCheckEnableShortcut: (e: KeyboardEvent) => {
+      if (!diagramModal.hidden || document.documentElement.classList.contains("presenting")) return false;
+      const upgradeEl = document.getElementById("upgrade");
+      if (upgradeEl && !upgradeEl.hidden) return false;
+      const accountPanel = document.getElementById("account-panel");
+      if (accountPanel && !accountPanel.hidden) return false;
+      if (isExternalTextInput(e.target) || isExternalTextInput(document.activeElement)) return false;
+      return true;
+    },
+    beforeShortcutRun: () => {
+      hideMenus();
+      return false;
+    },
     defaultInsertSecondLevelNodeText: t("newTopic"),
     defaultInsertBelowSecondLevelNodeText: t("newTopic"),
     isShowCreateChildBtnIcon: false,
@@ -413,6 +445,12 @@ export async function start(host: Host) {
     }
   }
 
+  async function flushSave() {
+    clearTimeout(saveTimer);
+    saveTimer = 0;
+    await (saving = saving.then(save));
+  }
+
   /** Replaces the map with `md`, keeping folds; `local` edits are then saved like any other edit. */
   async function load(md: string, local: boolean) {
     finishInlineEdit(false);
@@ -430,7 +468,7 @@ export async function start(host: Host) {
   }
 
   async function applyExternal(next: DocState) {
-    if (next.md === lastMd && next.writable === doc.writable) {
+    if (next.name === doc.name && next.md === lastMd && next.writable === doc.writable) {
       doc = next;
       return;
     }
@@ -454,8 +492,10 @@ export async function start(host: Host) {
     scheduleSave();
   });
   host.onExternalChange(next => {
+    const switchedDoc = next.name !== doc.name;
+    if (switchedDoc) clearTimeout(saveTimer);
     saving = saving.then(async () => {
-      const localChanges = currentMarkdown() !== savedMap && next.md !== lastMd;
+      const localChanges = !switchedDoc && currentMarkdown() !== savedMap && next.md !== lastMd;
       await applyExternal(next);
       if (localChanges) showToast(t("conflict"));
     }).catch(err => showToast(String(err instanceof Error ? err.message : err)));
@@ -476,6 +516,7 @@ export async function start(host: Host) {
   mindMap.on("hide_text_edit", (_el: unknown, _list: unknown, node: any) => {
     const text = String(node?.getData("text") ?? "");
     if (node && isRich(text)) setMarkdown(node, text);
+    blurExternalInput();
   });
 
   function openSource(node: any, focus = true) {
@@ -489,6 +530,7 @@ export async function start(host: Host) {
     sourceNode = null;
     source.hidden = true;
     sourceText.blur();
+    blurExternalInput();
   }
 
   const sourceTimers = new WeakMap<object, number>();
@@ -514,14 +556,37 @@ export async function start(host: Host) {
     if (!anchor.isConnected) return finishInlineEdit(false);
     const rect = anchor.getBoundingClientRect();
     const availableWidth = Math.max(1, innerWidth - 16);
-    const availableHeight = Math.max(32, innerHeight - 16);
-    const width = Math.min(availableWidth, Math.max(rect.width, 156));
+    const availableHeight = Math.max(36, innerHeight - 24);
+    const width = Math.min(availableWidth, Math.max(rect.width, 180));
     const multiline = inlineOriginal.includes("\n") || inlineEdit.value.includes("\n");
-    const height = Math.min(availableHeight, multiline ? Math.max(80, Math.min(rect.height, 240)) : Math.max(rect.height, 32));
     inlineEdit.style.width = `${width}px`;
+    inlineEdit.style.height = "auto";
+    const desiredHeight = Math.max(rect.height, inlineEdit.scrollHeight + 2, multiline ? 88 : 34);
+    const height = Math.min(availableHeight, desiredHeight);
     inlineEdit.style.height = `${height}px`;
     inlineEdit.style.left = `${Math.max(8, Math.min(rect.left, innerWidth - width - 8))}px`;
     inlineEdit.style.top = `${Math.max(8, Math.min(rect.top, innerHeight - height - 8))}px`;
+  }
+
+  function openInlineEdit(node: any) {
+    if (!node || readOnly()) return;
+    finishInlineEdit(true);
+    const draft = sourceNode === node ? sourceText.value : markdownOf(node.getData());
+    closeSource();
+    inlineNode = node;
+    inlineOriginal = markdownOf(node.getData());
+    inlineNumberedLabel = /^\d+\\[.)]\s/.test(draft);
+    inlineEdit.value = inlineNumberedLabel ? draft.replace(/^(\d+)\\([.)])/, "$1$2") : draft;
+    inlineEdit.setAttribute("aria-label", t("editNode"));
+    inlineEdit.hidden = false;
+    placeInlineEdit();
+    inlineEdit.focus({ preventScroll: true });
+    if (inlineOriginal.includes("\n") || inlineEdit.value.length > 80) {
+      const end = inlineEdit.value.length;
+      inlineEdit.setSelectionRange(end, end);
+    } else {
+      inlineEdit.select();
+    }
   }
 
   function finishInlineEdit(commit: boolean) {
@@ -535,6 +600,7 @@ export async function start(host: Host) {
       clearTimeout(sourceTimers.get(node));
       void setMarkdown(node, markdown);
     }
+    blurExternalInput();
   }
 
   inlineEdit.addEventListener("blur", () => finishInlineEdit(true));
@@ -542,8 +608,10 @@ export async function start(host: Host) {
   inlineEdit.addEventListener("keydown", event => {
     event.stopPropagation();
     if (event.isComposing) return;
-    const submit = event.key === "Enter" && (event.metaKey || event.ctrlKey ||
-      (!event.shiftKey && !inlineOriginal.includes("\n") && !inlineEdit.value.includes("\n")));
+    const multiline = inlineOriginal.includes("\n") || inlineEdit.value.includes("\n");
+    const submit =
+      (event.key === "Enter" && (event.metaKey || event.ctrlKey || (!event.shiftKey && !multiline))) ||
+      (event.key === "Tab" && !multiline);
     if (submit || event.key === "Escape") {
       event.preventDefault();
       finishInlineEdit(submit);
@@ -554,22 +622,11 @@ export async function start(host: Host) {
 
   mindMap.on("node_dblclick", (node: any) => {
     if (!node.getData("rich") || readOnly()) return;
-    finishInlineEdit(true);
-    const draft = sourceNode === node ? sourceText.value : markdownOf(node.getData());
-    closeSource();
-    inlineNode = node;
-    inlineOriginal = markdownOf(node.getData());
-    inlineNumberedLabel = /^\d+\\[.)]\s/.test(draft);
-    inlineEdit.value = inlineNumberedLabel ? draft.replace(/^(\d+)\\([.)])/, "$1$2") : draft;
-    inlineEdit.setAttribute("aria-label", t("editNode"));
-    inlineEdit.hidden = false;
-    placeInlineEdit();
-    inlineEdit.focus({ preventScroll: true });
-    inlineEdit.select();
+    openInlineEdit(node);
   });
   mindMap.on("node_active", (node: any, list: any[]) => {
     if (source.hidden) return;
-    if (list.length === 1) openSource(list[0], !revealing);
+    if (list.length === 1) openSource(list[0], false);
     else sourceText.value = "";
   });
 
@@ -611,12 +668,20 @@ export async function start(host: Host) {
   const blurExternalInput = () => {
     const activeEl = document.activeElement;
     if (
-      activeEl instanceof HTMLElement &&
+      activeEl &&
       activeEl !== document.body &&
       !activeEl.classList.contains("smm-node-edit-wrap") &&
       activeEl !== inlineEdit
     ) {
-      activeEl.blur();
+      if (typeof (activeEl as HTMLElement).blur === "function") {
+        (activeEl as HTMLElement).blur();
+      }
+    }
+    if (document.activeElement !== inlineEdit && !document.activeElement?.classList.contains("smm-node-edit-wrap")) {
+      try {
+        window.focus();
+        document.body.focus({ preventScroll: true });
+      } catch {}
     }
   };
   mindMap.on("node_mousedown", blurExternalInput);
@@ -660,6 +725,16 @@ export async function start(host: Host) {
     else showToast(t("selectNode"));
   };
   mindMap.keyCommand.addShortcut("Control+e", toggleSource);
+  mindMap.keyCommand.addShortcut("F2", () => {
+    const active = mindMap.renderer.activeNodeList;
+    if (active.length === 1 && active[0].getData("rich")) openInlineEdit(active[0]);
+  });
+  mindMap.keyCommand.addShortcut("Enter", () => {
+    const active = mindMap.renderer.activeNodeList;
+    if (!mindMap.renderer.textEdit?.isShowTextEdit?.() && active.length === 1 && active[0].isRoot) {
+      mindMap.execCommand("INSERT_CHILD_NODE");
+    }
+  });
   mindMap.keyCommand.addShortcut("Alt+Up", () => mindMap.execCommand("UP_NODE"));
   mindMap.keyCommand.addShortcut("Alt+Down", () => mindMap.execCommand("DOWN_NODE"));
 
@@ -669,16 +744,45 @@ export async function start(host: Host) {
   };
   mindMap.keyCommand.addShortcut("Shift+/", () => expandSubtree());
 
+  // Run mind-map shortcuts in window capture phase so embedded browser preloads (e.g. Cursor BrowserView)
+  // on document capture phase do not hijack Enter, Tab, Cmd+Z/Y/F/E, or Cmd+Up/Down before simple-mind-map.
+  mindMap.keyCommand.unBindEvent();
+  const onCaptureKeydown = (e: KeyboardEvent) => {
+    if (e.isComposing) return;
+    if (!inlineEdit.hidden && (e.target === inlineEdit || document.activeElement === inlineEdit)) {
+      const multiline = inlineOriginal.includes("\n") || inlineEdit.value.includes("\n");
+      const submit =
+        (e.key === "Enter" && (e.metaKey || e.ctrlKey || (!e.shiftKey && !multiline))) ||
+        (e.key === "Tab" && !multiline);
+      if (submit || e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        finishInlineEdit(submit);
+      }
+      return;
+    }
+    if (mindMap.renderer?.textEdit?.isShowTextEdit?.() && e.key === "Escape") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      mindMap.renderer.textEdit.hideEditTextBox();
+      blurExternalInput();
+      return;
+    }
+    mindMap.keyCommand.onKeydown(e);
+    if (!e.defaultPrevented && mindMap.opt.customCheckEnableShortcut?.(e)) {
+      const active = mindMap.renderer.activeNodeList;
+      if (active.length === 1 && active[0].getData("rich") && mindMap.renderer.textEdit?.checkIsAutoEnterTextEditKey?.(e)) {
+        e.preventDefault();
+        e.stopPropagation();
+        openInlineEdit(active[0]);
+      }
+    }
+  };
+  window.addEventListener("keydown", onCaptureKeydown, true);
+  mindMap.on("beforeDestroy", () => window.removeEventListener("keydown", onCaptureKeydown, true));
+
   // ---- menus ------------------------------------------------------------
 
-  const nodeMenu = $("#node-menu");
-  const exportMenu = $("#export-menu");
-  let menuNodes: any[] = [];
-  const hideMenus = () => {
-    nodeMenu.hidden = true;
-    exportMenu.hidden = true;
-    menuNodes = [];
-  };
   mindMap.on("node_contextmenu", (e: MouseEvent, node: any) => {
     e.preventDefault();
     blurExternalInput();
@@ -1107,6 +1211,10 @@ export async function start(host: Host) {
   if (host.history) {
     mindMap.keyCommand.removeShortcut("Control+z");
     mindMap.keyCommand.removeShortcut("Control+y");
+    mindMap.keyCommand.addShortcut("Control+z", () => host.history!.undo());
+    mindMap.keyCommand.addShortcut("Control+y|Control+Shift+z", () => host.history!.redo());
+  } else {
+    mindMap.keyCommand.addShortcut("Control+Shift+z", () => mindMap.execCommand("FORWARD"));
   }
   click("#undo", () => (host.history ? host.history.undo() : mindMap.execCommand("BACK")));
   click("#redo", () => (host.history ? host.history.redo() : mindMap.execCommand("FORWARD")));
@@ -1145,7 +1253,7 @@ export async function start(host: Host) {
   click("#menu-source", () => {
     const node = menuNodes[0];
     hideMenus();
-    if (node) openSource(node);
+    if (node) openInlineEdit(node);
   });
   click("#menu-expand-subtree", () => {
     const nodes = menuNodes;
@@ -1233,7 +1341,7 @@ export async function start(host: Host) {
     if (status.dataset.state !== "saved") e.preventDefault();
   });
 
-  return { mindMap, currentMarkdown, pro, load };
+  return { mindMap, currentMarkdown, pro, load, flushSave };
 }
 
 export function mount(host: Host) {

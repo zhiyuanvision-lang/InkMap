@@ -10,17 +10,25 @@ html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ink-bg
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", sans-serif; }
 button, input, select { font: inherit; color: inherit; }
 
-#bar { position: fixed; top: 12px; left: 12px; right: 12px; z-index: 36; display: flex; flex-wrap: nowrap; gap: 2px; align-items: center;
-  box-sizing: border-box; background: var(--ui-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  border: 1px solid var(--ui-border); border-radius: 10px; padding: 4px 6px; box-shadow: var(--ui-shadow); font-size: 12.5px; }
-.sep { width: 1px; height: 16px; background: var(--ui-border); margin: 0 4px; flex: none; }
-#bar > button, #bar .dropdown > button, #bar select { border: none; background: transparent; border-radius: 6px; padding: 4px 8px; height: 28px;
-  cursor: pointer; white-space: nowrap; color: var(--ui-text); transition: background .12s ease; }
-#bar > button:hover, #bar .dropdown > button:hover, #bar select:hover { background: var(--ui-hover); }
-#bar .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; padding: 0; color: var(--ui-muted); }
+#bar { position: fixed; top: 12px; left: 12px; right: 12px; z-index: 36; display: flex; flex-wrap: nowrap; gap: 3px; align-items: center;
+  box-sizing: border-box; background: var(--ui-bg); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--ui-border); border-radius: 11px; padding: 5px 8px; box-shadow: var(--ui-shadow); font-size: 12.5px; }
+.sep { width: 1px; height: 15px; background: var(--ui-border-strong); opacity: .7; margin: 0 3px; flex: none; }
+#bar > button, #bar .dropdown > button, #bar select { border: 1px solid transparent; background: transparent; border-radius: 7px; padding: 0 9px; height: 29px;
+  cursor: pointer; white-space: nowrap; color: var(--ui-text); font-weight: 500; transition: background .12s ease, border-color .12s ease, color .12s ease; }
+#bar > button, #bar .dropdown > button { display: inline-flex; align-items: center; gap: 5px; }
+#bar .bar-icon { flex: none; color: var(--ui-muted); transition: color .12s ease; }
+#bar > button:hover .bar-icon, #bar .dropdown > button:hover .bar-icon { color: var(--ui-text); }
+#bar > button:hover, #bar .dropdown > button:hover { background: var(--ui-hover); }
+#bar .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 29px; padding: 0; color: var(--ui-muted); }
 #bar .icon-btn:hover { color: var(--ui-text); }
-#bar select { appearance: none; -webkit-appearance: none; padding-right: 20px; background-repeat: no-repeat; background-position: right 6px center;
+#bar select { appearance: none; -webkit-appearance: none; padding: 0 22px 0 9px; font-size: 12px; font-weight: 520;
+  border-color: var(--ui-border); background-color: color-mix(in srgb, var(--ui-text) 2.5%, transparent);
+  background-repeat: no-repeat; background-position: right 7px center;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='%23646a73' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 3.8 5 6.3l2.5-2.5'/%3E%3C/svg%3E"); }
+#bar select:hover { background-color: var(--ui-hover); border-color: var(--ui-border-strong); }
+#theme-select { max-width: 108px; text-overflow: ellipsis; }
+.language-select { max-width: 82px; text-overflow: ellipsis; }
 :root.dark #bar select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='%239aa0a8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 3.8 5 6.3l2.5-2.5'/%3E%3C/svg%3E"); }
 #bar select option { background: var(--ui-solid); color: var(--ui-text); }
@@ -157,9 +165,10 @@ button, input, select { font: inherit; color: inherit; }
 .menu kbd { font: inherit; font-size: 12px; color: var(--ui-muted); }
 
 #map { position: fixed; inset: 0; width: 100vw; height: 100vh; }
-#node-inline-edit { position: fixed; z-index: 9; box-sizing: border-box; resize: none; padding: 5px 9px; outline: none;
-  background: var(--ui-solid); color: var(--ui-text); border: 1px solid var(--ui-primary); border-radius: 7px;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-primary) 22%, transparent); font-family: inherit; font-size: 14px; line-height: 1.45; }
+#node-inline-edit { position: fixed; z-index: 9; box-sizing: border-box; resize: none; padding: 8px 11px; outline: none; overflow-y: auto;
+  background: var(--ui-solid); color: var(--ui-text); border: 1.5px solid var(--ui-primary); border-radius: 8px;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, .12), 0 0 0 2.5px color-mix(in srgb, var(--ui-primary) 22%, transparent);
+  font-family: inherit; font-size: 13.5px; line-height: 1.5; }
 
 #chat-add { position: fixed; z-index: 35; display: flex; align-items: center; gap: 6px; padding: 4px 8px; font-size: 12px; line-height: 1.3; white-space: nowrap; cursor: pointer;
   color: #e6e8eb; background: #232428; border: 1px solid rgba(255, 255, 255, .14); border-radius: 6px; box-shadow: 0 4px 14px rgba(0, 0, 0, .28); }
@@ -260,10 +269,15 @@ button, input, select { font: inherit; color: inherit; }
 .billing-message[data-state="error"] { background: rgba(220, 38, 38, .08); color: #b42318; }
 :root.dark .billing-message[data-state="error"] { background: rgba(248, 113, 113, .14); color: #fca5a5; }
 
-.phone-sign-in { display: grid; gap: 11px; padding: 14px; box-sizing: border-box; }
+.phone-sign-in { display: grid; gap: 12px; padding: 14px; box-sizing: border-box; }
 .upgrade-card .phone-sign-in { margin-top: 4px; padding: 16px; border: 1px solid var(--ui-border-strong); border-radius: 12px; background: var(--ui-subtle); }
 .phone-sign-in-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.phone-sign-in h3 { margin: 0; font-size: 15px; font-weight: 650; letter-spacing: -.015em; color: var(--ui-text); line-height: 1.3; }
+.phone-sign-in-brand { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.phone-sign-in-badge { width: 32px; height: 32px; border-radius: 9px; flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--ui-primary) 12%, transparent); color: var(--ui-primary);
+  border: 1px solid color-mix(in srgb, var(--ui-primary) 20%, transparent); }
+.phone-sign-in h3 { margin: 0; font-size: 14.5px; font-weight: 650; letter-spacing: -.015em; color: var(--ui-text); line-height: 1.3; }
 .phone-sign-in-sub { margin: 2px 0 0; font-size: 11.5px; color: var(--ui-muted); line-height: 1.35; }
 .phone-sign-in-close { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 26px; height: 26px;
   margin: -2px -4px 0 0; padding: 0; border: none; border-radius: 6px; background: transparent; color: var(--ui-muted);
@@ -272,46 +286,57 @@ button, input, select { font: inherit; color: inherit; }
 .phone-sign-in-close:disabled { opacity: .45; cursor: not-allowed; }
 
 .phone-field { display: grid; gap: 5px; }
-.phone-sign-in label { font-size: 12px; font-weight: 520; color: var(--ui-muted); }
+.phone-sign-in label { font-size: 12px; font-weight: 540; color: var(--ui-muted); }
 
 .phone-input-wrap { position: relative; display: flex; align-items: center; }
-.phone-input-icon { position: absolute; left: 10px; pointer-events: none; color: var(--ui-muted); }
-#sign-in-phone { box-sizing: border-box; width: 100%; height: 36px; padding: 0 10px 0 31px;
-  border: 1px solid var(--ui-border-strong); border-radius: 8px; background: var(--ui-solid);
+.phone-input-icon { position: absolute; left: 11px; pointer-events: none; color: var(--ui-muted); }
+#sign-in-phone { box-sizing: border-box; width: 100%; height: 38px; padding: 0 11px 0 33px;
+  border: 1px solid var(--ui-border-strong); border-radius: 9px; background: var(--ui-solid);
   font-size: 13px; font-variant-numeric: tabular-nums; outline: none;
   transition: border-color .14s ease, box-shadow .14s ease; }
 #sign-in-phone::placeholder, #sign-in-code::placeholder { color: color-mix(in srgb, var(--ui-muted) 72%, transparent); }
 #sign-in-phone:focus { border-color: var(--ui-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 16%, transparent); }
 
-.phone-code-row { display: flex; align-items: center; gap: 4px; height: 36px; padding: 0 4px 0 0; box-sizing: border-box;
-  border: 1px solid var(--ui-border-strong); border-radius: 8px; background: var(--ui-solid);
+.phone-code-row { display: flex; align-items: center; gap: 4px; height: 38px; padding: 0 5px 0 0; box-sizing: border-box;
+  border: 1px solid var(--ui-border-strong); border-radius: 9px; background: var(--ui-solid);
   transition: border-color .14s ease, box-shadow .14s ease; }
 .phone-code-row:focus-within { border-color: var(--ui-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 16%, transparent); }
-#sign-in-code { flex: 1; min-width: 0; height: 100%; padding: 0 10px; border: none; background: transparent;
-  font-size: 13.5px; font-weight: 540; letter-spacing: .06em; font-variant-numeric: tabular-nums; outline: none; }
+#sign-in-code { flex: 1; min-width: 0; height: 100%; padding: 0 11px; border: none; background: transparent;
+  font-size: 14px; font-weight: 600; letter-spacing: .16em; font-variant-numeric: tabular-nums; outline: none; }
 #sign-in-code::placeholder { letter-spacing: normal; font-weight: 400; font-size: 13px; }
-#send-phone-code { flex: none; height: 26px; padding: 0 9px; border: none; border-radius: 6px;
-  background: color-mix(in srgb, var(--ui-primary) 10%, transparent); color: var(--ui-primary);
+#send-phone-code { flex: none; height: 28px; padding: 0 10px; border: none; border-radius: 7px;
+  background: color-mix(in srgb, var(--ui-primary) 11%, transparent); color: var(--ui-primary);
   font-size: 12px; font-weight: 560; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer;
   transition: background .12s ease, color .12s ease; }
-#send-phone-code:hover:not(:disabled) { background: color-mix(in srgb, var(--ui-primary) 17%, transparent); }
+#send-phone-code:hover:not(:disabled) { background: color-mix(in srgb, var(--ui-primary) 18%, transparent); }
 #send-phone-code:disabled { background: transparent; color: var(--ui-muted); cursor: default; font-weight: 480; }
 #send-phone-code:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 0; }
 
-.phone-sign-in .billing-message { margin: 0; padding: 7px 10px; border-radius: 7px; font-size: 12px;
+.phone-sign-in .billing-message { margin: 0; padding: 8px 10px; border-radius: 8px; font-size: 12px; line-height: 1.45;
   background: rgba(16, 185, 129, .09); color: #0f766e; }
 :root.dark .phone-sign-in .billing-message { background: rgba(16, 185, 129, .15); color: #6ee7b7; }
 .phone-sign-in .billing-message[data-state="error"] { background: rgba(220, 38, 38, .08); color: #b42318; }
 :root.dark .phone-sign-in .billing-message[data-state="error"] { background: rgba(248, 113, 113, .14); color: #fca5a5; }
 .phone-sign-in .billing-message[hidden] { display: none; }
 
-.phone-sign-in .buy { min-height: 36px; margin-top: 1px; font-size: 13px; }
+.phone-sign-in .buy { min-height: 38px; margin-top: 1px; font-size: 13px; border-radius: 9px;
+  box-shadow: 0 1px 2px color-mix(in srgb, var(--ui-primary) 26%, transparent); }
+.phone-sign-in-hint { margin: -3px 0 0; text-align: center; font-size: 11px; color: var(--ui-muted); line-height: 1.35; }
 .phone-sign-in-links { display: flex; margin-top: -2px; padding-top: 8px; border-top: 1px solid var(--ui-border); }
 .browser-sign-in-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: 100%; height: 30px;
   padding: 0 8px; border: none; border-radius: 6px; background: transparent; color: var(--ui-muted);
   font-size: 12px; font-weight: 500; cursor: pointer; transition: background .12s ease, color .12s ease; }
 .browser-sign-in-btn:hover:not(:disabled) { background: var(--ui-hover); color: var(--ui-text); }
 .browser-sign-in-btn:disabled { opacity: .55; cursor: wait; }
+
+.popup-fallback-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+.popup-fallback-link, .popup-copy-link { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px;
+  border-radius: 6px; font-size: 11.5px; font-weight: 560; text-decoration: none; cursor: pointer;
+  transition: background .12s ease, border-color .12s ease; }
+.popup-fallback-link { background: var(--ui-primary); color: #fff; border: 1px solid transparent; }
+.popup-fallback-link:hover { filter: brightness(1.06); }
+.popup-copy-link { background: var(--ui-solid); color: var(--ui-text); border: 1px solid var(--ui-border-strong); }
+.popup-copy-link:hover { background: var(--ui-hover); }
 
 .wechat-pay { display: grid; gap: 10px; padding: 14px; box-sizing: border-box; }
 .upgrade-card .wechat-pay { margin-top: 4px; padding: 16px; border: 1px solid var(--ui-border-strong); border-radius: 12px; background: var(--ui-subtle); }

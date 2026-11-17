@@ -6,7 +6,7 @@ import { McpAppHost, type McpWorkspaceSnapshot } from "./mcp-app-host";
 import { sidebarGate, sidebarText } from "./sidebar-shell";
 
 const gate = sidebarGate(sidebarText("正在连接 Inkmap 思维导图面板…", "Connecting to Inkmap mind map panel…"));
-const app = new App({ name: "Inkmap", version: "0.2.9" }, {}, { autoResize: false });
+const app = new App({ name: "Inkmap", version: "0.3.0" }, {}, { autoResize: false });
 const extensions = new OpenAIExtensions(app);
 
 let compactBannerActive = false;
@@ -154,20 +154,11 @@ function mountEditorPaneDelegatedBanner(snapshot: McpWorkspaceSnapshot & { edito
       const data = (res.structuredContent ?? {}) as { handledBy?: string; url?: string };
       if (data.handledBy === "extension") {
         editorBtn.textContent = sidebarText("✓ 已在右侧打开", "✓ Opened in Editor");
-      } else if (data.url) {
-        try {
-          await app.sendMessage({
-            role: "user",
-            content: [{ type: "text", text: `请调用 open_resource 在右侧打开 ${data.url}` }],
-          });
-          editorBtn.textContent = sidebarText("✓ 已在右侧打开", "✓ Opened in Editor");
-        } catch {
-          await app.callServerTool({
-            name: "inkmap_open_browser",
-            arguments: { ...(snapshot.currentFile && { file: snapshot.currentFile }) },
-          }).catch(() => {});
-          editorBtn.textContent = sidebarText("✓ 已打开", "✓ Opened");
+      } else {
+        if (compactBannerActive) {
+          inlineBtn.click();
         }
+        editorBtn.textContent = sidebarText("✓ 已展开导图", "✓ Expanded");
       }
     } catch {
       editorBtn.textContent = sidebarText("打开失败", "Failed");

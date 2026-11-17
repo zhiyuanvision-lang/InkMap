@@ -5,7 +5,7 @@ import { applyI18n, t } from "./i18n";
 export function createPhoneSignIn(
   api: NonNullable<Host["phoneSignIn"]>,
   onSignedIn: (state: LicenseState) => void,
-  openBrowser: () => Promise<void>,
+  openBrowser: () => Promise<boolean>,
 ) {
   const template = document.querySelector<HTMLTemplateElement>("#phone-sign-in-template")!;
   const form = template.content.firstElementChild!.cloneNode(true) as HTMLFormElement;
@@ -33,7 +33,7 @@ export function createPhoneSignIn(
     const seconds = Math.max(0, Math.ceil((retryAt - Date.now()) / 1000));
     title.textContent = t(forPurchase ? "phoneSignInForPay" : "phoneSignIn");
     subtitle.textContent = t(forPurchase ? "phoneSignInForPaySub" : "phoneSignInSub");
-    submit.textContent = t(forPurchase ? "phoneVerifyAndPay" : "signIn");
+    submit.textContent = t(forPurchase ? "phoneVerifyAndPay" : "phoneVerifySubmit");
     send.textContent = seconds ? t("resendPhoneCode", { seconds }) : t("sendPhoneCode");
     send.disabled = busy || seconds > 0;
     submit.disabled = browser.disabled = busy;
@@ -138,11 +138,23 @@ export function createPhoneSignIn(
     code.select();
   });
 
+  code.addEventListener("input", () => {
+    const digits = code.value.replace(/\D+/g, "").slice(0, 6);
+    if (code.value !== digits) code.value = digits;
+  });
+
   cancel.addEventListener("click", () => close(true));
-  browser.addEventListener("click", () => {
+  browser.addEventListener("click", async () => {
     if (busy) return;
-    close();
-    void openBrowser();
+    busy = true;
+    render();
+    try {
+      const opened = await openBrowser();
+      if (opened) close();
+    } finally {
+      busy = false;
+      if (form.isConnected) render();
+    }
   });
 
   return {

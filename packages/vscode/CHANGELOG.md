@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.3.0
+
+- **Cursor Right-Pane Instant Preview**: Opening a Markdown mind map via MCP App in Cursor now instructs the agent to auto-open the right-side Browser Preview (`browser_navigate` with `side: true`) on the same turn, and renders a direct clickable preview link on the compact banner so clicking **Open in Right Pane** opens the preview immediately without sending an extra chat prompt.
+- **Full Mind Map Keyboard Shortcuts**: Moved mind map shortcut dispatch (`Tab`, `Enter`, `⇧Tab`, `⌘↑` / `⌘↓`, `⌘E`, `⇧/`, `⌫`, `⌘Z` / `⌘⇧Z`, `F2`, and direct typing) to the `window` capture phase so shortcuts work reliably inside Cursor BrowserView without focus-stealing from the left Markdown pane.
+- **One-Click Email Magic-Link Checkout & 10-Minute Code Validity**: Clicking the purchase button in verification emails now pre-verifies the recipient email and jumps straight to Step 2 payment with a unified 10-minute verification window.
+
 ## 0.2.9
 
 - Unified Email verification code registration & sign-in for both domestic and international users, plus automatic language/timezone detection (`zh` / `Asia/Shanghai`).

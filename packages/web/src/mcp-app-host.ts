@@ -2,6 +2,7 @@ import type { App } from "@modelcontextprotocol/ext-apps";
 import type { LicenseState, PhoneSignInResult, ViewState } from "@inkmap/core";
 import { z } from "zod";
 import { browserLocale, type ChatTarget, type DocState, type Host, type HostCapabilities, type SaveResult } from "./host";
+import { revealMarkdownLines } from "./md-lines";
 import { downloadFile, sidebarText } from "./sidebar-shell";
 
 interface McpFileEntry {
@@ -684,7 +685,7 @@ export class McpAppHost implements Host {
         border: 0; outline: none; resize: none;
         padding: 12px 12px; background: transparent; color: var(--ui-text, #1f2329);
         font: 13px/20.8px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        tab-size: 2; overflow-y: auto;
+        tab-size: 2; white-space: pre; overflow: auto;
       }
       #ag-md-resizer {
         position: absolute; top: 0; right: 0; bottom: 0; width: 5px; z-index: 5; cursor: col-resize;
@@ -977,6 +978,12 @@ export class McpAppHost implements Host {
 
   async switchFile(filePath: string) {
     if (!filePath || filePath === this.currentFile) return;
+    if (this.mdEditTimer) {
+      window.clearTimeout(this.mdEditTimer);
+      this.mdEditTimer = 0;
+      await (window as any).inkmap?.load?.(this.currentMd, true);
+    }
+    await (window as any).inkmap?.flushSave?.();
     const data = await this.callTool("inkmap_doc_open", { path: filePath });
     if (!data.doc) return;
     this.applySnapshot(data, data.doc);
@@ -1111,23 +1118,7 @@ export class McpAppHost implements Host {
     this.activeStartLine = Math.max(0, line);
     this.activeEndLine = Math.max(this.activeStartLine, endLine);
     if (!this.mdTextareaEl || !this.splitOpen) return;
-    const lines = this.mdTextareaEl.value.split("\n");
-    const sLine = Math.min(this.activeStartLine, Math.max(0, lines.length - 1));
-    const eLine = Math.min(this.activeEndLine, Math.max(0, lines.length - 1));
-    let startOffset = 0;
-    for (let i = 0; i < sLine; i++) startOffset += lines[i]!.length + 1;
-    let endOffset = startOffset;
-    for (let i = sLine; i <= eLine; i++) {
-      endOffset += lines[i]!.length + (i < eLine ? 1 : 0);
-    }
-    if (document.activeElement === this.mdTextareaEl) {
-      try {
-        this.mdTextareaEl.setSelectionRange(startOffset, endOffset);
-      } catch {}
-    }
-    const lineHeight = 20.8;
-    const targetScroll = Math.max(0, sLine * lineHeight - this.mdTextareaEl.clientHeight * 0.35);
-    this.mdTextareaEl.scrollTop = targetScroll;
+    revealMarkdownLines(this.mdTextareaEl, this.activeStartLine, this.activeEndLine);
     this.renderMdGutterAndBand();
   }
 

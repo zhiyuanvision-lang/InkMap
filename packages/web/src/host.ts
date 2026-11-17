@@ -425,6 +425,12 @@ export class HttpHost implements Host {
 
   private async switchFile(filePath: string) {
     if (!filePath || filePath === this.currentFile) return;
+    if (this.mdEditTimer) {
+      window.clearTimeout(this.mdEditTimer);
+      this.mdEditTimer = 0;
+      await (window as any).inkmap?.load?.(this.currentMd, true);
+    }
+    await (window as any).inkmap?.flushSave?.();
     const res = await fetch(this.base + "api/open", {
       method: "POST",
       headers: { "content-type": "application/json" },

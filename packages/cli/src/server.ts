@@ -161,7 +161,7 @@ async function writeDiskViewState(key: string, state: ViewState): Promise<void> 
 }
 
 export async function fileSource(file: string, log: (msg: string) => void = () => {}): Promise<DocSource> {
-  const path = resolve(file);
+  const path = await realpath(resolve(file)).catch(() => resolve(file));
   if (!(await stat(path)).isFile()) throw new Error(`不是文件：${path}`);
   const dir = dirname(path);
   return {
