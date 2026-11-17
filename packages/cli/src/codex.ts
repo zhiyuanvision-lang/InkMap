@@ -44,7 +44,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   const fallbackEditors = new Map<string, Promise<Served>>();
   const ads = adFeed(PRODUCT.adFeedUrl);
   const workspaces = createMcpWorkspaceManager();
-  const server = new McpServer({ name: "inkmap", version: "0.2.8" });
+  const server = new McpServer({ name: "inkmap", version: "0.2.9" });
 
   function isAntigravityHost(): boolean {
     const clientName = server.server.getClientVersion()?.name ?? "";
@@ -56,6 +56,15 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   function isCursorHost(): boolean {
     const clientName = server.server.getClientVersion()?.name ?? "";
     return /cursor/i.test(clientName);
+  }
+
+  function detectMcpHost(): string {
+    if (isAntigravityHost()) return "antigravity";
+    const clientName = (server.server.getClientVersion()?.name ?? "").toLowerCase();
+    if (clientName.includes("cursor")) return "cursor";
+    if (clientName.includes("codex")) return "codex";
+    if (clientName.includes("windsurf")) return "windsurf";
+    return "mcp";
   }
 
   function hasIdeEditorExtension(): boolean {
@@ -170,6 +179,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
       },
     },
   }, async ({ path, workspace }) => {
+    billing.track?.("doc_open", 1, detectMcpHost());
     const cursorHost = isCursorHost();
     const openInRightEditor = hasIdeEditorExtension() || cursorHost;
     const [opened, license] = await Promise.all([
@@ -221,6 +231,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     annotations: { readOnlyHint: true },
     _meta: appOnly,
   }, async ({ path, workspace }) => {
+    billing.track?.("doc_open", 1, detectMcpHost());
     const [opened, license] = await Promise.all([
       workspaces.open({ path, workspace, fromModel: false }),
       billing.state(),
@@ -266,6 +277,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
       throw new Error("Inkmap 免费试用已到期，请登录已购账号恢复 Pro 权益。");
     }
     const saved = await workspaces.save({ file, md, baseVersion });
+    if (saved.ok) billing.track?.("doc_edit", 1, detectMcpHost());
     return { content: [], structuredContent: { ...saved } };
   });
 
@@ -306,12 +318,15 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   }, async ({ file }) => {
     const opened = await workspaces.open({ path: file, fromModel: false });
     if (!opened.currentFile) throw new Error("未选择 Markdown 文件。");
-    const payload = await writeTargetSelection(opened.currentFile, undefined, { openInEditorPane: true });
-    const acked = await waitForEditorBridgeAck(payload.seq, 280);
-    if (acked) {
-      return { content: [], structuredContent: { ok: true, handledBy: "extension" } };
-    }
     const url = await openFallbackBrowserEditor(opened.currentFile, false);
+    const payload = await writeTargetSelection(opened.currentFile, undefined, {
+      openInEditorPane: true,
+      ...(url && { editorUrl: url }),
+    });
+    const acked = await waitForEditorBridgeAck(payload.seq, 2000);
+    if (acked) {
+      return { content: [], structuredContent: { ok: true, handledBy: "extension", url: url ?? "" } };
+    }
     return { content: [], structuredContent: { ok: true, handledBy: "glass", url: url ?? "" } };
   });
 

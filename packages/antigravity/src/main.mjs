@@ -168,7 +168,7 @@ export function createAntigravitySidecar({
   webRoot = defaultWebRoot,
   billingOrigin = () => process.env.INKMAP_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN,
 } = {}) {
-  const license = licenseService(fileSessionStorage(), billingOrigin, { loginOnly: true });
+  const license = licenseService(fileSessionStorage(), billingOrigin, { loginOnly: true, host: "antigravity" });
   let activeFile = null;
 
   async function allowedRoots(workspaceUris = []) {
@@ -351,6 +351,7 @@ export function createAntigravitySidecar({
       };
     }
     activeFile = chosen;
+    license.track?.("doc_open", 1, "antigravity");
     const { doc } = await readDocState(chosen);
     return {
       files,
@@ -366,6 +367,7 @@ export function createAntigravitySidecar({
     const workspaceUris = Array.isArray(data?.workspaceUris) ? data.workspaceUris : [];
     const file = await assertAllowedMarkdownFile(data?.file, workspaceUris);
     activeFile = file;
+    license.track?.("doc_open", 1, "antigravity");
     const [{ doc }, { files, target }] = await Promise.all([
       readDocState(file),
       collectFiles(workspaceUris),
@@ -424,8 +426,15 @@ export function createAntigravitySidecar({
     }
     if (md !== doc.md) {
       await source.write(md);
+      license.track?.("doc_edit", 1, "antigravity");
     }
     return { ok: true, version: hash(md) };
+  }, "POST");
+
+  app.api("/api/telemetry", async data => {
+    const ev = typeof data?.event === "string" ? data.event : "";
+    if (ev) license.track?.(ev, 1, "antigravity");
+    return { ok: true };
   }, "POST");
 
   app.api("/api/view", async data => {

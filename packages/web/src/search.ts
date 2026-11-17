@@ -19,9 +19,10 @@ export interface SearchDeps {
   showToast(text: string): void;
   /** Rewrites the Markdown of matching nodes (all of them, or only `uid`) and returns how many changed. */
   rewrite(change: (md: string) => string | null, uid?: string): Promise<number>;
+  onReplace?(): void;
 }
 
-export function createSearch({ mindMap, pro, showToast, rewrite }: SearchDeps) {
+export function createSearch({ mindMap, pro, showToast, rewrite, onReplace }: SearchDeps) {
   const bar = $("#search");
   const findInput = $<HTMLInputElement>("#find-input");
   const replaceInput = $<HTMLInputElement>("#replace-input");
@@ -91,6 +92,7 @@ export function createSearch({ mindMap, pro, showToast, rewrite }: SearchDeps) {
     const uid = all ? undefined : matches[index];
     if (!all && !uid) return;
     const n = await rewrite(md => replaceText(md, find, replaceInput.value), uid);
+    if (n > 0) onReplace?.();
     showToast(t("replaced", { n }));
     run(!all);
   }

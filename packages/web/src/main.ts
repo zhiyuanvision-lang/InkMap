@@ -305,6 +305,10 @@ export async function start(host: Host) {
         }, { passive: true });
       });
       el.querySelectorAll<HTMLImageElement>(".ink-diagram-image").forEach(img => {
+        if (!img.dataset.trackedRender) {
+          img.dataset.trackedRender = "1";
+          host.track?.("diagram_render");
+        }
         img.addEventListener("pointerdown", event => event.stopPropagation());
         img.addEventListener("click", event => {
           event.stopPropagation();
@@ -948,6 +952,7 @@ export async function start(host: Host) {
   layoutSelect.addEventListener("change", () => {
     const choice = LAYOUTS.find(l => l.id === layoutSelect.value)!;
     if (choice.pro && !pro.allow("layouts")) return fillPickers();
+    host.track?.("feature_layouts");
     mindMap.setLayout(choice.id);
     remember("layout", choice.id);
     setTimeout(() => mindMap.view.fit(), 200);
@@ -955,6 +960,7 @@ export async function start(host: Host) {
   themeSelect.addEventListener("change", () => {
     const choice = THEMES.find(th => th.id === themeSelect.value)!;
     if (choice.pro && !pro.allow("themes")) return fillPickers();
+    host.track?.("feature_themes");
     setTheme(choice);
     remember("theme", choice.id);
   });
@@ -1000,6 +1006,7 @@ export async function start(host: Host) {
   async function exportAs(type: "png" | "svg") {
     hideMenus();
     if (!pro.allow("export")) return;
+    host.track?.("feature_export");
     const name = title.replace(/[\\/:*?"<>|]+/g, "_");
     try {
       mindMap.execCommand("CLEAR_ACTIVE_NODE");
@@ -1021,6 +1028,7 @@ export async function start(host: Host) {
 
   async function present() {
     if (!pro.allow("present")) return;
+    host.track?.("feature_present");
     hideMenus();
     closeSource();
     search.close();
@@ -1083,7 +1091,7 @@ export async function start(host: Host) {
 
   // ---- toolbar ----------------------------------------------------------
 
-  const search = createSearch({ mindMap, pro, showToast, rewrite });
+  const search = createSearch({ mindMap, pro, showToast, rewrite, onReplace: () => host.track?.("feature_replace") });
   const bar = $("#bar");
   new ResizeObserver(() => {
     const height = bar.offsetHeight;

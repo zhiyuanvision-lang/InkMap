@@ -13,7 +13,7 @@ const VIEW_STATE_PREFIX = "inkmap.viewState:";
 type FromWebview =
   | { type: "ready" }
   | { type: "save"; id: number; md: string; baseVersion: string }
-  | { type: "select"; line: number }
+  | { type: "select"; line: number; endLine?: number }
   | { type: "viewState"; state: unknown }
   | { type: "addToChat"; startLine?: number; endLine?: number; text?: string }
   | { type: "undo" }
@@ -23,7 +23,8 @@ type FromWebview =
   | { type: "sendPhoneCode"; id: number; phone: string }
   | { type: "signInByPhone"; id: number; phone: string; code: string }
   | { type: "signOut"; id: number }
-  | { type: "saveFile"; id: number; name: string; dataUrl: string };
+  | { type: "saveFile"; id: number; name: string; dataUrl: string }
+  | { type: "telemetry"; event: string };
 
 const CHANGE_DELAY = 120;
 const REVEAL_DELAY = 150;
@@ -76,6 +77,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
     let applying = false;
     let changeTimer: NodeJS.Timeout | undefined;
     let revealTimer: NodeJS.Timeout | undefined;
+    let linkedEditor: vscode.TextEditor | undefined;
 
     const unlisten = this.license.onChange(license => post({ type: "license", state: license }));
     disposables.push(
@@ -93,21 +95,28 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
         changeTimer = setTimeout(() => post({ type: "change", doc: state() }), CHANGE_DELAY);
       }),
       vscode.window.onDidChangeTextEditorSelection(e => {
+        if (e.textEditor.document !== document) return;
+        linkedEditor = e.textEditor;
         const userMoved = e.kind === vscode.TextEditorSelectionChangeKind.Keyboard || e.kind === vscode.TextEditorSelectionChangeKind.Mouse;
-        if (!userMoved || e.textEditor.document !== document) return;
+        if (!userMoved) return;
         clearTimeout(revealTimer);
         revealTimer = setTimeout(() => post({ type: "reveal", line: e.selections[0].active.line }), REVEAL_DELAY);
       }),
       webview.onDidReceiveMessage(async (msg: FromWebview) => {
-        const accountAction = msg.type === "checkout" || msg.type === "orderPro" || msg.type === "signOut" || msg.type === "sendPhoneCode" || msg.type === "signInByPhone";
-        if (!accountAction && msg.type !== "ready" && msg.type !== "viewState" && !hasAccess(await this.license.state())) {
+        const accountAction = msg.type === "checkout" || msg.type === "orderPro" || msg.type === "signOut" || msg.type === "sendPhoneCode" || msg.type === "signInByPhone" || msg.type === "telemetry";
+        if (!accountAction && msg.type !== "ready" && msg.type !== "viewState" && msg.type !== "select" && !hasAccess(await this.license.state())) {
           if ("id" in msg) return post({ type: "error", id: msg.id, message: t("trialExpired") });
           return;
         }
         switch (msg.type) {
           case "ready": {
+            this.license.track?.("doc_open");
             const [license, ads] = await Promise.all([this.license.state(), this.ads()]);
             return post({ type: "doc", doc: state(), license, ads, chat: await chatAvailable() });
+          }
+          case "telemetry": {
+            this.license.track?.(msg.event);
+            return;
           }
           case "viewState": {
             if (document.uri.scheme === "untitled") return;
@@ -124,17 +133,34 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
             } finally {
               applying = false;
             }
+            this.license.track?.("doc_edit");
             return post({ type: "saved", id: msg.id, version: String(document.version) });
           }
           case "undo":
           case "redo":
             return vscode.commands.executeCommand(msg.type);
           case "select": {
-            const editor = vscode.window.visibleTextEditors.find(e => e.document === document);
-            if (!editor) return;
-            const pos = new vscode.Position(Math.min(msg.line, document.lineCount - 1), 0);
-            editor.selection = new vscode.Selection(pos, pos);
-            editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenterIfOutsideViewport);
+            const line = Math.max(0, Math.min(msg.line, document.lineCount - 1));
+            const endLine = Math.max(line, Math.min(msg.endLine ?? line, document.lineCount - 1));
+            const reveal = (editor: vscode.TextEditor) => {
+              const start = new vscode.Position(line, 0);
+              const end = new vscode.Position(endLine, document.lineAt(endLine).text.length);
+              editor.selection = new vscode.Selection(start, end);
+              editor.revealRange(new vscode.Range(start, end), vscode.TextEditorRevealType.InCenter);
+            };
+            const editor = linkedEditor?.document === document
+              ? linkedEditor
+              : vscode.window.visibleTextEditors.find(e => e.document === document);
+            if (editor) {
+              reveal(editor);
+              return;
+            }
+            const opened = await vscode.window.showTextDocument(document, {
+              preview: false,
+              preserveFocus: true,
+              viewColumn: vscode.ViewColumn.Beside,
+            });
+            reveal(opened);
             return;
           }
           case "addToChat":

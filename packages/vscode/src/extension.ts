@@ -48,6 +48,28 @@ function findColumnForFile(fileUri: vscode.Uri): vscode.ViewColumn {
   return vscode.window.activeTextEditor?.viewColumn ?? vscode.ViewColumn.Active;
 }
 
+function localEditorUrl(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  try {
+    const url = new URL(value);
+    const host = url.hostname.replace(/^\[|\]$/g, "");
+    if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+    if (host !== "127.0.0.1" && host !== "localhost" && host !== "::1") return undefined;
+    return url.toString();
+  } catch {
+    return undefined;
+  }
+}
+
+async function openUrlInEditorPane(url: string) {
+  await vscode.commands.executeCommand("workbench.action.openBrowserEditor", {
+    url,
+    preserveFocus: false,
+    inactive: false,
+    reuseExistingUrlTab: true,
+  });
+}
+
 async function openFileInEditorPane(filePath: string) {
   const fileUri = resolveEditorUri(filePath);
   const viewColumn = findColumnForFile(fileUri);
@@ -116,7 +138,9 @@ function startMcpTargetBridge(): vscode.Disposable {
 
       if (!matchesWindow) return;
       lastSeq = seq;
-      await openFileInEditorPane(realTarget);
+      const editorUrl = localEditorUrl(raw.editorUrl);
+      if (editorUrl) await openUrlInEditorPane(editorUrl);
+      else await openFileInEditorPane(realTarget);
       await writeFile(ackPath, JSON.stringify({
         seq,
         file: realTarget,
@@ -210,6 +234,7 @@ export function activate(context: vscode.ExtensionContext) {
       withUri(async uri => {
         if (!hasAccess(await license.state()) && !(await offerPro(license))) return;
         try {
+          license.track?.("feature_browser");
           const url = await browsers.open(uri);
           const pick = await vscode.window.showInformationMessage(t("browserOpened", { url }), t("copyLink"));
           if (pick) await vscode.env.clipboard.writeText(url);

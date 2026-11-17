@@ -1,5 +1,6 @@
 import type { Ad, LicenseState, PhoneSignInResult, ViewState, WechatOrderResult } from "@inkmap/core";
 import { detectDefaultLocale, locale as currentUiLocale, t, type Locale } from "./i18n";
+import { revealMarkdownLines } from "./md-lines";
 
 export interface DocState {
   name: string;
@@ -70,6 +71,14 @@ export interface Host {
   ads(): Promise<Ad[]>;
   /** Saves an exported file given as a data URL; resolves false when the user cancels. */
   saveFile(name: string, dataUrl: string): Promise<boolean>;
+  /** Reports an anonymous feature or funnel event count to the host. */
+  track?(event: string): void;
+}
+
+export class PopupBlockedError extends Error {
+  constructor(message: string, public readonly url?: string) {
+    super(message);
+  }
 }
 
 export const browserLocale = (): Locale => detectDefaultLocale();
@@ -459,10 +468,16 @@ export class HttpHost implements Host {
         height: calc(100vh - var(--toolbar-height, 44px)) !important;
       }
       #http-tree-btn, #http-split-btn {
-        display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 550;
+        display: inline-flex; align-items: center; gap: 5px; height: 29px; padding: 0 10px;
+        border: 1px solid var(--ui-border, rgba(31,35,41,.1)); border-radius: 7px;
+        background: var(--ui-subtle, #f6f7f9); font-size: 12px; font-weight: 560;
+      }
+      #http-tree-btn:hover, #http-split-btn:hover {
+        background: var(--ui-hover, rgba(31,35,41,.06)); border-color: var(--ui-border-strong, rgba(31,35,41,.16));
       }
       #http-tree-btn[data-active="true"], #http-split-btn[data-active="true"] {
-        background: color-mix(in srgb, var(--ui-primary, #336df4) 14%, transparent);
+        background: color-mix(in srgb, var(--ui-primary, #336df4) 12%, transparent);
+        border-color: color-mix(in srgb, var(--ui-primary, #336df4) 30%, transparent);
         color: var(--ui-primary, #336df4); font-weight: 600;
       }
       #http-tree-pane, #http-md-pane {
@@ -574,7 +589,7 @@ export class HttpHost implements Host {
         border: 0; outline: none; resize: none;
         padding: 12px 14px; background: transparent; color: var(--ui-text, #1f2329);
         font: 13px/20.8px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        tab-size: 2; overflow-y: auto;
+        tab-size: 2; white-space: pre; overflow: auto;
       }
       .http-pane-resizer {
         position: absolute; top: 0; right: 0; bottom: 0; width: 5px; z-index: 5; cursor: col-resize; background: transparent;
@@ -599,6 +614,7 @@ export class HttpHost implements Host {
     this.splitBtnEl.type = "button";
     this.splitBtnEl.addEventListener("click", () => {
       this.mdOpen = !this.mdOpen;
+      if (this.mdOpen) this.track("split_view");
       this.applyWorkspaceLayout(true);
       this.splitBtnEl?.blur();
     });
@@ -788,23 +804,7 @@ export class HttpHost implements Host {
     this.activeStartLine = Math.max(0, line);
     this.activeEndLine = Math.max(this.activeStartLine, endLine);
     if (!this.mdTextareaEl || !this.mdOpen) return;
-    const lines = this.mdTextareaEl.value.split("\n");
-    const sLine = Math.min(this.activeStartLine, Math.max(0, lines.length - 1));
-    const eLine = Math.min(this.activeEndLine, Math.max(0, lines.length - 1));
-    let startOffset = 0;
-    for (let i = 0; i < sLine; i++) startOffset += lines[i]!.length + 1;
-    let endOffset = startOffset;
-    for (let i = sLine; i <= eLine; i++) {
-      endOffset += lines[i]!.length + (i < eLine ? 1 : 0);
-    }
-    if (document.activeElement === this.mdTextareaEl) {
-      try {
-        this.mdTextareaEl.setSelectionRange(startOffset, endOffset);
-      } catch {}
-    }
-    const lineHeight = 20.8;
-    const targetScroll = Math.max(0, sLine * lineHeight - this.mdTextareaEl.clientHeight * 0.35);
-    this.mdTextareaEl.scrollTop = targetScroll;
+    revealMarkdownLines(this.mdTextareaEl, this.activeStartLine, this.activeEndLine);
     this.renderMdGutterAndBand();
   }
 
@@ -889,15 +889,15 @@ export class HttpHost implements Host {
       return;
     }
     const tab = window.open("about:blank", "_blank");
-    if (!tab) throw new Error(t("allowAccountPopups"));
-    tab.opener = null;
+    if (tab) tab.opener = null;
     try {
       const res = await fetch(this.base + "api/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode }) });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? res.statusText);
+      if (!tab) throw new PopupBlockedError(t("allowAccountPopups"), body.url);
       tab.location.replace(body.url);
     } catch (error) {
-      tab.close();
+      tab?.close();
       throw error;
     }
   }
@@ -917,7 +917,7 @@ export class HttpHost implements Host {
     const result = body.result as WechatOrderResult;
     if (result.status === "redirect") {
       const tab = window.open(result.url, "_blank", "noopener,noreferrer");
-      if (!tab) throw new Error(t("allowAccountPopups"));
+      if (!tab) throw new PopupBlockedError(t("allowAccountPopups"), result.url);
     }
     return result;
   }
@@ -970,6 +970,14 @@ export class HttpHost implements Host {
     a.click();
     return true;
   }
+
+  track(event: string) {
+    void fetch(this.base + "api/telemetry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ event }),
+    }).catch(() => {});
+  }
 }
 
 interface VsCodeApi {
@@ -991,7 +999,8 @@ export type ToExtension =
   | { type: "sendPhoneCode"; id: number; phone: string }
   | { type: "signInByPhone"; id: number; phone: string; code: string }
   | { type: "signOut"; id: number }
-  | { type: "saveFile"; id: number; name: string; dataUrl: string };
+  | { type: "saveFile"; id: number; name: string; dataUrl: string }
+  | { type: "telemetry"; event: string };
 
 export type FromExtension =
   | { type: "doc"; doc: DocState; license: LicenseState; ads: Ad[]; chat?: boolean }
@@ -1169,6 +1178,10 @@ export class VsCodeHost implements Host {
       id => ({ type: "saveFile", id, name, dataUrl }),
       msg => (msg as Extract<FromExtension, { type: "fileSaved" }>).saved,
     );
+  }
+
+  track(event: string) {
+    this.post({ type: "telemetry", event });
   }
 }
 

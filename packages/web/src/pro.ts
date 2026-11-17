@@ -1,5 +1,5 @@
 import { hasAccess, trialDaysLeft, type LicenseState, type ProFeature } from "@inkmap/core";
-import type { Host } from "./host";
+import { PopupBlockedError, type Host } from "./host";
 import { locale, t, type I18nKey } from "./i18n";
 import { createPhoneSignIn } from "./phone-sign-in";
 import { createWechatPay } from "./wechat-pay";
@@ -78,7 +78,7 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
       setState(next);
       showToast?.(t("proUnlocked"));
     },
-    () => checkout("buy", dialog.hidden || !panel.hidden ? accountMsg : checkoutMsg),
+    () => checkout("buy", dialog.hidden || !panel.hidden ? accountMsg : checkoutMsg).then(() => undefined),
   );
   card.tabIndex = -1;
   list.hidden = !canBuy;
@@ -104,14 +104,36 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     for (const button of actions) button.disabled = next;
   }
 
-  function showMessage(target: HTMLElement, text: string, status: "buy" | "signIn" | "error") {
+  function showMessage(target: HTMLElement, text: string, status: "buy" | "signIn" | "error", fallbackUrl?: string) {
     target.textContent = text;
+    if (fallbackUrl) {
+      const actions = document.createElement("div");
+      actions.className = "popup-fallback-actions";
+      const link = document.createElement("a");
+      link.className = "popup-fallback-link";
+      link.href = fallbackUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = `${t("openLoginLink")} ↗`;
+      const copy = document.createElement("button");
+      copy.type = "button";
+      copy.className = "popup-copy-link";
+      copy.textContent = t("copyLink");
+      copy.addEventListener("click", () => {
+        void navigator.clipboard?.writeText(fallbackUrl).then(() => {
+          copy.textContent = t("linkCopied");
+          window.setTimeout(() => { copy.textContent = t("copyLink"); }, 1800);
+        });
+      });
+      actions.append(link, copy);
+      target.append(actions);
+    }
     target.dataset.state = status;
     target.hidden = false;
   }
 
-  async function checkout(mode: "buy" | "restore", message: HTMLElement) {
-    if (busy || phoneSignIn?.isVerifying() || (mode === "buy" ? !canBuy : !canSignIn)) return;
+  async function checkout(mode: "buy" | "restore", message: HTMLElement): Promise<boolean> {
+    if (busy || phoneSignIn?.isVerifying() || (mode === "buy" ? !canBuy : !canSignIn)) return false;
     const trigger = document.activeElement;
     setBusy(true);
     message.hidden = true;
@@ -120,11 +142,14 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
       if (mode === "buy" ? !state.pro : !signedIn()) {
         showMessage(message, t(mode === "buy" ? "checkoutOpened" : "signInOpened"), mode === "buy" ? "buy" : "signIn");
       }
+      return true;
     } catch (error) {
       const raw = String(error instanceof Error ? error.message : error);
       const key = mode === "restore" ? "signInFailed" : "checkoutFailed";
       const prefix = t(key, { error: "" }).replace(/[：:\s]+$/, "");
-      showMessage(message, raw.startsWith(prefix) ? raw : t(key, { error: raw }), "error");
+      const fallbackUrl = error instanceof PopupBlockedError ? error.url : undefined;
+      showMessage(message, raw.startsWith(prefix) ? raw : t(key, { error: raw }), "error", fallbackUrl);
+      return false;
     } finally {
       setBusy(false);
       if (trigger instanceof HTMLElement && trigger.getClientRects().length &&
@@ -199,7 +224,8 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     } catch (error) {
       const raw = String(error instanceof Error ? error.message : error);
       const prefix = t("checkoutFailed", { error: "" }).replace(/[：:\s]+$/, "");
-      showMessage(message, raw.startsWith(prefix) ? raw : t("checkoutFailed", { error: raw }), "error");
+      const fallbackUrl = error instanceof PopupBlockedError ? error.url : undefined;
+      showMessage(message, raw.startsWith(prefix) ? raw : t("checkoutFailed", { error: raw }), "error", fallbackUrl);
     } finally {
       setBusy(false);
     }
@@ -302,7 +328,10 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     const accessible = hasAccess(state);
     const verifying = phoneSignIn?.isVerifying();
     if (state.pro || (accessible && (verifying || !canBuy))) return;
-    if (dialog.hidden) upgradeTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (dialog.hidden) {
+      upgradeTrigger = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      host.track?.("paywall_view");
+    }
     setPanel(false);
     const locked = $(".upgrade-locked");
     locked.hidden = !feature || accessible;

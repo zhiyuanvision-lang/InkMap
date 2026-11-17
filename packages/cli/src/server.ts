@@ -352,7 +352,12 @@ export async function serve({ source: initialSource, webRoot, port = 4377, host 
         }
         url.pathname = "/" + url.pathname.slice(prefix.length);
       }
+      if (!sidebar && req.method === "GET" && /^\/(?:%E3%80%82|%EF%BC%8C|[。，.,;；:：!?！？])+$/i.test(url.pathname)) {
+        res.writeHead(302, { Location: "/" + url.search });
+        return res.end();
+      }
       if (url.pathname === "/api/doc" && req.method === "GET") {
+        license?.track?.("doc_open");
         viewState = (await activeSource.readView?.()) ?? viewState;
         if (sidebar) await serialized(refresh);
         return json(res, 200, docState());
@@ -388,6 +393,7 @@ export async function serve({ source: initialSource, webRoot, port = 4377, host 
             await activeSource.write(md);
             current = md;
             version = hash(md);
+            license?.track?.("doc_edit");
             if (sidebar) broadcast();
           }
           return json(res, 200, { version });
@@ -404,8 +410,15 @@ export async function serve({ source: initialSource, webRoot, port = 4377, host 
         if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });
         const { file } = JSON.parse(await readBody(req));
         await serialized(() => switchSourceToFile(String(file ?? "")));
+        license?.track?.("doc_open");
         const { files } = await collectWorkspaceFiles();
         return json(res, 200, { currentFile: activeSource.key ?? null, files, doc: docState() });
+      }
+      if (url.pathname === "/api/telemetry" && req.method === "POST") {
+        if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });
+        const { event } = JSON.parse(await readBody(req));
+        if (typeof event === "string" && event) license?.track?.(event);
+        return json(res, 200, { ok: true });
       }
       if (url.pathname === "/api/checkout" && req.method === "POST") {
         if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });

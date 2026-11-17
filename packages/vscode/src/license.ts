@@ -6,6 +6,8 @@ import { t } from "./i18n";
 const KEY = "inkmap.billing.session";
 
 export function extensionLicense(context: vscode.ExtensionContext): LicenseService {
+  const app = (vscode.env.appName || "").toLowerCase();
+  const host = app.includes("cursor") ? "cursor" : app.includes("windsurf") ? "windsurf" : app.includes("antigravity") ? "antigravity" : "vscode";
   return licenseService({
     read: () => Promise.resolve(context.secrets.get(KEY)),
     write: async token => {
@@ -13,7 +15,7 @@ export function extensionLicense(context: vscode.ExtensionContext): LicenseServi
       else await context.secrets.delete(KEY);
     },
   }, () => vscode.workspace.getConfiguration("inkmap").get<string>("billingOrigin")
-    || process.env.INKMAP_BILLING_ORIGIN || process.env.INKMAP_DEFAULT_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN);
+    || process.env.INKMAP_BILLING_ORIGIN || process.env.INKMAP_DEFAULT_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN, { host });
 }
 
 export async function openCheckout(license: LicenseService, mode: CheckoutMode): Promise<void> {

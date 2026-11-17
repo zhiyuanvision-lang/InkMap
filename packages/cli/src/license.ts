@@ -19,6 +19,7 @@ export interface LicenseService {
   signInByPhone(phone: string, code: string): Promise<PhoneSignInResult<LicenseState>>;
   deactivate(): Promise<void>;
   onChange(listener: (state: LicenseState) => void): () => void;
+  track?(event: string, count?: number, hostHint?: string): void;
   dispose(): void;
 }
 
@@ -31,12 +32,17 @@ export function billingOrigin(raw: string | undefined): string {
   return url.origin;
 }
 
-export function licenseService(storage: SessionStorage, getOrigin: () => string | undefined, { loginOnly = false } = {}): LicenseService {
+export function licenseService(storage: SessionStorage, getOrigin: () => string | undefined, { loginOnly = false, host: defaultHost = "" } = {}): LicenseService {
   const listeners = new Set<(state: LicenseState) => void>();
   let current: LicenseState = { pro: false };
   let trial: Promise<void> | undefined;
   let trialTimer: ReturnType<typeof setTimeout> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let telemetryTimer: ReturnType<typeof setTimeout> | undefined;
+  let installIdPromise: Promise<string | undefined> | undefined;
+  let sentAppOpen = false;
+  let detectedHost = defaultHost;
+  const pendingEvents = new Map<string, number>();
   let lastCheck = 0;
   let disposed = false;
   let generation = 0;
@@ -506,13 +512,101 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       listeners.add(listener);
       return () => listeners.delete(listener);
     },
+    track(event, count = 1, hostHint) {
+      if (disposed || !event || typeof event !== "string" || count <= 0) return;
+      if (hostHint) detectedHost = hostHint;
+      if (!sentAppOpen) {
+        sentAppOpen = true;
+        pendingEvents.set("app_open", (pendingEvents.get("app_open") ?? 0) + 1);
+      }
+      if (event !== "app_open") {
+        pendingEvents.set(event, Math.min(1000, (pendingEvents.get(event) ?? 0) + count));
+      }
+      if (telemetryTimer) return;
+      telemetryTimer = setTimeout(() => {
+        telemetryTimer = undefined;
+        void (async () => {
+          if (disposed || !pendingEvents.size) return;
+          let origin: string;
+          try {
+            origin = billingOrigin(getOrigin());
+          } catch {
+            return;
+          }
+          if (origin === "https://billing.example.com" && process.env.INKMAP_ALLOW_TEST_TELEMETRY !== "1") return;
+          const id = await (installIdPromise ??= localInstallId().catch(() => undefined));
+          if (disposed || !id || !pendingEvents.size) return;
+          await (trial ??= startTrial());
+          const events: Record<string, number> = {};
+          for (const [k, v] of pendingEvents.entries()) events[k] = v;
+          pendingEvents.clear();
+          const tier = current.pro ? "pro" : (current.trialUntil ?? 0) > Date.now() ? "trial" : "expired";
+          const os = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "win" : process.platform === "linux" ? "linux" : "other";
+          const hostName = detectedHost || inferNodeHost();
+          await fetch(origin + "/billing/v1/telemetry", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            redirect: "error",
+            body: JSON.stringify({
+              product: PRODUCT.id,
+              installId: id,
+              host: hostName,
+              os,
+              version: "0.2.9",
+              locale: clientLocale(),
+              tier,
+              events,
+            }),
+            signal: AbortSignal.timeout(5000),
+          }).catch(() => {});
+        })();
+      }, 800);
+      telemetryTimer.unref();
+    },
     dispose() {
       disposed = true;
       clearTimeout(trialTimer);
       clearTimeout(timer);
+      clearTimeout(telemetryTimer);
+      pendingEvents.clear();
       listeners.clear();
     },
   };
+}
+
+function inferNodeHost(): string {
+  if (process.env.INKMAP_HOST) return process.env.INKMAP_HOST;
+  if (process.env.ANTIGRAVITY_CONFIG_DIR) return "antigravity";
+  if (process.env.VSCODE_PID || process.env.TERM_PROGRAM === "vscode") {
+    const app = (process.env.VSCODE_NLS_CONFIG || process.execPath || "").toLowerCase();
+    if (app.includes("cursor")) return "cursor";
+    if (app.includes("windsurf")) return "windsurf";
+    return "vscode";
+  }
+  return "cli";
+}
+
+async function localInstallId(): Promise<string | undefined> {
+  const path = join(process.env.INKMAP_HOME ?? join(homedir(), ".inkmap"), "install-id");
+  let value: string;
+  try {
+    value = (await readFile(path, "utf8")).trim();
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
+    const generated = "inst_" + randomUUID().replace(/-/g, "").slice(0, 24);
+    const temporary = path + "." + randomUUID();
+    try {
+      await writeFile(temporary, generated, { mode: 0o600, flag: "wx" });
+      await link(temporary, path).catch(err => {
+        if (err.code !== "EEXIST") throw err;
+      });
+    } finally {
+      await rm(temporary, { force: true });
+    }
+    value = (await readFile(path, "utf8")).trim();
+  }
+  return /^[A-Za-z0-9_:-]{8,64}$/.test(value) ? value : undefined;
 }
 
 export function fileSessionStorage(path = join(process.env.INKMAP_HOME ?? join(homedir(), ".inkmap"), "billing-session")): SessionStorage {

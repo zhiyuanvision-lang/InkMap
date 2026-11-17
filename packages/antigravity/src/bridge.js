@@ -670,7 +670,7 @@
         border: 0; outline: none; resize: none;
         padding: 12px 12px; background: transparent; color: var(--ui-text, #1f2329);
         font: 13px/20.8px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-        tab-size: 2; overflow-y: auto;
+        tab-size: 2; white-space: pre; overflow: auto;
       }
       #ag-md-resizer {
         position: absolute; top: 0; right: 0; bottom: 0; width: 5px; z-index: 5; cursor: col-resize;
@@ -744,6 +744,12 @@
     splitMdBtn.type = "button";
     splitMdBtn.addEventListener("click", () => {
       splitOpen = !splitOpen;
+      if (splitOpen) {
+        void apiFetch("/api/telemetry", {
+          method: "POST",
+          body: JSON.stringify({ event: "split_view" }),
+        }).catch(() => {});
+      }
       applySplitLayout(true);
       splitMdBtn.blur();
     });
@@ -1068,21 +1074,28 @@
             activeEndLine = Math.max(activeStartLine, Number(msg.endLine ?? msg.line) || activeStartLine);
             if (mdTextareaEl && splitOpen) {
               const lines = mdTextareaEl.value.split("\n");
-              const sLine = Math.min(activeStartLine, Math.max(0, lines.length - 1));
-              const eLine = Math.min(activeEndLine, Math.max(0, lines.length - 1));
+              const last = Math.max(0, lines.length - 1);
+              const sLine = Math.max(0, Math.min(activeStartLine, last));
+              const eLine = Math.max(sLine, Math.min(activeEndLine, last));
               let startOffset = 0;
               for (let i = 0; i < sLine; i++) startOffset += lines[i].length + 1;
               let endOffset = startOffset;
               for (let i = sLine; i <= eLine; i++) {
                 endOffset += lines[i].length + (i < eLine ? 1 : 0);
               }
-              if (document.activeElement === mdTextareaEl) {
-                try {
-                  mdTextareaEl.setSelectionRange(startOffset, endOffset);
-                } catch {}
-              }
               const lineHeight = 20.8;
-              mdTextareaEl.scrollTop = Math.max(0, sLine * lineHeight - mdTextareaEl.clientHeight * 0.35);
+              const padTop = 12;
+              const target = Math.max(0, padTop + sLine * lineHeight - mdTextareaEl.clientHeight * 0.35);
+              try { mdTextareaEl.setSelectionRange(startOffset, Math.max(startOffset, endOffset)); } catch {}
+              mdTextareaEl.scrollTop = target;
+              requestAnimationFrame(() => {
+                if (!mdTextareaEl?.isConnected) return;
+                try {
+                  mdTextareaEl.focus({ preventScroll: true });
+                  mdTextareaEl.setSelectionRange(startOffset, Math.max(startOffset, endOffset));
+                } catch {}
+                mdTextareaEl.scrollTop = target;
+              });
               renderMdGutterAndBand();
             }
             return;
@@ -1160,6 +1173,13 @@
             a.download = msg.name;
             a.click();
             emitToEditor({ type: "fileSaved", id: msg.id, saved: true });
+            return;
+          }
+          case "telemetry": {
+            void apiFetch("/api/telemetry", {
+              method: "POST",
+              body: JSON.stringify({ event: msg.event }),
+            }).catch(() => {});
             return;
           }
         }
