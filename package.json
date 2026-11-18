@@ -14,7 +14,7 @@
     "package:codex": "npm run build -w @inkmap/core && npm exec -w inkmap -- tsc -p . && npm run build:codex -w @inkmap/web && node scripts/package-codex.mjs",
     "package:qoder": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build -w inkmap && node scripts/package-qoder.mjs",
     "package:antigravity": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build -w inkmap && npm run build:codex -w @inkmap/web && node scripts/package-antigravity.mjs",
-    "package:npm": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build:codex -w @inkmap/web && npm run build -w inkmap && node scripts/package-npm.mjs",
+    "package:npm": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build:codex -w @inkmap/web && npm run build -w inkmap && node scripts/package-harness.mjs && node scripts/package-npm.mjs",
     "package:platforms": "npm run build:sidebars && npm run package:vscode",
     "publish:npm": "node scripts/publish-npm.mjs",
     "publish:openvsx": "node packages/vscode/scripts/publish-openvsx.mjs",

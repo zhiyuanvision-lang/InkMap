@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- **DeepSeek Harness Full Integration (`dsh-inkmap`)**: Upgraded the DeepSeek Harness sidebar plugin with the full 3-column workspace controls (Project Explorer + Live Markdown Split Pane + Mind Map), localized Chinese/English plugin metadata & details, automatic cross-client installation from VS Code / Cursor / `inkmap-mcp install`, and official plugin index support (`https://zhiyuanv.com/dsh-index.json`).
+
 ## 0.3.1
 
 - **Explicit Save Shortcut (`⌘S` / `Ctrl+S`)**: Intercept `⌘S` / `Ctrl+S` in the capture phase to prevent the browser's "Save Page As" dialog, immediately commit any active inline or Markdown edits, flush the file save to disk, and display a confirmation toast (`已保存 · <filename>`).

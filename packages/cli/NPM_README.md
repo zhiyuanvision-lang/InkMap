@@ -1,6 +1,6 @@
 # Inkmap — Interactive Markdown Mind Map & MCP App
 
-**Inkmap（墨图）** opens and edits local `.md` / `.markmap.md` files as an interactive, two-way synced mind map — directly inside **Claude Desktop**, **OpenAI Codex Desktop**, **Google Antigravity**, **Cursor**, **Claude Code**, **VS Code**, or your **local browser** (macOS, Ubuntu/Linux, Windows).
+**Inkmap（墨图）** opens and edits local `.md` / `.markmap.md` files as an interactive, two-way synced mind map — directly inside **DeepSeek Harness (`dsh-inkmap`)**, **Claude Desktop**, **OpenAI Codex Desktop**, **Google Antigravity**, **Cursor**, **Claude Code**, **VS Code**, or your **local browser** (macOS, Ubuntu/Linux, Windows).
 
 - **Two-way live sync**: Edit nodes on the mind map or let your AI agent rewrite the `.md` file — both stay in sync instantaneously without corrupting Markdown formatting, tables, code blocks, KaTeX math, or Mermaid diagrams.
 - **Native MCP App (`@modelcontextprotocol/ext-apps`)**: Renders the interactive mind map canvas (`ui://inkmap/markdown.html`) directly inside MCP App-enabled AI clients.
@@ -24,6 +24,7 @@ npx -y inkmap-mcp@latest install claude-code   # Claude Code CLI
 npx -y inkmap-mcp@latest install antigravity   # Google Antigravity
 npx -y inkmap-mcp@latest install codex         # OpenAI Codex Desktop
 npx -y inkmap-mcp@latest install cursor        # Cursor
+npx -y inkmap-mcp@latest install deepseek      # DeepSeek Harness (dsh-inkmap)
 ```
 
 Optionally pre-authorize workspace directories:
@@ -72,11 +73,15 @@ npx -y inkmap-mcp@latest notes.markmap.md
 
 ### 1. 一键自动安装到本机 AI 客户端（支持 Ubuntu / macOS / Windows）
 
-无需手动下载压缩包或手改 JSON 路径，终端执行一行命令即可自动检测并配置本机已安装的 **Claude Desktop、Claude Code、Google Antigravity、OpenAI Codex、Cursor**：
+无需手动下载压缩包或手改 JSON 路径，终端执行一行命令即可自动检测并配置本机已安装的 **DeepSeek Harness (`dsh-inkmap`)、Claude Desktop、Claude Code、Google Antigravity、OpenAI Codex、Cursor**：
 
 ```bash
 npx -y inkmap-mcp@latest install
 ```
+
+在 **DeepSeek Harness** 中，你也可以直接在左侧 **「插件」** 页面：
+- 点击右上角 **「+ 添加插件」** 输入 **`dsh-inkmap`** 一键安装；
+- 或开启「实验性插件 -> 自定义插件索引」，添加索引源 **`https://zhiyuanv.com/dsh-index.json`**，在「发现」标签页搜索 **「思维导图」** 即可找到并安装 **Inkmap 思维导图**。
 
 也可以指定单个客户端或预设工作区目录：
 

@@ -198,7 +198,6 @@ export class HttpHost implements Host {
   }
 
   private applyWorkspaceLayout(fitAfter = false) {
-    if (this.sidebar) return;
     const treeW = this.treeOpen ? this.treeWidthPx : 0;
     const mdW = this.mdOpen ? this.mdWidthPx : 0;
     const mapLeft = treeW + mdW;
@@ -459,7 +458,6 @@ export class HttpHost implements Host {
   }
 
   private mountWorkspaceControls(autoOpenIde: boolean) {
-    if (this.sidebar) return;
     const bar = document.getElementById("bar");
     if (!bar || document.getElementById("http-tree-btn")) return;
 
@@ -780,7 +778,7 @@ export class HttpHost implements Host {
     const [res, capabilities, filesRes] = await Promise.all([
       fetch(this.base + "api/doc"),
       fetch(this.base + "api/capabilities").then(r => (r.ok ? r.json() : null)).catch(() => null),
-      !this.sidebar ? fetch(this.base + "api/files").then(r => (r.ok ? r.json() : null)).catch(() => null) : null,
+      fetch(this.base + "api/files").then(r => (r.ok ? r.json() : null)).catch(() => null),
     ]);
     if (!res.ok) throw new Error(`读取文档失败：${res.status}`);
     if (capabilities) {
@@ -799,12 +797,10 @@ export class HttpHost implements Host {
     if (Array.isArray(filesRes?.files)) {
       this.cachedFiles = filesRes.files;
     }
-    if (!this.sidebar) {
-      const ideParam = new URLSearchParams(location.search).get("ide") === "1";
-      const autoOpen = ideParam || capabilities?.ideWorkspace === true;
-      this.mountWorkspaceControls(autoOpen);
-      this.syncMdPane(doc.md, true);
-    }
+    const ideParam = new URLSearchParams(location.search).get("ide") === "1";
+    const autoOpen = !this.sidebar && (ideParam || capabilities?.ideWorkspace === true);
+    this.mountWorkspaceControls(autoOpen);
+    this.syncMdPane(doc.md, true);
     return doc;
   }
 

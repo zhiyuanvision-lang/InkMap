@@ -5,7 +5,7 @@ import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
 
-export type InstallTarget = "claude" | "claude-code" | "cursor" | "vscode" | "antigravity" | "codex";
+export type InstallTarget = "claude" | "claude-code" | "cursor" | "vscode" | "antigravity" | "codex" | "deepseek";
 
 export interface InstallOptions {
   targets?: InstallTarget[];
@@ -124,6 +124,7 @@ function normalizeTarget(raw: string): InstallTarget | "all" | null {
   if (key === "vscode" || key === "code" || key === "vs-code") return "vscode";
   if (key === "antigravity" || key === "agy") return "antigravity";
   if (key === "codex" || key === "chatgpt") return "codex";
+  if (key === "deepseek" || key === "deepseek-harness" || key === "dsh" || key === "harness") return "deepseek";
   return null;
 }
 
@@ -221,6 +222,29 @@ function findCodexCommand(): string | null {
   return null;
 }
 
+function getDshHome(): string {
+  return process.env.DSH_HOME || join(homedir(), ".dsh");
+}
+
+function findDshCommand(): string | null {
+  if (process.env.INKMAP_DSH_BIN) {
+    return existsSync(process.env.INKMAP_DSH_BIN) ? process.env.INKMAP_DSH_BIN : null;
+  }
+  if (process.env.INKMAP_ISOLATED_DETECT) return null;
+  if (spawnSync("dsh", ["--version"], { stdio: "ignore" }).status === 0) return "dsh";
+  if (process.platform === "darwin") {
+    for (const dir of ["/Applications", join(homedir(), "Applications")]) {
+      const cmd = join(dir, "DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh");
+      if (existsSync(cmd)) return cmd;
+    }
+  } else if (process.platform === "win32") {
+    const localApp = process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local");
+    const cmd = join(localApp, "Programs", "DeepSeek Harness", "resources", "runtime", "cli", "bin", "dsh.cmd");
+    if (existsSync(cmd)) return cmd;
+  }
+  return null;
+}
+
 function detectInstalledTargets(): InstallTarget[] {
   const found: InstallTarget[] = [];
   const claudeDir = getClaudeDesktopDir();
@@ -245,6 +269,12 @@ function detectInstalledTargets(): InstallTarget[] {
     found.push("codex");
   } else if (process.env.INKMAP_CODEX_BIN && existsSync(process.env.INKMAP_CODEX_BIN)) {
     found.push("codex");
+  }
+  if (
+    (!process.env.INKMAP_ISOLATED_DETECT && (findDshCommand() || existsSync(join(getDshHome(), "profiles", "desktop")))) ||
+    (process.env.INKMAP_DSH_BIN && existsSync(process.env.INKMAP_DSH_BIN))
+  ) {
+    found.push("deepseek");
   }
   return found;
 }
@@ -327,7 +357,7 @@ function installIdeExtension(editorDir: string, cliCmd: string | null): string |
   }
 
   const extPkg = JSON.parse(readFileSync(join(vscodeBundle, "package.json"), "utf8")) as { version: string };
-  const version = extPkg.version || "0.3.1";
+  const version = extPkg.version || "0.3.2";
   const staging = mkdtempSync(join(tmpdir(), "inkmap-vsix-"));
 
   try {
@@ -549,6 +579,87 @@ function installCodexPlugin(): { location: string; note?: string } {
   };
 }
 
+function configureDshMarketIndex(profileDir: string): void {
+  const pkgPath = join(profileDir, "package.json");
+  if (existsSync(pkgPath)) {
+    try {
+      const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+        dsh?: { profile?: { bundles?: string[] } };
+      };
+      const bundles = pkg.dsh?.profile?.bundles;
+      if (Array.isArray(bundles)) {
+        let changed = false;
+        for (const name of ["@deepseek-ai/dsh-experimental-plugin-market-bundle", "dsh-inkmap"]) {
+          if (!bundles.includes(name)) {
+            bundles.push(name);
+            changed = true;
+          }
+        }
+        if (changed) {
+          writeFileSync(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf8");
+        }
+      }
+    } catch {}
+  }
+
+  const patchPath = join(profileDir, "cordis.patch.yml");
+  const indexUrl = "https://zhiyuanv.com/dsh-index.json";
+  try {
+    const existing = existsSync(patchPath) ? readFileSync(patchPath, "utf8") : "";
+    if (!existing.includes(indexUrl)) {
+      const snippet = `\n- id: plugin-market\n  name: "@deepseek-ai/dsh-plugin-market"\n  config:\n    indexes:\n      - ${indexUrl}\n`;
+      writeFileSync(patchPath, existing.replace(/\n*$/, "") + snippet, "utf8");
+    }
+  } catch {}
+}
+
+function installDeepSeekHarnessPlugin(): { location: string; note?: string } {
+  const bundledHarness = join(DIST_DIR, "bundles", "harness");
+  const bundledWeb = join(DIST_DIR, "web");
+  const monorepoHarness = resolve(PKG_ROOT, "..", "..", "dist", "sidebars", "dsh-inkmap");
+
+  const stagedDir = join(getInkmapHome(), "dsh-inkmap");
+  rmSync(stagedDir, { recursive: true, force: true });
+  mkdirSync(stagedDir, { recursive: true });
+
+  if (existsSync(join(bundledHarness, "package.json")) && existsSync(bundledWeb)) {
+    cpSync(bundledHarness, stagedDir, { recursive: true });
+    cpSync(bundledWeb, join(stagedDir, "web"), { recursive: true });
+    for (const doc of ["LICENSE.md", "THIRD_PARTY_NOTICES.md"]) {
+      const src = join(PKG_ROOT, doc);
+      if (existsSync(src)) cpSync(src, join(stagedDir, doc));
+    }
+  } else if (existsSync(join(monorepoHarness, "package.json"))) {
+    cpSync(monorepoHarness, stagedDir, { recursive: true });
+  } else {
+    throw new Error("未找到 DeepSeek Harness 插件资源 / DeepSeek Harness plugin bundle not found.");
+  }
+
+  const realStaged = realpathSync(stagedDir);
+  const dshCmd = findDshCommand();
+  const profileDir = join(getDshHome(), "profiles", "desktop");
+
+  if (dshCmd) {
+    execFileSync(dshCmd, ["plugin", "--profile", "desktop", "add", realStaged], { stdio: "pipe" });
+  } else if (existsSync(profileDir)) {
+    const nodeModulesTarget = join(profileDir, "node_modules", "dsh-inkmap");
+    rmSync(nodeModulesTarget, { recursive: true, force: true });
+    mkdirSync(join(profileDir, "node_modules"), { recursive: true });
+    cpSync(realStaged, nodeModulesTarget, { recursive: true });
+  } else {
+    throw new Error("未检测到 DeepSeek Harness 客户端 / DeepSeek Harness not found.");
+  }
+
+  if (existsSync(profileDir)) {
+    configureDshMarketIndex(profileDir);
+  }
+
+  return {
+    location: existsSync(profileDir) ? profileDir : realStaged,
+    note: "已在 DeepSeek Harness「插件」页启用 Inkmap 思维导图与插件索引（预览 .md 文件点击右上角 Inkmap 即可打开）",
+  };
+}
+
 export async function runInstall(options: InstallOptions = {}): Promise<InstallResult> {
   const log = options.log ?? (msg => console.log(msg));
   const workspaces = options.workspaces ?? [];
@@ -558,7 +669,7 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
   const result: InstallResult = { installed: [], removed: [] };
 
   if (options.uninstall) {
-    const toRemove: InstallTarget[] = explicitTargets ?? ["claude", "claude-code", "cursor", "vscode", "antigravity", "codex"];
+    const toRemove: InstallTarget[] = explicitTargets ?? ["claude", "claude-code", "cursor", "vscode", "antigravity", "codex", "deepseek"];
     for (const target of toRemove) {
       if (target === "claude") {
         const cfg = join(getClaudeDesktopDir(), "claude_desktop_config.json");
@@ -587,6 +698,19 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
         if (existsSync(dir)) {
           rmSync(dir, { recursive: true, force: true });
           result.removed.push({ target, location: dir });
+        }
+      } else if (target === "deepseek") {
+        const dshCmd = findDshCommand();
+        const profileDir = join(getDshHome(), "profiles", "desktop");
+        if (dshCmd && existsSync(profileDir)) {
+          try {
+            execFileSync(dshCmd, ["plugin", "--profile", "desktop", "remove", "dsh-inkmap"], { stdio: "pipe" });
+          } catch {}
+        }
+        const dir = join(getInkmapHome(), "dsh-inkmap");
+        if (existsSync(dir)) {
+          rmSync(dir, { recursive: true, force: true });
+          result.removed.push({ target, location: profileDir });
         }
       }
     }
@@ -678,6 +802,18 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
         if (explicitTargets) throw err;
         log(`[inkmap] 跳过 codex 自动注册: ${(err as Error).message}`);
       }
+    } else if (target === "deepseek") {
+      try {
+        const installedDsh = installDeepSeekHarnessPlugin();
+        result.installed.push({
+          target,
+          location: installedDsh.location,
+          note: installedDsh.note,
+        });
+      } catch (err) {
+        if (explicitTargets) throw err;
+        log(`[inkmap] 跳过 deepseek 自动注册: ${(err as Error).message}`);
+      }
     }
   }
 
@@ -738,6 +874,7 @@ export async function runInstallCli(argv: string[], uninstall = false) {
   vscode         VS Code (原生导图编辑器扩展)
   antigravity    Google Antigravity (~/.gemini/config/plugins/inkmap)
   codex          OpenAI Codex Desktop
+  deepseek       DeepSeek Harness (~/.dsh/profiles/desktop)
 
 选项 / Options:
   -w, --workspace <dir>   预设允许 Inkmap 访问的工作区目录（可多次传入）`);

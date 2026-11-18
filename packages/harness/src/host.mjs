@@ -39,7 +39,7 @@ async function workspaceFile(ctx, address) {
   if (!child || isAbsolute(child) || child === ".." || child.startsWith(".." + sep) || !/\.md$/i.test(path)) {
     throw new FileUnavailable();
   }
-  return path;
+  return { root, path };
 }
 
 async function assertFile(path) {
@@ -106,7 +106,7 @@ export function apply(ctx) {
           }
         }
         try {
-          const path = await workspaceFile(ctx, body?.address);
+          const { root, path } = await workspaceFile(ctx, body?.address);
           await assertFile(path);
           if (disposed) return json(res, 503, {});
           let editor = editors.get(path);
@@ -114,6 +114,7 @@ export function apply(ctx) {
             const server = fileSource(path).then(source => serve({
               source: {
                 ...source,
+                workspaceRoot: root,
                 read: async () => { await assertFile(path); return source.read(); },
                 write: async md => {
                   if (Buffer.byteLength(md) > maxBytes) throw new FileUnavailable();
@@ -121,7 +122,7 @@ export function apply(ctx) {
                   return source.write(md);
                 },
               },
-              webRoot, license, port: 0, sidebar: true, sidebarAccountNavigation: true,
+              webRoot, license, port: 0, sidebar: true, sidebarAccountNavigation: true, workspaceRoots: [root],
             }));
             editor = { users: 0, server };
             editors.set(path, editor);

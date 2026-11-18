@@ -43,6 +43,7 @@ await Promise.all([
   mkdir(join(pkgDir, "dist", "bundles", "codex", "inkmap-codex", "assets"), { recursive: true }),
   mkdir(join(pkgDir, "dist", "bundles", "vscode", "dist"), { recursive: true }),
   mkdir(join(pkgDir, "dist", "bundles", "vscode", "images"), { recursive: true }),
+  mkdir(join(pkgDir, "dist", "bundles", "harness", "locale"), { recursive: true }),
 ]);
 
 const assetFiles = await readdir(join(webDist, "assets"));
@@ -65,6 +66,8 @@ const agySidecar = join(agyBundle, "sidecars", "inkmap");
 const codexBundle = join(pkgDir, "dist", "bundles", "codex");
 const codexPlugin = join(codexBundle, "inkmap-codex");
 const vscodeBundle = join(pkgDir, "dist", "bundles", "vscode");
+const harnessBundle = join(pkgDir, "dist", "bundles", "harness");
+const dshBuiltDir = join(root, "dist", "sidebars", "dsh-inkmap");
 const vscodeRawPkg = JSON.parse(await readFile(join(vscodeDir, "package.json"), "utf8"));
 const { private: _omitPrivate, scripts: _omitScripts, dependencies: _omitDeps, devDependencies: _omitDevDeps, ...vscodeCleanPkg } = vscodeRawPkg;
 
@@ -136,6 +139,14 @@ const [cliBuild] = await Promise.all([
   copyFile(join(vscodeDir, "images", "icon.png"), join(codexPlugin, "assets", "icon.png")),
   copyFile(join(vscodeDir, "LICENSE.md"), join(pkgDir, "LICENSE.md")),
   copyFile(join(root, "packages", "cli", "NPM_README.md"), join(pkgDir, "README.md")),
+  copyFile(join(dshBuiltDir, "package.json"), join(harnessBundle, "package.json")),
+  copyFile(join(dshBuiltDir, "host.js"), join(harnessBundle, "host.js")),
+  copyFile(join(dshBuiltDir, "client.js"), join(harnessBundle, "client.js")),
+  copyFile(join(dshBuiltDir, "cordis.patch.yml"), join(harnessBundle, "cordis.patch.yml")),
+  copyFile(join(dshBuiltDir, "icon.svg"), join(harnessBundle, "icon.svg")),
+  copyFile(join(dshBuiltDir, "README.md"), join(harnessBundle, "README.md")),
+  copyFile(join(dshBuiltDir, "README.zh.md"), join(harnessBundle, "README.zh.md")),
+  cp(join(dshBuiltDir, "locale"), join(harnessBundle, "locale"), { recursive: true }),
 ]);
 
 const binScript = `#!/usr/bin/env node
@@ -272,6 +283,9 @@ await Promise.all([
       "cursor",
       "vscode",
       "antigravity",
+      "deepseek-harness",
+      "dsh",
+      "dsh-plugin",
       "思维导图",
       "脑图",
       "大纲",
