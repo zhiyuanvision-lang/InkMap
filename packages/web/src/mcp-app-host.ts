@@ -976,13 +976,17 @@ export class McpAppHost implements Host {
     this.syncMdPaneContent(doc.md, true);
   }
 
-  async switchFile(filePath: string) {
-    if (!filePath || filePath === this.currentFile) return;
+  async flushPendingEdits() {
     if (this.mdEditTimer) {
       window.clearTimeout(this.mdEditTimer);
       this.mdEditTimer = 0;
       await (window as any).inkmap?.load?.(this.currentMd, true);
     }
+  }
+
+  async switchFile(filePath: string) {
+    if (!filePath || filePath === this.currentFile) return;
+    await this.flushPendingEdits();
     await (window as any).inkmap?.flushSave?.();
     const data = await this.callTool("inkmap_doc_open", { path: filePath });
     if (!data.doc) return;

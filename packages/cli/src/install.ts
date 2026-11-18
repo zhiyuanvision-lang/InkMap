@@ -327,7 +327,7 @@ function installIdeExtension(editorDir: string, cliCmd: string | null): string |
   }
 
   const extPkg = JSON.parse(readFileSync(join(vscodeBundle, "package.json"), "utf8")) as { version: string };
-  const version = extPkg.version || "0.3.0";
+  const version = extPkg.version || "0.3.1";
   const staging = mkdtempSync(join(tmpdir(), "inkmap-vsix-"));
 
   try {

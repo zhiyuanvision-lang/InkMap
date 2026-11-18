@@ -46,6 +46,8 @@ export interface Host {
   select?(line: number, endLine?: number): void;
   /** Called immediately when the mind map data or frontmatter changes. */
   onMapMarkdownChange?(md: string): void;
+  /** Flushes any debounced host-side Markdown editor changes into the mind map before saving. */
+  flushPendingEdits?(): Promise<void> | void;
   /** Called when the user switches UI language in the toolbar. */
   refreshLanguage?(): void;
   /** Set when the host can hand Markdown lines to an AI chat; resolves false where there is none. */
@@ -423,13 +425,17 @@ export class HttpHost implements Host {
     }
   }
 
-  private async switchFile(filePath: string) {
-    if (!filePath || filePath === this.currentFile) return;
+  async flushPendingEdits() {
     if (this.mdEditTimer) {
       window.clearTimeout(this.mdEditTimer);
       this.mdEditTimer = 0;
       await (window as any).inkmap?.load?.(this.currentMd, true);
     }
+  }
+
+  private async switchFile(filePath: string) {
+    if (!filePath || filePath === this.currentFile) return;
+    await this.flushPendingEdits();
     await (window as any).inkmap?.flushSave?.();
     const res = await fetch(this.base + "api/open", {
       method: "POST",

@@ -748,6 +748,27 @@ export async function start(host: Host) {
   // on document capture phase do not hijack Enter, Tab, Cmd+Z/Y/F/E, or Cmd+Up/Down before simple-mind-map.
   mindMap.keyCommand.unBindEvent();
   const onCaptureKeydown = (e: KeyboardEvent) => {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      void (async () => {
+        if (!inlineEdit.hidden) {
+          finishInlineEdit(true);
+        }
+        if (mindMap.renderer?.textEdit?.isShowTextEdit?.()) {
+          mindMap.renderer.textEdit.hideEditTextBox();
+        }
+        if (!source.hidden && sourceNode && sourceTimers.has(sourceNode)) {
+          clearTimeout(sourceTimers.get(sourceNode));
+          sourceTimers.delete(sourceNode);
+          await setMarkdown(sourceNode, sourceText.value.replace(/\n+$/, ""));
+        }
+        await host.flushPendingEdits?.();
+        await flushSave();
+        showToast(doc.name ? `${synced()} · ${doc.name}` : synced());
+      })();
+      return;
+    }
     if (e.isComposing) return;
     if (!inlineEdit.hidden && (e.target === inlineEdit || document.activeElement === inlineEdit)) {
       const multiline = inlineOriginal.includes("\n") || inlineEdit.value.includes("\n");

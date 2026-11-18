@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- **Explicit Save Shortcut (`⌘S` / `Ctrl+S`)**: Intercept `⌘S` / `Ctrl+S` in the capture phase to prevent the browser's "Save Page As" dialog, immediately commit any active inline or Markdown edits, flush the file save to disk, and display a confirmation toast (`已保存 · <filename>`).
+
 ## 0.3.0
 
 - **Cursor Right-Pane Instant Preview**: Opening a Markdown mind map via MCP App in Cursor now instructs the agent to auto-open the right-side Browser Preview (`browser_navigate` with `side: true`) on the same turn, and renders a direct clickable preview link on the compact banner so clicking **Open in Right Pane** opens the preview immediately without sending an extra chat prompt.

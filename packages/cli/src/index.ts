@@ -5,7 +5,7 @@ import { PRODUCT, YUNFAN_BILLING_ORIGIN } from "@inkmap/core";
 import { adFeed, fileSessionStorage, licenseService } from "./license.js";
 import { fileSource, serve } from "./server.js";
 
-export const INKMAP_VERSION = "0.3.0";
+export const INKMAP_VERSION = "0.3.1";
 const WEB_ROOT = fileURLToPath(new URL("./web/", import.meta.url));
 
 const USAGE = `Inkmap v${INKMAP_VERSION} — Markdown 交互思维导图编辑器 & MCP App
