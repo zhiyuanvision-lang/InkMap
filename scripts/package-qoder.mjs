@@ -18,6 +18,7 @@ try {
   await mkdir(plugin);
   await Promise.all([
     cp(join(source, ".qoder-plugin"), join(plugin, ".qoder-plugin"), { recursive: true }),
+    copyFile(join(source, ".qoder-plugin", "plugin.json"), join(plugin, "plugin.json")),
     cp(join(source, "skills"), join(plugin, "skills"), { recursive: true }),
     copyFile(join(root, "packages", "vscode", "LICENSE.md"), join(plugin, "LICENSE.md")),
     copyFile(join(root, "packages", "vscode", "THIRD_PARTY_NOTICES.md"), join(plugin, "THIRD_PARTY_NOTICES.md")),
