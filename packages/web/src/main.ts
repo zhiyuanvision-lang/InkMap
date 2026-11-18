@@ -391,6 +391,16 @@ export async function start(host: Host) {
         el.style.overflow = "visible";
       });
       svg.node.insertAdjacentHTML("afterbegin", `<style>${resolvedNodeCss()}</style>`);
+      if (!pro.isPaidPro()) {
+        const w = Number(svg.node.getAttribute("width")) || svg.node.viewBox?.baseVal?.width || 800;
+        const h = Number(svg.node.getAttribute("height")) || svg.node.viewBox?.baseVal?.height || 600;
+        const x = Math.max(140, w - 16);
+        const y = Math.max(24, h - 12);
+        svg.node.insertAdjacentHTML(
+          "beforeend",
+          `<text class="inkmap-export-watermark" x="${x}" y="${y}" text-anchor="end" font-family="-apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif" font-size="12" fill="${theme.palette.text}" fill-opacity="0.45">Made with Inkmap · Editable Markdown Mind Map (zhiyuanv.com)</text>`,
+        );
+      }
       return svg;
     },
     demonstrateConfig: { boxShadowColor: "rgba(0, 0, 0, 0.75)", borderColor: theme.palette.line, padding: 24, margin: 60 },
@@ -1100,13 +1110,101 @@ export async function start(host: Host) {
     return `${exportKatexCss}\n${resolved}`;
   }
 
-  async function exportAs(type: "png" | "svg") {
+  function buildInteractiveExportHtml(docTitle: string, svgDataUrl: string, mdSource: string): string {
+    const safeTitle = docTitle.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c));
+    const safeMd = mdSource.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c));
+    const badgeHtml = pro.isPaidPro()
+      ? ""
+      : `<a class="ink-viral-badge" href="https://zhiyuanv.com/software.html" target="_blank" rel="noopener noreferrer">✨ Made with <strong>Inkmap</strong> — Editable Markdown Mind Map &amp; Mermaid Editor for VS Code / Cursor / MCP ↗</a>`;
+    return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${safeTitle} · Inkmap</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: ${theme.palette.background}; color: ${theme.palette.text}; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
+    header { height: 46px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(128,128,128,0.18); background: ${theme.palette.card}; z-index: 10; }
+    .brand { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; }
+    .actions { display: flex; align-items: center; gap: 8px; }
+    button, .cta { padding: 5px 11px; border-radius: 7px; border: 1px solid rgba(128,128,128,0.28); background: transparent; color: inherit; font-size: 12px; cursor: pointer; text-decoration: none; }
+    .cta { background: #2563eb; color: #fff; border-color: #2563eb; font-weight: 600; }
+    #stage { flex: 1; position: relative; overflow: hidden; cursor: grab; display: flex; align-items: center; justify-content: center; }
+    #stage:active { cursor: grabbing; }
+    #map-img { max-width: 92vw; max-height: 84vh; transform-origin: center center; transition: transform 0.05s linear; user-select: none; -webkit-user-drag: none; }
+    #md-drawer { position: fixed; right: 16px; top: 58px; bottom: 58px; width: min(440px, 90vw); background: ${theme.palette.card}; border: 1px solid rgba(128,128,128,0.25); border-radius: 12px; padding: 14px; display: none; flex-direction: column; gap: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.22); z-index: 20; }
+    #md-drawer.open { display: flex; }
+    pre { flex: 1; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; padding: 10px; border-radius: 8px; background: rgba(128,128,128,0.08); }
+    .ink-viral-badge { position: fixed; right: 16px; bottom: 14px; padding: 7px 13px; border-radius: 999px; background: rgba(15, 23, 42, 0.86); color: #f8fafc; font-size: 12px; text-decoration: none; box-shadow: 0 6px 20px rgba(0,0,0,0.22); z-index: 30; backdrop-filter: blur(8px); }
+    .ink-viral-badge strong { color: #60a5fa; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand"><span>${safeTitle}</span></div>
+    <div class="actions">
+      <button type="button" id="zoom-out">−</button>
+      <button type="button" id="zoom-reset">100%</button>
+      <button type="button" id="zoom-in">+</button>
+      <button type="button" id="toggle-md">Markdown</button>
+      <a class="cta" href="https://marketplace.visualstudio.com/items?itemName=inkmap.inkmap-vscode" target="_blank" rel="noopener noreferrer">Edit in VS Code / Cursor ↗</a>
+    </div>
+  </header>
+  <div id="stage"><img id="map-img" src="${svgDataUrl}" alt="${safeTitle}"></div>
+  <aside id="md-drawer">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <strong style="font-size:13px">Markdown Source</strong>
+      <button type="button" id="copy-md">Copy Markdown</button>
+    </div>
+    <pre id="md-raw">${safeMd}</pre>
+  </aside>
+  ${badgeHtml}
+  <script>
+    (() => {
+      const stage = document.getElementById("stage");
+      const img = document.getElementById("map-img");
+      const drawer = document.getElementById("md-drawer");
+      let scale = 1, tx = 0, ty = 0, dragging = false, sx = 0, sy = 0;
+      const apply = () => { img.style.transform = \`translate(\${tx}px, \${ty}px) scale(\${scale})\`; };
+      stage.addEventListener("wheel", e => {
+        e.preventDefault();
+        scale = Math.min(5, Math.max(0.25, scale * (e.deltaY < 0 ? 1.1 : 0.9)));
+        apply();
+      }, { passive: false });
+      stage.addEventListener("pointerdown", e => { dragging = true; sx = e.clientX - tx; sy = e.clientY - ty; stage.setPointerCapture(e.pointerId); });
+      stage.addEventListener("pointermove", e => { if (!dragging) return; tx = e.clientX - sx; ty = e.clientY - sy; apply(); });
+      stage.addEventListener("pointerup", () => { dragging = false; });
+      document.getElementById("zoom-in").onclick = () => { scale = Math.min(5, scale * 1.2); apply(); };
+      document.getElementById("zoom-out").onclick = () => { scale = Math.max(0.25, scale / 1.2); apply(); };
+      document.getElementById("zoom-reset").onclick = () => { scale = 1; tx = 0; ty = 0; apply(); };
+      document.getElementById("toggle-md").onclick = () => drawer.classList.toggle("open");
+      document.getElementById("copy-md").onclick = e => {
+        navigator.clipboard.writeText(document.getElementById("md-raw").textContent || "");
+        e.target.textContent = "Copied!";
+        setTimeout(() => { e.target.textContent = "Copy Markdown"; }, 1500);
+      };
+    })();
+  </script>
+</body>
+</html>`;
+  }
+
+  async function exportAs(type: "png" | "svg" | "html") {
     hideMenus();
     if (!pro.allow("export")) return;
     host.track?.("feature_export");
     const name = title.replace(/[\\/:*?"<>|]+/g, "_");
     try {
       mindMap.execCommand("CLEAR_ACTIVE_NODE");
+      if (type === "html") {
+        const svgData: string = await mindMap.export("svg", false, name);
+        const htmlDoc = buildInteractiveExportHtml(title, svgData, currentMarkdown());
+        const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(htmlDoc)}`;
+        const file = `${name}.html`;
+        if (await host.saveFile(file, dataUrl)) showToast(t("exported", { name: file }));
+        return;
+      }
       const data: string = await mindMap.export(type, false, name);
       const file = `${name}.${type}`;
       if (await host.saveFile(file, data)) showToast(t("exported", { name: file }));
@@ -1259,7 +1357,7 @@ export async function start(host: Host) {
     if (!pro.allow("export")) return;
     exportMenu.hidden = !exportMenu.hidden;
   });
-  document.querySelectorAll<HTMLElement>("[data-export]").forEach(btn => btn.addEventListener("click", () => exportAs(btn.dataset.export as "png" | "svg")));
+  document.querySelectorAll<HTMLElement>("[data-export]").forEach(btn => btn.addEventListener("click", () => exportAs(btn.dataset.export as "png" | "svg" | "html")));
   click("#present", present);
   const levelSelect = $<HTMLSelectElement>("#level-select");
   levelSelect.addEventListener("change", () => {

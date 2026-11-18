@@ -1,6 +1,6 @@
 {
-  "displayName": "Inkmap 墨图 — Markdown 思维导图 / 脑图 / Markmap & Mermaid 流程图",
-  "description": "将 Markdown (.md / .markmap.md) 实时双向编辑为思维导图、脑图大纲与架构图，原生支持 Mermaid 流程图、LaTeX 公式、XMind 快捷键与高清 PNG/SVG 导出。",
+  "displayName": "Inkmap 墨图 — 可编辑 Markmap / Markdown 思维导图 & Mermaid 流程图",
+  "description": "比 Markmap 更好用的双向可编辑 Markdown (.md) 思维导图与脑图插件：直接改节点实时同步源文件，原生内嵌 Mermaid 流程图、LaTeX 公式、XMind 快捷键、AI 对话协同与高清 PNG/SVG/HTML 导出。",
   "virtualWorkspaces": "Inkmap 需要编辑磁盘上的 Markdown 文件。",
   "editor.displayName": "Inkmap 思维导图",
   "command.open": "Open as Inkmap",

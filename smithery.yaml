@@ -1,0 +1,16 @@
+# Smithery.ai MCP configuration for Inkmap (zero-dependency npx package)
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      workspace:
+        type: string
+        description: Optional path to the Markdown workspace directory
+        default: "."
+  commandFunction: |-
+    (config) => ({
+      command: 'npx',
+      args: ['-y', 'inkmap-mcp'],
+      env: config.workspace ? { INKMAP_WORKSPACES: config.workspace } : {}
+    })

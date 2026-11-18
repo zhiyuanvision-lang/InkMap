@@ -9,6 +9,8 @@ const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as
 
 export interface Pro {
   isPro(): boolean;
+  /** True only when the user holds an active paid Pro entitlement (not just free trial). */
+  isPaidPro(): boolean;
   /** True when the feature may be used; otherwise opens the upgrade dialog and returns false. */
   allow(feature: ProFeature): boolean;
   openUpgrade(feature?: ProFeature): void;
@@ -456,6 +458,7 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
 
   return {
     isPro: () => hasAccess(state),
+    isPaidPro: () => Boolean(state.pro),
     allow(feature) {
       if (hasAccess(state)) return true;
       openUpgrade(feature);

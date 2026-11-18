@@ -1,6 +1,6 @@
 {
-  "displayName": "Inkmap — Markdown Mind Map & Mermaid 思维导图 / 脑图",
-  "description": "Interactive two-way Markdown mind map (markmap) & Mermaid flowchart editor with LaTeX, XMind outline sync & PNG/SVG export | 双向编辑思维导图、脑图、流程图、大纲",
+  "displayName": "Inkmap — Editable Markmap, Markdown Mind Map & Mermaid 思维导图",
+  "description": "Editable Markmap alternative: Two-way Markdown mind map (.md) & Mermaid flowchart editor with XMind shortcuts, LaTeX, AI Chat & PNG/SVG/HTML export | 双向可编辑思维导图、脑图、流程图",
   "virtualWorkspaces": "Inkmap edits Markdown files on disk.",
   "editor.displayName": "Inkmap Mind Map",
   "command.open": "Open as Inkmap",

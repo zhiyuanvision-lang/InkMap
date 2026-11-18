@@ -641,7 +641,22 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
           } catch {
             return;
           }
-          if (origin === "https://billing.example.com" && process.env.INKMAP_ALLOW_TEST_TELEMETRY !== "1") return;
+          if (process.env.INKMAP_ALLOW_TEST_TELEMETRY !== "1") {
+            if (origin === "https://billing.example.com" || process.env.INKMAP_DISABLE_TELEMETRY === "1" || process.env.NODE_TEST_CONTEXT) return;
+            const customHome = process.env.INKMAP_HOME || "";
+            if (
+              customHome &&
+              (customHome.startsWith("/tmp/") ||
+                customHome.startsWith("/private/tmp/") ||
+                customHome.includes("/var/folders/") ||
+                customHome.includes("inkmap-npm-isolated-") ||
+                customHome.includes("inkmap-antigravity-mcp-") ||
+                customHome.includes("inkmap-local-editor-") ||
+                customHome.includes("inkmap-harness-"))
+            ) {
+              return;
+            }
+          }
           const id = await (installIdPromise ??= localInstallId().catch(() => undefined));
           if (disposed || !id || !pendingEvents.size) return;
           await (trial ??= startTrial());
@@ -660,7 +675,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
               installId: id,
               host: hostName,
               os,
-              version: "0.3.6",
+              version: "0.3.7",
               locale: clientLocale(),
               tier,
               events,

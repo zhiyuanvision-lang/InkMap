@@ -63,6 +63,7 @@ const zh = {
 
   exportPng: "导出 PNG 图片",
   exportSvg: "导出 SVG 矢量图",
+  exportHtml: "导出交互式 HTML 网页",
   exported: "已导出 {name}",
   exportFailed: "导出失败：{error}",
 
@@ -86,7 +87,7 @@ const zh = {
   "feature.diagram": "预览 Mermaid 流程图和状态图，修改源码即更新",
   "feature.noAds": "去除全部广告，界面清爽专注",
   "feature.browser": "在 Chrome 中全屏编辑，与编辑器实时同步",
-  "feature.export": "导出 PNG 高清图片和 SVG 矢量图，直接放进文档和 PPT",
+  "feature.export": "导出无水印高清 PNG、SVG 矢量图与交互式分享 HTML，直接放进文档和 PPT",
   "feature.layouts": "7 种额外结构：组织结构图、目录组织图、时间轴、鱼骨图等",
   "feature.themes": "3 套额外配色，含护眼深色主题",
   "feature.replace": "整张导图查找替换，一键批量修改",
@@ -165,7 +166,7 @@ const zh = {
   "perk.markdown": "Markdown ⇄ 导图实时双向同步，源码与节点互定位",
   "perk.diagram": "Mermaid 流程图、LaTeX 公式与表格原生渲染",
   "perk.layouts": "9 种专业结构 + 夜色深色主题 + 全套快捷键同步",
-  "perk.export": "一键导出高清 PNG 与矢量 SVG（适配 PPT）",
+  "perk.export": "一键导出无水印高清 PNG、矢量 SVG 与交互式分享 HTML",
   "perk.rich": "全平台通用（Cursor / VS Code / DeepSeek / Qoder / WorkBuddy / Claude / Codex / Antigravity / Trae）",
   "perk.present": "逐节点聚焦演示模式 + 全图查找与批量替换",
   "perk.updates": "一次买断永久免费升级 · 14 天无理由全额退款",
@@ -257,6 +258,7 @@ const en: Record<Key, string> = {
 
   exportPng: "Export PNG image",
   exportSvg: "Export SVG vector",
+  exportHtml: "Export interactive HTML",
   exported: "Exported {name}",
   exportFailed: "Export failed: {error}",
 
@@ -280,7 +282,7 @@ const en: Record<Key, string> = {
   "feature.diagram": "Preview Mermaid flowcharts and state diagrams, then edit their source",
   "feature.noAds": "No ads — a clean, focused workspace",
   "feature.browser": "Full-screen editing in Chrome, synced live with your editor",
-  "feature.export": "Export high-resolution PNG and SVG for docs and slides",
+  "feature.export": "Export watermark-free HD PNG, SVG vector, and interactive shareable HTML",
   "feature.layouts": "7 extra layouts: org chart, catalog, timelines, fishbone and more",
   "feature.themes": "3 extra color themes, including dark",
   "feature.replace": "Find and replace across the whole map",
@@ -359,7 +361,7 @@ const en: Record<Key, string> = {
   "perk.markdown": "Two-way live Markdown ⇄ Mind Map sync & line linking",
   "perk.diagram": "Native Mermaid diagrams, LaTeX math & Markdown tables",
   "perk.layouts": "9 pro layouts, Dusk dark mode & full keyboard shortcuts",
-  "perk.export": "One-click HD PNG & vector SVG export for slides",
+  "perk.export": "One-click watermark-free HD PNG, vector SVG & interactive HTML export",
   "perk.rich": "Works across Cursor, VS Code, DeepSeek, Qoder, WorkBuddy, Claude, Codex, Antigravity & Trae",
   "perk.present": "Presentation mode + global find & batch replace",
   "perk.updates": "Free lifetime upgrades · 14-day full refund guarantee",
