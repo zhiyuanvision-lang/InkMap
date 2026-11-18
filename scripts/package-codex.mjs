@@ -65,9 +65,20 @@ try {
   const webNotices = await readFile(join(notices, "THIRD_PARTY_NOTICES.md"), "utf8");
   await writeFile(join(plugin, "THIRD_PARTY_NOTICES.md"), webNotices + "\n" + bundledLicenses.join("\n"));
 
-  const description = "Open Markdown as an editable mind map with Inkmap.";
-  const interfaceMetadata = { displayName: "Inkmap", logo: "./assets/icon.png", composerIcon: "./assets/icon.png" };
-  const manifest = { name, version, description };
+  const description = "Interactive two-way Markdown mind map (markmap), Mermaid flowchart & XMind outline editor | 双向编辑 Markdown 思维导图、脑图、流程图与大纲";
+  const interfaceMetadata = { displayName: "Inkmap — Mind Map & Mermaid 思维导图", logo: "./assets/icon.png", composerIcon: "./assets/icon.png" };
+  const manifest = {
+    name,
+    version,
+    description,
+    homepage: "https://zhiyuanv.com/software.html",
+    repository: "https://github.com/zhiyuanvision-lang/InkMap",
+    author: { name: "Zhiyuan Vision", email: "contact@zhiyuanv.com" },
+    keywords: [
+      "inkmap", "markdown", "mindmap", "mind-map", "mind map", "markmap", "mermaid",
+      "flowchart", "diagram", "outline", "xmind", "katex", "思维导图", "脑图", "流程图", "大纲", "架构图"
+    ],
+  };
   const server = { command: "node", args: ["${PLUGIN_ROOT}/server.cjs"], cwd: "${PLUGIN_ROOT}" };
   await Promise.all([
     writeJSON(join(plugin, "plugin.json"), {

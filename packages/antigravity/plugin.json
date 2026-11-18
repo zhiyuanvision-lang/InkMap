@@ -1,14 +1,14 @@
 {
   "name": "inkmap",
-  "displayName": "Inkmap",
+  "displayName": "Inkmap — Markdown Mind Map & Mermaid 思维导图",
   "version": "0.2.0",
-  "description": "MCP App mind map editor for local Markdown (.md, .markmap.md) outlines: auto-opens in the Antigravity side pane with live file write-back and Mermaid diagram editing. 在右侧面板自动打开并实时编辑 Markdown 思维导图。",
+  "description": "Interactive two-way Markdown (.md, .markmap.md) mind map, mindmap, markmap, Mermaid flowchart, diagram, XMind outline & KaTeX editor: auto-opens in the Antigravity side pane with live file write-back. 在右侧面板实时双向编辑 Markdown 思维导图、脑图、流程图、大纲、架构图、组织结构图与鱼骨图。",
   "logo": "assets/logo.svg",
-  "homepage": "https://www.zhiyuanv.com/software.html",
+  "homepage": "https://zhiyuanv.com/software.html",
   "repository": "https://github.com/zhiyuanvision-lang/InkMap",
   "suggestedPrompts": [
     "用 Inkmap 在右侧打开当前项目的 Markdown 思维导图",
-    "把这份设计文档整理成 Markdown 大纲并用 Inkmap 打开",
-    "Open this Markdown outline in Inkmap mind map"
+    "把这份设计文档整理成 Markdown 脑图大纲并用 Inkmap 打开",
+    "Open this Markdown outline or Mermaid flowchart in Inkmap mind map"
   ]
 }

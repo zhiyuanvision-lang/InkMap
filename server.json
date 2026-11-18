@@ -1,10 +1,19 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.zhiyuanvision-lang/inkmap-markdown-mindmap-markmap",
-  "title": "Inkmap Mind Map",
-  "description": "Interactive two-way Markdown mind map editor & MCP App for local .md and .markmap.md files.",
-  "version": "0.2.9",
-  "websiteUrl": "https://www.zhiyuanv.com/software.html",
+  "title": "Inkmap — Markdown Mind Map & Mermaid 思维导图/脑图/流程图",
+  "description": "Two-way Markdown mind map (markmap), Mermaid flowchart & outline MCP App | 双向思维导图/脑图/流程图/大纲",
+  "version": "0.3.6",
+  "websiteUrl": "https://zhiyuanv.com/software.html",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/zhiyuanvision-lang/InkMap/main/packages/vscode/images/icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "128x128"
+      ]
+    }
+  ],
   "repository": {
     "url": "https://github.com/zhiyuanvision-lang/InkMap",
     "source": "github"
@@ -13,7 +22,7 @@
     {
       "registryType": "npm",
       "identifier": "inkmap-mcp",
-      "version": "0.2.9",
+      "version": "0.3.6",
       "transport": {
         "type": "stdio"
       },

@@ -36,10 +36,19 @@ for (const [relPath, pattern] of [
 
 const dshPkgPath = join(root, "dist", "sidebars", "dsh-inkmap", "package.json");
 const npmPkgPath = join(root, "dist", "npm", "inkmap-mcp", "package.json");
+const serverJsonPath = join(root, "server.json");
+const rootPluginPath = join(root, "plugin.json");
+const claudePluginPath = join(root, ".claude-plugin", "plugin.json");
+const cursorPluginPath = join(root, ".cursor-plugin", "plugin.json");
 assert.ok(existsSync(dshPkgPath), "Missing dist/sidebars/dsh-inkmap/package.json; run npm run package:platforms");
 assert.ok(existsSync(npmPkgPath), "Missing dist/npm/inkmap-mcp/package.json; run npm run package:platforms");
+assert.ok(existsSync(serverJsonPath), "Missing root server.json; run npm run package:platforms");
 assert.equal(JSON.parse(readFileSync(dshPkgPath, "utf8")).version, expectedVersion, "dsh-inkmap version mismatch");
 assert.equal(JSON.parse(readFileSync(npmPkgPath, "utf8")).version, expectedVersion, "inkmap-mcp version mismatch");
+assert.equal(JSON.parse(readFileSync(serverJsonPath, "utf8")).version, expectedVersion, "server.json version mismatch");
+assert.equal(JSON.parse(readFileSync(rootPluginPath, "utf8")).version, expectedVersion, "root plugin.json version mismatch");
+assert.equal(JSON.parse(readFileSync(claudePluginPath, "utf8")).version, expectedVersion, ".claude-plugin/plugin.json version mismatch");
+assert.equal(JSON.parse(readFileSync(cursorPluginPath, "utf8")).version, expectedVersion, ".cursor-plugin/plugin.json version mismatch");
 
 // 2. Asset hash parity: Web source -> VS Code Extension + DeepSeek Harness + Standalone CLI
 const webIndex = readFileSync(join(root, "packages", "web", "dist", "index.html"), "utf8");

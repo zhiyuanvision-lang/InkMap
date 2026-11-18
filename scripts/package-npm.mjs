@@ -161,9 +161,21 @@ await writeFile(binPath, binScript, "utf8");
 await chmod(binPath, 0o755);
 
 // Codex bundle manifests
-const codexDescription = "Open Markdown as an editable mind map with Inkmap.";
-const codexInterface = { displayName: "Inkmap", logo: "./assets/icon.png", composerIcon: "./assets/icon.png" };
-const codexManifest = { name: "inkmap-codex", version, description: codexDescription };
+const codexDescription = "Interactive two-way Markdown mind map (markmap), Mermaid flowchart & XMind outline editor | 双向编辑 Markdown 思维导图、脑图、流程图与大纲";
+const codexKeywords = [
+  "inkmap", "markdown", "mindmap", "mind-map", "mind map", "markmap", "mermaid",
+  "flowchart", "diagram", "outline", "xmind", "katex", "思维导图", "脑图", "流程图", "大纲", "架构图"
+];
+const codexInterface = { displayName: "Inkmap — Mind Map & Mermaid 思维导图", logo: "./assets/icon.png", composerIcon: "./assets/icon.png" };
+const codexManifest = {
+  name: "inkmap-codex",
+  version,
+  description: codexDescription,
+  homepage: "https://zhiyuanv.com/software.html",
+  repository: "https://github.com/zhiyuanvision-lang/InkMap",
+  author: { name: "Zhiyuan Vision", email: "contact@zhiyuanv.com" },
+  keywords: codexKeywords,
+};
 const codexServer = { command: "node", args: ["${PLUGIN_ROOT}/server.cjs"], cwd: "${PLUGIN_ROOT}" };
 await Promise.all([
   writeJSON(join(codexPlugin, "plugin.json"), {
@@ -214,35 +226,115 @@ await writeFile(join(pkgDir, "THIRD_PARTY_NOTICES.md"), webNotices + "\n" + bund
 
 // Official MCP Registry manifest + zero-dependency package.json
 const mcpName = "io.github.zhiyuanvision-lang/inkmap-markdown-mindmap-markmap";
-await Promise.all([
-  writeJSON(join(pkgDir, "server.json"), {
-    $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-    name: mcpName,
-    title: "Inkmap Mind Map",
-    description: "Interactive two-way Markdown mind map editor & MCP App for local .md and .markmap.md files.",
-    version,
-    websiteUrl: "https://www.zhiyuanv.com/software.html",
-    repository: {
-      url: "https://github.com/zhiyuanvision-lang/InkMap",
-      source: "github",
+const serverManifest = {
+  $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  name: mcpName,
+  title: "Inkmap — Markdown Mind Map & Mermaid 思维导图/脑图/流程图",
+  description: "Two-way Markdown mind map (markmap), Mermaid flowchart & outline MCP App | 双向思维导图/脑图/流程图/大纲",
+  version,
+  websiteUrl: "https://zhiyuanv.com/software.html",
+  icons: [
+    {
+      src: "https://raw.githubusercontent.com/zhiyuanvision-lang/InkMap/main/packages/vscode/images/icon.png",
+      mimeType: "image/png",
+      sizes: ["128x128"],
     },
-    packages: [
+  ],
+  repository: {
+    url: "https://github.com/zhiyuanvision-lang/InkMap",
+    source: "github",
+  },
+  packages: [
+    {
+      registryType: "npm",
+      identifier: "inkmap-mcp",
+      version,
+      transport: { type: "stdio" },
+      packageArguments: [{ type: "positional", value: "mcp" }],
+    },
+  ],
+};
+const rootPluginDescription = "Interactive two-way Markdown mind map (markmap), Mermaid flowchart & XMind outline MCP App | 双向编辑 Markdown 思维导图、脑图、流程图与大纲";
+const rootPluginKeywords = [
+  "mcp", "mcp-server", "mcp-app", "model-context-protocol",
+  "markdown", "mindmap", "mind-map", "mind map", "markmap", "mermaid",
+  "flowchart", "diagram", "outline", "xmind", "katex", "latex",
+  "claude-plugin", "cursor-plugin", "codex-plugin",
+  "思维导图", "脑图", "大纲", "流程图", "架构图", "组织结构图", "鱼骨图", "双向同步"
+];
+const sharedPluginMeta = {
+  name: "inkmap",
+  displayName: "Inkmap — Markdown Mind Map & Mermaid 思维导图",
+  version,
+  description: rootPluginDescription,
+  author: { name: "Zhiyuan Vision", email: "contact@zhiyuanv.com", url: "https://zhiyuanv.com" },
+  homepage: "https://zhiyuanv.com/software.html",
+  repository: "https://github.com/zhiyuanvision-lang/InkMap",
+  license: "SEE LICENSE IN LICENSE.md",
+  logo: "./packages/vscode/images/icon.png",
+  keywords: rootPluginKeywords,
+};
+await Promise.all([
+  mkdir(join(root, ".claude-plugin"), { recursive: true }),
+  mkdir(join(root, ".cursor-plugin"), { recursive: true }),
+]);
+await Promise.all([
+  writeJSON(join(pkgDir, "server.json"), serverManifest),
+  writeJSON(join(root, "server.json"), serverManifest),
+  writeJSON(join(root, "plugin.json"), {
+    $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+    ...sharedPluginMeta,
+    skills: "./skills",
+    mcpServers: "./mcp.json",
+    extensions: {
+      "com.openai": {
+        requires_local_executor: true,
+        interface: {
+          displayName: "Inkmap — Mind Map & Mermaid 思维导图",
+          logo: "./packages/vscode/images/icon.png",
+          composerIcon: "./packages/vscode/images/icon.png",
+        },
+      },
+    },
+  }),
+  writeJSON(join(root, ".claude-plugin", "plugin.json"), {
+    ...sharedPluginMeta,
+    skills: "./skills",
+    mcpServers: "./.mcp.json",
+  }),
+  writeJSON(join(root, ".claude-plugin", "marketplace.json"), {
+    name: "inkmap-marketplace",
+    owner: { name: "Zhiyuan Vision", email: "contact@zhiyuanv.com" },
+    metadata: {
+      description: rootPluginDescription,
+      version,
+    },
+    plugins: [
       {
-        registryType: "npm",
-        identifier: "inkmap-mcp",
+        name: "inkmap",
+        source: "./",
+        description: rootPluginDescription,
         version,
-        transport: { type: "stdio" },
-        packageArguments: [{ type: "positional", value: "mcp" }],
+        author: { name: "Zhiyuan Vision", email: "contact@zhiyuanv.com" },
+        homepage: "https://zhiyuanv.com/software.html",
+        repository: "https://github.com/zhiyuanvision-lang/InkMap",
+        category: "productivity",
+        keywords: rootPluginKeywords,
       },
     ],
+  }),
+  writeJSON(join(root, ".cursor-plugin", "plugin.json"), {
+    ...sharedPluginMeta,
+    skills: "./skills",
+    mcpServers: "./mcp.json",
   }),
   writeJSON(join(pkgDir, "package.json"), {
     name: "inkmap-mcp",
     version,
-    description: "Interactive Markdown mind map editor & MCP App for Claude, Codex, Antigravity, Cursor, VS Code, and local browsers.",
+    description: "Interactive two-way Markdown mind map (markmap) & Mermaid flowchart editor / MCP App for Claude, Codex, Antigravity, Cursor, VS Code, Qoder & DeepSeek Harness | Markdown 双向思维导图、脑图、流程图与大纲",
     mcpName,
     license: "SEE LICENSE IN LICENSE.md",
-    homepage: "https://www.zhiyuanv.com/software.html",
+    homepage: "https://zhiyuanv.com/software.html",
     repository: {
       type: "git",
       url: "git+https://github.com/zhiyuanvision-lang/InkMap.git",
@@ -268,6 +360,7 @@ await Promise.all([
       "mcp",
       "mcp-server",
       "mcp-app",
+      "model-context-protocol",
       "markdown",
       "mindmap",
       "mind-map",
@@ -278,18 +371,36 @@ await Promise.all([
       "diagram",
       "outline",
       "xmind",
+      "katex",
+      "latex",
       "claude",
+      "claude-code",
+      "claude-plugin",
       "codex",
+      "codex-plugin",
       "cursor",
+      "cursor-plugin",
       "vscode",
       "antigravity",
       "deepseek-harness",
       "dsh",
       "dsh-plugin",
+      "qoder",
+      "trae",
+      "windsurf",
+      "workbuddy",
+      "codebuddy",
       "思维导图",
       "脑图",
       "大纲",
       "流程图",
+      "架构图",
+      "组织结构图",
+      "鱼骨图",
+      "时间轴",
+      "双向同步",
+      "知识库",
+      "笔记",
     ],
   }),
 ]);

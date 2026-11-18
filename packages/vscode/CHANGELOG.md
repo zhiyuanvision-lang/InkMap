@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.6
+
+- **Multi-Platform Marketplace Search & Discovery Optimization**: Added bilingual search titles, descriptions, and enriched keyword coverage across Open VSX (Cursor, Trae, Windsurf), VS Code Marketplace, Official MCP Registry (`server.json`), Antigravity, Claude, Codex, Qoder, and DeepSeek Harness plugin catalogs.
+
 ## 0.3.5
 
 - **Decoupled Category 1 vs. Category 2 Verification Emails**: In-plugin direct checkout emails (Category 1) now show only the 6-digit verification code and Pro perks overview with zero external jump buttons; Category 2 emails include a device-bound Magic Link that automatically signs in the open plugin window without manual code entry and syncs Pro access upon 1-step payment.

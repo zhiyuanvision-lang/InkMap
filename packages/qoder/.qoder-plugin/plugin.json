@@ -1,9 +1,15 @@
 {
   "name": "inkmap",
-  "displayName": "Inkmap 墨图",
+  "displayName": "Inkmap 墨图 — Markdown 思维导图 / 脑图 & Mermaid",
   "version": "0.1.0",
-  "description": "在 Qoder 中把本地 Markdown 大纲打开为可编辑的思维导图，修改保存回原文件。",
-  "author": { "name": "Inkmap" },
-  "keywords": ["inkmap", "markdown", "markmap", "mindmap", "思维导图", "脑图"],
+  "description": "在 Qoder 中将本地 Markdown (.md, .markmap.md) 实时双向编辑为思维导图、脑图大纲、Mermaid 流程图与架构图并写回源文件 | Interactive two-way Markdown mind map (markmap) & Mermaid flowchart editor.",
+  "author": { "name": "Zhiyuan Vision", "email": "contact@zhiyuanv.com" },
+  "homepage": "https://zhiyuanv.com/software.html",
+  "repository": "https://github.com/zhiyuanvision-lang/InkMap",
+  "keywords": [
+    "inkmap", "markdown", "markmap", "mindmap", "mind map", "mind-map",
+    "mermaid", "flowchart", "diagram", "outline", "xmind", "katex", "latex",
+    "思维导图", "脑图", "流程图", "大纲", "架构图", "组织结构图", "鱼骨图", "双向同步"
+  ],
   "skills": "./skills"
 }
