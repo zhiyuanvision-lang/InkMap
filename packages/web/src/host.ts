@@ -788,7 +788,6 @@ export class HttpHost implements Host {
     }
     this.hostAccountNavigation = capabilities?.accountNavigation === "host" &&
       new URLSearchParams(location.search).get("account-navigation") === "host" && window.parent !== window;
-    if (this.hostAccountNavigation) this.phoneSignIn = undefined;
 
     const doc = (await res.json()) as DocState & { currentFile?: string };
     this.currentMd = doc.md;
@@ -891,8 +890,8 @@ export class HttpHost implements Host {
         }
         const timer = window.setTimeout(() => done(false), 12_000);
         window.addEventListener("message", receive);
-        // The parent receives a request identifier only. It creates the account link using its own lease.
-        window.parent.postMessage({ type, id }, "*");
+        // The parent receives a request identifier and checkout mode. It creates the account link using its own lease.
+        window.parent.postMessage({ type, id, mode }, "*");
       });
       return;
     }

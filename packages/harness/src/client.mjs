@@ -85,9 +85,11 @@ export function apply(ctx) {
             data?.type !== "inkmap:open-account" || typeof data.id !== "string" || tab.signal.aborted) return;
         let ok = false;
         try {
-          const response = await request("POST", { lease: view.lease, action: "sign-in" });
+          const mode = data.mode === "buy" ? "buy" : "restore";
+          const action = mode === "buy" ? "buy" : "sign-in";
+          const response = await request("POST", { lease: view.lease, action });
           if (!response.ok) throw new Error("Inkmap sign-in is unavailable");
-          const url = billingFlowUrl((await response.json()).url, YUNFAN_BILLING_ORIGIN, "restore");
+          const url = billingFlowUrl((await response.json()).url, YUNFAN_BILLING_ORIGIN, mode);
           if (!mounted || tab.signal.aborted) return;
           // Harness Desktop forwards HTTPS window requests to the system browser.
           window.open(url, "_blank", "noopener,noreferrer");

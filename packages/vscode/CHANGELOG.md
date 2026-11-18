@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.3
+
+- **DeepSeek Harness Inline Pro Purchase & Email Verification**: Enabled inline WeChat Pay QR checkout, inline email verification sign-in, and official web checkout links directly inside the DeepSeek Harness sidebar (`dsh-inkmap`).
+
 ## 0.3.2
 
 - **DeepSeek Harness Full Integration (`dsh-inkmap`)**: Upgraded the DeepSeek Harness sidebar plugin with the full 3-column workspace controls (Project Explorer + Live Markdown Split Pane + Mind Map), localized Chinese/English plugin metadata & details, automatic cross-client installation from VS Code / Cursor / `inkmap-mcp install`, and official plugin index support (`https://zhiyuanv.com/dsh-index.json`).

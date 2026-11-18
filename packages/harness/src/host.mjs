@@ -65,7 +65,7 @@ async function readBody(req) {
 }
 
 export function apply(ctx) {
-  const license = licenseService(fileSessionStorage(), () => YUNFAN_BILLING_ORIGIN, { loginOnly: true });
+  const license = licenseService(fileSessionStorage(), () => YUNFAN_BILLING_ORIGIN);
   const editors = new Map();
   const leases = new Map();
   let disposed = false;
@@ -97,10 +97,11 @@ export function apply(ctx) {
           if (editor && --editor.users === 0) await closeEditor(path, editor);
           return json(res, 200, {});
         }
-        if (body.action === "sign-in") {
+        if (body.action === "sign-in" || body.action === "buy") {
           if (disposed || !leases.has(body.lease)) return json(res, 404, {});
           try {
-            return json(res, 200, { url: await license.connect("restore") });
+            const mode = body.action === "buy" ? "buy" : "restore";
+            return json(res, 200, { url: await license.connect(mode) });
           } catch {
             return json(res, 502, {});
           }
@@ -122,7 +123,7 @@ export function apply(ctx) {
                   return source.write(md);
                 },
               },
-              webRoot, license, port: 0, sidebar: true, sidebarAccountNavigation: true, workspaceRoots: [root],
+              webRoot, license, port: 0, sidebar: true, sidebarPurchase: true, sidebarAccountNavigation: true, workspaceRoots: [root],
             }));
             editor = { users: 0, server };
             editors.set(path, editor);
