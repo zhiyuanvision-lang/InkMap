@@ -18,9 +18,10 @@ type FromWebview =
   | { type: "addToChat"; startLine?: number; endLine?: number; text?: string }
   | { type: "undo" }
   | { type: "redo" }
-  | { type: "checkout"; id: number; mode: "buy" | "restore" }
-  | { type: "orderPro"; id: number }
-  | { type: "sendPhoneCode"; id: number; phone: string }
+  | { type: "checkout"; id: number; mode: "buy" | "restore"; locale?: string }
+  | { type: "orderPro"; id: number; locale?: string }
+  | { type: "openExternal"; url: string }
+  | { type: "sendPhoneCode"; id: number; phone: string; locale?: string }
   | { type: "signInByPhone"; id: number; phone: string; code: string }
   | { type: "signOut"; id: number }
   | { type: "saveFile"; id: number; name: string; dataUrl: string }
@@ -103,7 +104,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
         revealTimer = setTimeout(() => post({ type: "reveal", line: e.selections[0].active.line }), REVEAL_DELAY);
       }),
       webview.onDidReceiveMessage(async (msg: FromWebview) => {
-        const accountAction = msg.type === "checkout" || msg.type === "orderPro" || msg.type === "signOut" || msg.type === "sendPhoneCode" || msg.type === "signInByPhone" || msg.type === "telemetry";
+        const accountAction = msg.type === "checkout" || msg.type === "orderPro" || msg.type === "openExternal" || msg.type === "signOut" || msg.type === "sendPhoneCode" || msg.type === "signInByPhone" || msg.type === "telemetry";
         if (!accountAction && msg.type !== "ready" && msg.type !== "viewState" && msg.type !== "select" && !hasAccess(await this.license.state())) {
           if ("id" in msg) return post({ type: "error", id: msg.id, message: t("trialExpired") });
           return;
@@ -168,26 +169,31 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
           case "checkout":
             try {
               if (msg.mode !== "buy" && msg.mode !== "restore") throw new Error("Invalid checkout mode");
-              await openCheckout(this.license, msg.mode);
+              await openCheckout(this.license, msg.mode, msg.locale);
               return post({ type: "checkout", id: msg.id });
             } catch (error) {
               return post({ type: "error", id: msg.id, message: error instanceof Error ? error.message : t("checkoutFailed") });
             }
           case "orderPro":
             try {
-              const result = await this.license.orderPro();
-              if (result.status === "redirect" && !await vscode.env.openExternal(vscode.Uri.parse(result.url))) {
-                throw new Error(t("checkoutFailed"));
+              const result = await this.license.orderPro(msg.locale);
+              if (result.status === "redirect" && /^https:\/\//.test(result.url)) {
+                void vscode.env.openExternal(vscode.Uri.parse(result.url));
               }
               return post({ type: "proOrder", id: msg.id, result });
             } catch (error) {
               return post({ type: "error", id: msg.id, message: error instanceof Error ? error.message : t("checkoutFailed") });
             }
+          case "openExternal":
+            if (typeof msg.url === "string" && /^https:\/\//.test(msg.url)) {
+              void vscode.env.openExternal(vscode.Uri.parse(msg.url));
+            }
+            return;
           case "signOut":
             await this.license.deactivate();
             return post({ type: "signedOut", id: msg.id });
           case "sendPhoneCode":
-            return post({ type: "phoneCodeSent", id: msg.id, result: await this.license.sendPhoneCode(msg.phone) });
+            return post({ type: "phoneCodeSent", id: msg.id, result: await this.license.sendPhoneCode(msg.phone, msg.locale) });
           case "signInByPhone":
             return post({ type: "phoneSignIn", id: msg.id, result: await this.license.signInByPhone(msg.phone, msg.code) });
           case "saveFile":

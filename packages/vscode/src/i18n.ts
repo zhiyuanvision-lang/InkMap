@@ -47,8 +47,10 @@ const en: Record<Key, string> = {
 export const isChinese = () => {
   if (/^zh/i.test(vscode.env.language)) return true;
   try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-    if (/^Asia\/(Shanghai|Chongqing|Harbin|Urumqi)$/i.test(tz)) return true;
+    const opts = Intl.DateTimeFormat().resolvedOptions();
+    if (/^zh\b/i.test(opts.locale || "")) return true;
+    const tz = opts.timeZone || "";
+    if (/^(Asia\/(Shanghai|Chongqing|Chungking|Harbin|Urumqi|Beijing)|PRC)$/i.test(tz)) return true;
   } catch {}
   return false;
 };

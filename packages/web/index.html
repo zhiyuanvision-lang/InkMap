@@ -44,7 +44,6 @@
       <svg class="bar-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2.8" width="12" height="8.4" rx="1.4"/><path d="M6.8 5.4 10 7l-3.2 1.6V5.4Z"/><path d="M8 11.2v2.3M5.5 13.5h5"/></svg>
       <span data-i18n="present"></span>
     </button>
-    <select class="language-select" aria-label="Language / 语言"><option value="en">English</option><option value="zh">中文</option></select>
     <span id="status" data-state="saved"></span>
     <div id="account">
       <button id="pro" type="button" aria-expanded="false" aria-controls="account-panel" hidden>
@@ -71,7 +70,6 @@
             <div class="account-perks-head">
               <span class="account-perks-label"><span class="pro-mini-badge">PRO</span><span data-i18n="proPerksTitle"></span></span>
               <span class="account-perks-price" data-i18n="proPriceTag"></span>
-              <button id="account-perks-more" class="plan-more-btn" type="button" hidden><span data-i18n="proPerksAll"></span><svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 2.5 8 6l-3.5 3.5"/></svg></button>
             </div>
             <ul class="account-perks-list">
               <li data-i18n="perk.markdown"></li>
@@ -87,18 +85,6 @@
         <div class="account-primary">
           <button id="account-buy" class="buy" type="button" data-i18n="buyPro" hidden></button>
           <button id="account-sign-in" class="buy" type="button" data-i18n="signIn" hidden></button>
-        </div>
-        <div id="account-web-links" class="account-web-links" hidden>
-          <button id="account-web-checkout" class="account-ext-link" type="button" hidden>
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="3.5" width="12.4" height="9" rx="1.8"/><path d="M1.8 6.8h12.4"/></svg>
-            <span data-i18n="webCheckoutLink"></span>
-            <span class="ext-arrow" aria-hidden="true">↗</span>
-          </button>
-          <a id="account-official-link" class="account-ext-link" href="https://zhiyuanv.com/software.html#inkmap-pricing" target="_blank" rel="noopener noreferrer" hidden>
-            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M2.2 8h11.6"/><path d="M8 2a9.5 9.5 0 0 1 2.4 6A9.5 9.5 0 0 1 8 14a9.5 9.5 0 0 1-2.4-6A9.5 9.5 0 0 1 8 2Z"/></svg>
-            <span data-i18n="officialWebsite"></span>
-            <span class="ext-arrow" aria-hidden="true">↗</span>
-          </a>
         </div>
         <div id="account-actions" class="account-actions" hidden>
           <button id="switch-account" class="account-menu-item" type="button"><svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 2.5 13.5 5 11 7.5"/><path d="M2.5 5h11"/><path d="M5 13.5 2.5 11 5 8.5"/><path d="M13.5 11h-11"/></svg><span data-i18n="switchAccount"></span></button>
@@ -151,7 +137,6 @@
   <div id="upgrade" hidden>
     <div class="upgrade-card" role="dialog" aria-modal="true" aria-labelledby="upgrade-title">
       <button class="upgrade-close" data-i18n-title="close">×</button>
-      <select class="language-select upgrade-language" aria-label="Language / 语言"><option value="en">English</option><option value="zh">中文</option></select>
       <div class="upgrade-head">
         <span class="pro-pill">PRO</span>
         <h2 id="upgrade-title" data-i18n="proTitle"></h2>
@@ -165,18 +150,6 @@
       <div class="upgrade-buy">
         <button id="buy-pro" class="buy" type="button" data-i18n="buyPro" hidden></button>
         <button id="upgrade-sign-in" class="buy" type="button" data-i18n="signIn" hidden></button>
-      </div>
-      <div id="upgrade-web-links" class="account-web-links upgrade-web-links" hidden>
-        <button id="upgrade-web-checkout" class="account-ext-link" type="button" hidden>
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="3.5" width="12.4" height="9" rx="1.8"/><path d="M1.8 6.8h12.4"/></svg>
-          <span data-i18n="webCheckoutLink"></span>
-          <span class="ext-arrow" aria-hidden="true">↗</span>
-        </button>
-        <a id="upgrade-official-link" class="account-ext-link" href="https://zhiyuanv.com/software.html#inkmap-pricing" target="_blank" rel="noopener noreferrer" hidden>
-          <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M2.2 8h11.6"/><path d="M8 2a9.5 9.5 0 0 1 2.4 6A9.5 9.5 0 0 1 8 14a9.5 9.5 0 0 1-2.4-6A9.5 9.5 0 0 1 8 2Z"/></svg>
-          <span data-i18n="officialWebsite"></span>
-          <span class="ext-arrow" aria-hidden="true">↗</span>
-        </a>
       </div>
       <div id="upgrade-account-actions" class="account-actions" hidden>
         <button id="upgrade-switch-account" class="link-btn" type="button" data-i18n="switchAccount"></button>
@@ -205,24 +178,19 @@
       </div>
       <div class="phone-field">
         <label for="sign-in-phone" data-i18n="phoneNumber"></label>
-        <div class="phone-input-wrap">
+        <div class="phone-code-row phone-email-row">
           <svg class="phone-input-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="1.8" y="3.2" width="12.4" height="9.6" rx="1.8"/><path d="m2.4 4.2 5.6 4.2 5.6-4.2"/></svg>
           <input id="sign-in-phone" type="text" inputmode="email" autocomplete="email" maxlength="254" required data-i18n-placeholder="phonePlaceholder">
+          <button id="send-phone-code" type="button"></button>
         </div>
       </div>
       <div class="phone-field">
         <label for="sign-in-code" data-i18n="phoneCode"></label>
-        <div class="phone-code-row">
-          <input id="sign-in-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required data-i18n-placeholder="phoneCodePlaceholder">
-          <button id="send-phone-code" type="button"></button>
-        </div>
+        <input id="sign-in-code" class="phone-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required data-i18n-placeholder="phoneCodePlaceholder">
       </div>
       <p id="phone-sign-in-status" class="billing-message" role="status" aria-live="polite" hidden></p>
       <button class="buy" type="submit" data-i18n="phoneVerifySubmit"></button>
       <p class="phone-sign-in-hint" data-i18n="phoneSignInHint"></p>
-      <div class="phone-sign-in-links">
-        <button id="phone-browser-sign-in" type="button" class="browser-sign-in-btn"><span data-i18n="browserSignIn"></span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3.5H3.8A1.3 1.3 0 0 0 2.5 4.8v7.4c0 .72.58 1.3 1.3 1.3h7.4c.72 0 1.3-.58 1.3-1.3V9.5"/><path d="M9.5 2.5h4v4"/><path d="M13.5 2.5 7.5 8.5"/></svg></button>
-      </div>
     </form>
   </template>
 
@@ -247,24 +215,23 @@
           <span class="wechat-pay-product"><span class="pro-mini-badge">PRO</span><span data-i18n="wechatPayProduct"></span></span>
           <span id="wechat-pay-account" class="wechat-pay-account" hidden></span>
         </div>
-        <strong id="wechat-pay-amount" class="wechat-pay-amount">¥29.90</strong>
+        <strong id="wechat-pay-amount" class="wechat-pay-amount"></strong>
       </div>
-      <div class="wechat-pay-stage">
+      <div id="wechat-pay-stage" class="wechat-pay-stage">
         <img id="wechat-pay-qr" width="168" height="168" alt="WeChat Pay QR code">
         <div id="wechat-pay-expired" class="wechat-pay-expired" hidden>
           <span data-i18n="wechatPayExpired"></span>
           <button id="refresh-wechat-pay" type="button" class="wechat-refresh-btn" data-i18n="wechatPayRefresh"></button>
         </div>
       </div>
+      <div id="card-pay-stage" class="card-pay-stage" hidden>
+        <button id="card-pay-btn" type="button" class="buy" data-i18n="cardPayBtn"></button>
+      </div>
       <div class="wechat-pay-status">
         <span class="wechat-pay-dot" aria-hidden="true"></span>
         <span id="wechat-pay-expires"></span>
       </div>
       <p class="wechat-pay-note" data-i18n="wechatPayNote"></p>
-      <div class="phone-sign-in-links">
-        <button id="wechat-pay-browser" type="button" class="browser-sign-in-btn"><span data-i18n="wechatPayBrowser"></span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3.5H3.8A1.3 1.3 0 0 0 2.5 4.8v7.4c0 .72.58 1.3 1.3 1.3h7.4c.72 0 1.3-.58 1.3-1.3V9.5"/><path d="M9.5 2.5h4v4"/><path d="M13.5 2.5 7.5 8.5"/></svg></button>
-        <a class="browser-sign-in-btn" href="https://zhiyuanv.com/software.html#inkmap-pricing" target="_blank" rel="noopener noreferrer"><span data-i18n="officialWebsite"></span><svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 3.5H3.8A1.3 1.3 0 0 0 2.5 4.8v7.4c0 .72.58 1.3 1.3 1.3h7.4c.72 0 1.3-.58 1.3-1.3V9.5"/><path d="M9.5 2.5h4v4"/><path d="M13.5 2.5 7.5 8.5"/></svg></a>
-      </div>
     </section>
   </template>
 

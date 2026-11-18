@@ -1,6 +1,6 @@
 import type { App } from "@modelcontextprotocol/ext-apps";
 import type { OpenAIResources } from "@openai/mcp-extensions/app";
-import { hasAccess, type LicenseState } from "@inkmap/core";
+import { hasAccess, type LicenseState, type PhoneSignInResult } from "@inkmap/core";
 import { browserLocale, type DocState, type Host, type HostCapabilities, type SaveResult } from "./host";
 import { sidebarText } from "./sidebar-shell";
 
@@ -57,13 +57,13 @@ export class CodexHost implements Host {
     }, { once: true });
   }
 
-  private async tool(name: string) {
-    const result = await this.app.callServerTool({ name, arguments: {} });
+  private async tool(name: string, args: Record<string, unknown> = {}) {
+    const result = await this.app.callServerTool({ name, arguments: args });
     if (result.isError) {
       const error = result.content.find(item => item.type === "text");
       throw new Error(error?.text ?? "Inkmap account is unavailable.");
     }
-    return result.structuredContent ?? {};
+    return (result.structuredContent as Record<string, any>) ?? {};
   }
 
   license() {
@@ -77,11 +77,22 @@ export class CodexHost implements Host {
 
   async checkout(mode: "buy" | "restore") {
     if (mode !== "restore") throw new Error("Only account restoration is supported.");
-    const { url } = await this.tool("inkmap_restore_access");
+    const { url } = await this.tool("inkmap_restore_access", { locale: this.locale });
     if (typeof url !== "string" || new URL(url).protocol !== "https:") throw new Error("Invalid account link.");
     const opened = await this.app.openLink({ url });
     if (opened.isError) throw new Error("Unable to open account login.");
   }
+
+  phoneSignIn = {
+    send: async (phone: string): Promise<PhoneSignInResult> => {
+      const { result } = await this.tool("inkmap_phone_send", { phone, locale: this.locale });
+      return result as PhoneSignInResult;
+    },
+    verify: async (phone: string, code: string): Promise<PhoneSignInResult<LicenseState>> => {
+      const { result } = await this.tool("inkmap_phone_verify", { phone, code });
+      return result as PhoneSignInResult<LicenseState>;
+    },
+  };
 
   async signOut() { await this.tool("inkmap_disconnect_access"); }
 

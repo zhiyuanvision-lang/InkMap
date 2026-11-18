@@ -138,7 +138,7 @@ function isChineseTerminalLocale(): boolean {
     const loc = Intl.DateTimeFormat().resolvedOptions().locale || "";
     if (/^zh\b/i.test(loc)) return true;
     const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-    if (/^Asia\/(Shanghai|Chongqing|Harbin|Urumqi)$/i.test(tz)) return true;
+    if (/^(Asia\/(Shanghai|Chongqing|Chungking|Harbin|Urumqi|Beijing)|PRC)$/i.test(tz)) return true;
   } catch {}
   return false;
 }
@@ -357,7 +357,7 @@ function installIdeExtension(editorDir: string, cliCmd: string | null): string |
   }
 
   const extPkg = JSON.parse(readFileSync(join(vscodeBundle, "package.json"), "utf8")) as { version: string };
-  const version = extPkg.version || "0.3.3";
+  const version = extPkg.version || "0.3.4";
   const staging = mkdtempSync(join(tmpdir(), "inkmap-vsix-"));
 
   try {
@@ -828,11 +828,11 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
     log("──────────────────────────────────────────────────────────────────────");
     log("🎁 7 天免费试用与 Inkmap Pro 终身会员开通：");
     log("  • 首次使用享 7 天全功能免费试用（无需登录）");
-    log("  • 开通 Pro 终身版（¥29.90 微信支付一次买断，免费包含后续全部更新）：");
-    log("    👉 官方网站开通: https://zhiyuanv.com/software.html#inkmap-pricing");
-    log("    👉 或终端独立打开: npx -y inkmap-mcp@latest 你的文档.md （右上角点击「购买 Pro」）");
-    log("  • 跨端同步：在官网购买后，在任意客户端（Cursor / Claude / Codex / Antigravity / VS Code）");
-    log("    导图右上角点击「登录」输入同一邮箱验证，Pro 终身权益即刻自动同步激活！");
+    log("  • 开通 Pro 终身版（¥29.9 微信支付一次买断，免费包含后续全部更新）：");
+    log("    👉 插件内直接开通: VS Code / Cursor / DeepSeek Harness / Qoder / 浏览器版右上角点击「立即开通 Pro（¥29.9）」");
+    log("    👉 或官方网站开通: https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing");
+    log("  • 全平台通用：登录同一邮箱即可在 Cursor / VS Code / DeepSeek Harness / Qoder / WorkBuddy /");
+    log("    Claude Desktop / Claude Code / OpenAI Codex / Google Antigravity / Trae 全端同步激活！");
     log("──────────────────────────────────────────────────────────────────────");
   } else {
     log(`[inkmap] Installation complete (Node: ${process.execPath}):`);
@@ -843,12 +843,11 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
     log("──────────────────────────────────────────────────────────────────────");
     log("🎁 7-Day Free Trial & Inkmap Pro Lifetime License:");
     log("  • Enjoy a 7-day full-featured free trial from first use (no sign-in required)");
-    log("  • Upgrade to Inkmap Pro Lifetime (US$15.00 one-time purchase, all future updates included):");
-    log("    👉 Official Website: https://zhiyuanv.com/software.html?lang=en#inkmap-pricing");
-    log("    👉 Or run standalone in browser: npx -y inkmap-mcp@latest notes.md (click 'Buy Pro')");
-    log("  • Cross-Client Sync: After purchasing on the website, click 'Sign in' in the top-right");
-    log("    corner inside Claude, Codex, Cursor, Antigravity, or VS Code with the same email");
-    log("    account to sync your Lifetime Pro access automatically!");
+    log("  • Upgrade to Inkmap Pro Lifetime ($15 one-time purchase, all future updates included):");
+    log("    👉 In-Plugin Checkout: Click 'Buy Pro ($15)' inside VS Code / Cursor / DeepSeek Harness / Qoder / Browser");
+    log("    👉 Or Official Website: https://zhiyuanv.com/software.html?lang=en#inkmap-pricing");
+    log("  • Cross-Platform Sync: Sign in with the same email across Cursor, VS Code, DeepSeek Harness,");
+    log("    Qoder, WorkBuddy, Claude Desktop, Claude Code, OpenAI Codex, Google Antigravity & Trae!");
     log("──────────────────────────────────────────────────────────────────────");
   }
   return result;

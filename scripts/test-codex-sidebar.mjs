@@ -90,7 +90,10 @@ test("packaged Codex app opens the host file, edits Mermaid Markdown, and handle
   await frame.click("#pro");
   await frame.waitForSelector("#account-panel", { visible: true });
   assert.equal(await frame.$eval("#account-buy", button => button.hidden), true);
-  assert.match(await frame.$eval("#account-sign-in", button => button.textContent), /^(Sign in|登录)$/);
+  assert.match(await frame.$eval("#account-sign-in", button => button.textContent), /^(Sign in with Email|邮箱验证登录)$/);
+  await frame.click("#account-sign-in");
+  await frame.waitForSelector("#account-panel .phone-sign-in", { visible: true });
+  await frame.click("#cancel-phone-sign-in");
   await frame.click("#pro");
   await frame.waitForSelector(".ink-diagram-image");
   const rename = label => frame.evaluate(label => {

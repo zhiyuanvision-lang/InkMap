@@ -121,6 +121,8 @@ export interface ServeOptions {
   loginOnly?: boolean;
   /** Auto-open the 3-column IDE workspace (file tree + left Markdown + right mind map) on load. */
   ideWorkspace?: boolean;
+  /** Explicit workspace directories for scanning project Markdown files. */
+  workspaceRoots?: string[];
 }
 
 export interface Served {
@@ -192,7 +194,7 @@ function within(root: string, rel: string): string | null {
   return full.startsWith(base) ? full : null;
 }
 
-export async function serve({ source: initialSource, webRoot, port = 4377, host = "127.0.0.1", log = () => {}, license, ads, sidebar = false, sidebarPurchase = false, sidebarAccountNavigation = false, loginOnly = false, ideWorkspace = false }: ServeOptions): Promise<Served> {
+export async function serve({ source: initialSource, webRoot, port = 4377, host = "127.0.0.1", log = () => {}, license, ads, sidebar = false, sidebarPurchase = false, sidebarAccountNavigation = false, loginOnly = false, ideWorkspace = false, workspaceRoots = [] }: ServeOptions): Promise<Served> {
   if (sidebar && host !== "127.0.0.1") throw new Error("The sidebar bridge requires loopback.");
   const prefix = sidebar ? `/s/${randomBytes(24).toString("hex")}/` : "/";
   let activeSource = initialSource;
@@ -245,7 +247,7 @@ export async function serve({ source: initialSource, webRoot, port = 4377, host 
       const projRoot = await realpath(await findProjectRoot(realKey)).catch(() => dirname(realKey));
       roots.set(projRoot, { path: projRoot, name: basename(projRoot), active: true });
     }
-    const envRoots = (process.env.INKMAP_WORKSPACES || "").split(delimiter).filter(Boolean);
+    const envRoots = [...workspaceRoots, ...(process.env.INKMAP_WORKSPACES || "").split(delimiter)].filter(Boolean);
     for (const raw of envRoots) {
       const real = await realpath(resolve(raw)).catch(() => null);
       if (real && !roots.has(real)) {
@@ -422,24 +424,25 @@ export async function serve({ source: initialSource, webRoot, port = 4377, host 
       }
       if (url.pathname === "/api/checkout" && req.method === "POST") {
         if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });
-        const { mode } = JSON.parse(await readBody(req));
+        const { mode, locale } = JSON.parse(await readBody(req));
         if (mode !== "buy" && mode !== "restore") return json(res, 400, { error: "invalid checkout mode" });
         if (!canPurchase && mode === "buy") return json(res, 403, { error: "forbidden" });
         if (!license) return json(res, 503, { error: "Inkmap checkout is unavailable." });
-        return json(res, 200, { url: await license.connect(mode) });
+        return json(res, 200, { url: await (typeof locale === "string" ? license.connect(mode, locale) : license.connect(mode)) });
       }
       if (url.pathname === "/api/order-pro" && req.method === "POST") {
         if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });
         if (!canPurchase) return json(res, 403, { error: "forbidden" });
         if (!license) return json(res, 503, { error: "Inkmap checkout is unavailable." });
         if (typeof license.orderPro !== "function") return json(res, 501, { fallback: true });
-        return json(res, 200, { result: await license.orderPro() });
+        const { locale } = JSON.parse((await readBody(req)) || "{}");
+        return json(res, 200, { result: await (typeof locale === "string" ? license.orderPro(locale) : license.orderPro()) });
       }
       if (url.pathname === "/api/phone-send" && req.method === "POST") {
         if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });
         if (!license || typeof license.sendPhoneCode !== "function") return json(res, 501, { fallback: true });
-        const { phone } = JSON.parse(await readBody(req));
-        return json(res, 200, { result: await license.sendPhoneCode(String(phone ?? "")) });
+        const { phone, locale } = JSON.parse(await readBody(req));
+        return json(res, 200, { result: await (typeof locale === "string" ? license.sendPhoneCode(String(phone ?? ""), locale) : license.sendPhoneCode(String(phone ?? ""))) });
       }
       if (url.pathname === "/api/phone-verify" && req.method === "POST") {
         if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });

@@ -21,13 +21,15 @@ async function main(args) {
   }
 
   const source = await fileSource(file);
-  const license = licenseService(fileSessionStorage(), () => YUNFAN_BILLING_ORIGIN, { loginOnly: true });
+  const license = licenseService(fileSessionStorage(), () => YUNFAN_BILLING_ORIGIN);
   const editor = await serve({
     source,
     license,
     webRoot: fileURLToPath(new URL("./web/", import.meta.url)),
     port: 0,
     sidebar: true,
+    sidebarPurchase: true,
+    workspaceRoots: [workspace],
   });
   console.log(editor.url);
   console.log("将上面的地址粘贴到 Qoder 内置浏览器。按 Ctrl+C 退出。");

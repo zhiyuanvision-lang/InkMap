@@ -18,8 +18,8 @@ export function extensionLicense(context: vscode.ExtensionContext): LicenseServi
     || process.env.INKMAP_BILLING_ORIGIN || process.env.INKMAP_DEFAULT_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN, { host });
 }
 
-export async function openCheckout(license: LicenseService, mode: CheckoutMode): Promise<void> {
-  const url = await license.connect(mode);
+export async function openCheckout(license: LicenseService, mode: CheckoutMode, localeHint?: string): Promise<void> {
+  const url = await license.connect(mode, localeHint);
   if (!await vscode.env.openExternal(vscode.Uri.parse(url))) throw new Error(t("checkoutFailed"));
 }
 

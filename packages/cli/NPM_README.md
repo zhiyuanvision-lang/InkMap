@@ -101,13 +101,9 @@ npx -y inkmap-mcp@latest 你的文档.markmap.md
 ### 3. 7 天免费试用与 Pro 终身版开通（跨客户端账号同步）
 
 - **7 天全功能免费试用**：首次安装后即可免登录使用全部功能 7 天。
-- **如何购买与激活 Inkmap Pro 终身版（¥29.90 一次买断 · 永久使用）**：
-  1. **前往官网或独立工作台开通**：
-     - **官方网站直达**：[https://zhiyuanv.com/software.html#inkmap-pricing](https://zhiyuanv.com/software.html#inkmap-pricing)（¥29.90 微信扫码一次买断，免费包含后续全部更新）；
-     - **或本地独立浏览器 / VS Code 扩展内开通**：在终端运行 `npx -y inkmap-mcp@latest 你的文档.md` 或在 VS Code 扩展内点击右上角 **「购买 Pro」**。
-  2. **在各 AI 客户端内一键同步权益**：
-     - 遵循各客户端应用商店规范，Claude / ChatGPT Codex / Cursor / Antigravity 的对话内嵌导图面板仅展示「登录」入口（不展示价格与付款链接）。
-     - 您在官网或独立工作台开通 Pro 后，只需在任意客户端导图右上角点击 **「登录」** 并验证同一账号，**Pro 终身权益即刻自动跨端同步**！
+- **如何购买与激活 Inkmap Pro 终身版（国内版 ¥29.9 一次买断 · 永久使用）**：
+  1. **插件内直接扫码开通（第一类客户端）**：在 **VS Code / Cursor / DeepSeek Harness / Qoder / 本地浏览器版** 导图右上角点击账号按钮选择 **「立即开通 Pro（¥29.9）」**，输入邮箱验证后直接在面板内微信扫码开通；也可访问官网 [https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing](https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing)。
+  2. **验证码邮件一键开通与全端同步（第二类客户端）**：在 **OpenAI Codex / Claude Desktop / Claude Code / Google Antigravity** 对话内嵌导图右上角点击 **「邮箱验证登录」**，收到的验证码邮件内附专属一键开通入口，验证同一邮箱即可在 **Cursor、VS Code、DeepSeek Harness、Qoder、WorkBuddy、Claude、Codex、Antigravity、Trae** 全平台自动同步 Pro 终身权益！
 
 ### 4. 卸载配置
 
@@ -120,9 +116,9 @@ npx -y inkmap-mcp@latest uninstall
 ## Free Trial & Lifetime Pro (Cross-Client Sync)
 
 - **7-Day Free Trial**: Enjoy full access to all features for 7 days from first use — no credit card or sign-in required.
-- **How to Upgrade & Sync Pro Across All Clients (US\$15.00 Lifetime)**:
-  1. **Purchase Lifetime Pro on the Official Website**: Visit [https://zhiyuanv.com/software.html#inkmap-pricing](https://zhiyuanv.com/software.html#inkmap-pricing) (**US\$15.00** one-time purchase via international bank card, all future updates included), or run `npx -y inkmap-mcp@latest notes.md` in your browser and click **Buy Pro**.
-  2. **Sign In Anywhere to Sync**: Inside embedded MCP App panels (Claude Desktop, OpenAI Codex, Cursor, Google Antigravity), click **Sign in** in the top-right corner with the same account — your Lifetime Pro entitlement syncs automatically across every client and device.
+- **How to Upgrade & Sync Pro Across All Clients (\$15 Lifetime)**:
+  1. **In-Plugin Direct Checkout**: Inside **VS Code, Cursor, DeepSeek Harness, Qoder, or the standalone browser editor**, click the top-right account badge and choose **Buy Pro (\$15)** (or visit [https://zhiyuanv.com/software.html?lang=en#inkmap-pricing](https://zhiyuanv.com/software.html?lang=en#inkmap-pricing)).
+  2. **Email Sign-In & Cross-Client Sync**: Inside embedded MCP App panels (**OpenAI Codex, Claude Desktop, Claude Code, Google Antigravity**), click **Sign in with Email** in the top-right corner — your verification email includes a direct 1-click checkout link, and signing in with the same email syncs Lifetime Pro across **Cursor, VS Code, DeepSeek Harness, Qoder, WorkBuddy, Claude, Codex, Antigravity, and Trae**.
 
 ---
 

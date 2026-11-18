@@ -13,9 +13,9 @@ export interface SessionStorage {
 
 export interface LicenseService {
   state(): Promise<LicenseState>;
-  connect(mode: CheckoutMode): Promise<string>;
-  orderPro(): Promise<WechatOrderResult>;
-  sendPhoneCode(phone: string): Promise<PhoneSignInResult>;
+  connect(mode: CheckoutMode, localeHint?: string): Promise<string>;
+  orderPro(localeHint?: string): Promise<WechatOrderResult>;
+  sendPhoneCode(phone: string, localeHint?: string): Promise<PhoneSignInResult>;
   signInByPhone(phone: string, code: string): Promise<PhoneSignInResult<LicenseState>>;
   deactivate(): Promise<void>;
   onChange(listener: (state: LicenseState) => void): () => void;
@@ -83,13 +83,20 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     return /^1\d{10}$/.test(clean) ? `${clean.slice(0, 3)}****${clean.slice(7)}` : clean.slice(0, 32);
   }
 
-  function clientLocale(): "zh" | "en" {
-    const raw = (process.env.INKMAP_LOCALE || process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "").trim();
+  function clientLocale(hint?: string): "zh" | "en" {
+    const h = (hint || "").trim();
+    if (/^zh\b/i.test(h)) return "zh";
+    if (/^en\b/i.test(h)) return "en";
+    const envLocale = (process.env.INKMAP_LOCALE || "").trim();
+    if (/^zh\b/i.test(envLocale)) return "zh";
+    if (/^en\b/i.test(envLocale)) return "en";
+    const raw = (process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "").trim();
     if (/^zh\b/i.test(raw)) return "zh";
-    if (/^en\b/i.test(process.env.INKMAP_LOCALE || "")) return "en";
     try {
-      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-      if (/^Asia\/(Shanghai|Chongqing|Harbin|Urumqi)$/i.test(tz)) return "zh";
+      const opts = Intl.DateTimeFormat().resolvedOptions();
+      if (/^zh\b/i.test(opts.locale || "")) return "zh";
+      const tz = opts.timeZone || "";
+      if (/^(Asia\/(Shanghai|Chongqing|Chungking|Harbin|Urumqi|Beijing)|PRC)$/i.test(tz)) return "zh";
     } catch {}
     return "en";
   }
@@ -100,16 +107,18 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     return next;
   }
 
-  async function createCheckoutFlow(origin: string, existingToken?: string, existingCookie?: string): Promise<{ origin: string; url: string; token: string; cookie?: string }> {
+  async function createCheckoutFlow(origin: string, existingToken?: string, existingCookie?: string, localeHint?: string): Promise<{ origin: string; url: string; token: string; cookie?: string }> {
+    const loc = clientLocale(localeHint);
     const response = await fetch(origin + "/billing/v1/connections", {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        "x-inkmap-locale": loc,
         ...(existingToken && { authorization: "Bearer " + existingToken }),
         ...(existingCookie && { cookie: existingCookie }),
       },
       redirect: "error",
-      body: JSON.stringify({ product: PRODUCT.id, mode: "buy" }),
+      body: JSON.stringify({ product: PRODUCT.id, mode: "buy", locale: loc }),
       signal: AbortSignal.timeout(8000),
     });
     if (!response.ok) throw new Error("Unable to start the checkout flow.");
@@ -122,11 +131,13 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     return { origin, url, token: data.token, ...(cookie && { cookie }) };
   }
 
-  function checkoutPost(checkoutUrl: string, action: "sms" | "login" | "email/send" | "email/verify" | "order", origin: string, body: object, token?: string, cookie?: string) {
+  function checkoutPost(checkoutUrl: string, action: "sms" | "login" | "email/send" | "email/verify" | "order", origin: string, body: object, token?: string, cookie?: string, localeHint?: string) {
+    const loc = clientLocale(localeHint);
     return fetch(checkoutUrl + "/" + action, {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        "x-inkmap-locale": loc,
         origin,
         ...(token && { authorization: "Bearer " + token }),
         ...(cookie && { cookie }),
@@ -137,13 +148,14 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     });
   }
 
-  function phoneRequest(origin: string, action: "send" | "verify", phone: string, code?: string) {
+  function phoneRequest(origin: string, action: "send" | "verify", phone: string, code?: string, localeHint?: string) {
     const isEmail = phone.includes("@");
-    const locale = clientLocale();
+    const locale = clientLocale(localeHint);
     return fetch(origin + "/billing/v1/phone-sign-in/" + action, {
       method: "POST",
       headers: {
         "content-type": "application/json",
+        "x-inkmap-locale": locale,
         "accept-language": locale === "zh" ? "zh-CN,zh;q=0.9" : "en-US,en;q=0.9",
       },
       redirect: "error",
@@ -253,9 +265,10 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       if (Date.now() - lastCheck >= 4000) await refresh();
       return current;
     },
-    async connect(mode) {
+    async connect(mode, localeHint) {
       if (loginOnly && mode !== "restore") throw new Error("Only Yunfan account sign-in is available.");
       const origin = billingOrigin(getOrigin());
+      const loc = clientLocale(localeHint);
       const version = generation;
       let existingToken: string | undefined;
       try {
@@ -269,6 +282,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
         method: "POST",
         headers: {
           "content-type": "application/json",
+          "x-inkmap-locale": loc,
           ...(existingToken && { authorization: "Bearer " + existingToken }),
         },
         redirect: "error",
@@ -277,10 +291,10 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       let legacy = false;
       let response = await (mode === "restore"
         ? create("restore-connections", { product: PRODUCT.id })
-        : create("connections", { product: PRODUCT.id, mode }));
+        : create("connections", { product: PRODUCT.id, mode, locale: loc }));
       if (mode === "restore" && !loginOnly && response.status === 404) {
         legacy = true;
-        response = await create("connections", { product: PRODUCT.id, mode });
+        response = await create("connections", { product: PRODUCT.id, mode, locale: loc });
       }
       if (!response.ok) throw new Error("Unable to start the Yunfan account flow.");
       const data = await response.json();
@@ -300,7 +314,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       });
       return url;
     },
-    async orderPro() {
+    async orderPro(localeHint) {
       if (loginOnly) throw new Error("Only Yunfan account sign-in is available.");
       const origin = billingOrigin(getOrigin());
       if (cachedOrder && cachedOrder.origin === origin && Date.now() - cachedOrder.at < 8000) {
@@ -317,7 +331,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       } catch {}
 
       const requestOrder = async (checkoutUrl: string, token: string, cookie: string | undefined, persist: boolean): Promise<WechatOrderResult | null> => {
-        const res = await checkoutPost(checkoutUrl, "order", origin, {}, token, cookie);
+        const res = await checkoutPost(checkoutUrl, "order", origin, {}, token, cookie, localeHint);
         if (res.status === 401 || res.status === 403 || res.status === 404 || res.status === 410) return null;
         if (!res.ok) throw new Error("Unable to load WeChat Pay QR code.");
         const nextCookie = mergeCookies(cookie, res);
@@ -363,29 +377,29 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       }
 
       const existingToken = record?.origin === origin && typeof record.token === "string" ? record.token : undefined;
-      const flow = await createCheckoutFlow(origin, existingToken, existingCookie);
+      const flow = await createCheckoutFlow(origin, existingToken, existingCookie, localeHint);
       const ordered = await requestOrder(flow.url, flow.token, flow.cookie, true);
       if (ordered) return ordered;
       pendingCheckout = flow;
       return { status: "needsPhone" };
     },
-    async sendPhoneCode(phone) {
+    async sendPhoneCode(phone, localeHint) {
       if (typeof phone !== "string" || !phone.trim() || phone.length > 254) return phoneFailure(400);
       const isEmail = phone.includes("@");
-      const locale = clientLocale();
+      const locale = clientLocale(localeHint);
       try {
         const origin = billingOrigin(getOrigin());
         if (!loginOnly) {
           try {
             if (!pendingCheckout || pendingCheckout.origin !== origin) {
-              pendingCheckout = await createCheckoutFlow(origin);
+              pendingCheckout = await createCheckoutFlow(origin, undefined, undefined, locale);
             }
             const sendAction = isEmail ? "email/send" : "sms";
             const sendBody = isEmail ? { email: phone, locale } : { phone };
-            let smsRes = await checkoutPost(pendingCheckout.url, sendAction, origin, sendBody, pendingCheckout.token, pendingCheckout.cookie);
+            let smsRes = await checkoutPost(pendingCheckout.url, sendAction, origin, sendBody, pendingCheckout.token, pendingCheckout.cookie, locale);
             if (smsRes.status === 410 || smsRes.status === 404) {
-              pendingCheckout = await createCheckoutFlow(origin);
-              smsRes = await checkoutPost(pendingCheckout.url, sendAction, origin, sendBody, pendingCheckout.token, pendingCheckout.cookie);
+              pendingCheckout = await createCheckoutFlow(origin, undefined, undefined, locale);
+              smsRes = await checkoutPost(pendingCheckout.url, sendAction, origin, sendBody, pendingCheckout.token, pendingCheckout.cookie, locale);
             }
             pendingCheckout.cookie = mergeCookies(pendingCheckout.cookie, smsRes);
             return smsRes.status === 204 ? { ok: true, value: undefined } : phoneFailure(smsRes.status);
@@ -393,7 +407,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
             pendingCheckout = undefined;
           }
         }
-        const response = await phoneRequest(origin, "send", phone);
+        const response = await phoneRequest(origin, "send", phone, undefined, locale);
         return response.status === 204 ? { ok: true, value: undefined } : phoneFailure(response.status);
       } catch {
         return phoneFailure();
@@ -552,7 +566,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
               installId: id,
               host: hostName,
               os,
-              version: "0.3.3",
+              version: "0.3.4",
               locale: clientLocale(),
               tier,
               events,

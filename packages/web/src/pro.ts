@@ -31,14 +31,10 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
   const planTitle = $("#account-plan-title");
   const planDetail = $("#account-plan-detail");
   const accountPerks = $("#account-perks");
-  const accountPerksMore = $<HTMLButtonElement>("#account-perks-more");
   const accountActions = $("#account-actions");
   const accountMsg = $("#account-message");
   const accountBuy = $<HTMLButtonElement>("#account-buy");
   const signIn = $<HTMLButtonElement>("#account-sign-in");
-  const accountWebLinks = $("#account-web-links");
-  const accountWebCheckout = $<HTMLButtonElement>("#account-web-checkout");
-  const accountOfficialLink = $<HTMLAnchorElement>("#account-official-link");
   const switchAccount = $<HTMLButtonElement>("#switch-account");
   const signOutBtn = $<HTMLButtonElement>("#sign-out");
 
@@ -48,9 +44,6 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
   const checkoutMsg = $("#checkout-msg");
   const buy = $<HTMLButtonElement>("#buy-pro");
   const upgradeSignIn = $<HTMLButtonElement>("#upgrade-sign-in");
-  const upgradeWebLinks = $("#upgrade-web-links");
-  const upgradeWebCheckout = $<HTMLButtonElement>("#upgrade-web-checkout");
-  const upgradeOfficialLink = $<HTMLAnchorElement>("#upgrade-official-link");
   const upgradeActions = $("#upgrade-account-actions");
   const upgradeAccount = $("#upgrade-account");
   const upgradeSwitch = $<HTMLButtonElement>("#upgrade-switch-account");
@@ -61,7 +54,7 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
   const list = $(".upgrade-features");
   const canBuy = host.capabilities.account === "purchase";
   const canSignIn = host.capabilities.account !== "none";
-  const actions = [accountBuy, signIn, accountWebCheckout, switchAccount, signOutBtn, buy, upgradeSignIn, upgradeWebCheckout, upgradeSwitch, upgradeSignOut];
+  const actions = [accountBuy, signIn, switchAccount, signOutBtn, buy, upgradeSignIn, upgradeSwitch, upgradeSignOut];
   let busy = false;
   let upgradeTrigger: HTMLElement | null = null;
   const signedIn = () => Boolean(state.connected || state.pro || state.account);
@@ -70,15 +63,19 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     setState(next);
     if (!panel.hidden) proBtn.focus();
     else if (!dialog.hidden) focusAction().focus();
-  }, () => checkout("restore", dialog.hidden || !panel.hidden ? accountMsg : checkoutMsg));
+  });
   const wechatPay = host.orderPro && createWechatPay(
     () => host.orderPro!(),
+    () => host.license(),
     () => state.account,
     next => {
       setState(next);
       showToast?.(t("proUnlocked"));
     },
-    () => checkout("buy", dialog.hidden || !panel.hidden ? accountMsg : checkoutMsg).then(() => undefined),
+    url => {
+      if (host.openExternalUrl) host.openExternalUrl(url);
+      else window.open(url, "_blank", "noopener,noreferrer");
+    },
   );
   card.tabIndex = -1;
   list.hidden = !canBuy;
@@ -198,8 +195,12 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
         return;
       }
       if (result.status === "qr") {
+        if (locale() === "en") {
+          showMessage(message, "International card checkout ($15) is coming soon.", "error");
+          return;
+        }
         phoneSignIn?.close();
-        wechatPay?.open($(slot), button, result);
+        wechatPay?.open($(slot), button, { mode: "qr", ...result });
         return;
       }
       if (result.status === "needsPhone" && phoneSignIn) {
@@ -218,7 +219,16 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
         return;
       }
       if (result.status === "redirect") {
-        showMessage(message, t("checkoutOpened"), "buy");
+        if (locale() === "zh") {
+          showMessage(message, t("checkoutFailed", { error: t("signInPageUnavailable") }), "error");
+          return;
+        }
+        phoneSignIn?.close();
+        if (wechatPay && result.url !== "about:blank") {
+          wechatPay.open($(slot), button, { mode: "card", url: result.url, amountCents: 1500 });
+        } else {
+          showMessage(message, t("checkoutOpened"), "buy");
+        }
         return;
       }
     } catch (error) {
@@ -232,13 +242,10 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
   }
 
   accountBuy.addEventListener("click", () => void startBuy(accountBuy, "#account-phone-slot", accountMsg));
-  accountWebCheckout.addEventListener("click", () => void checkout("buy", accountMsg));
-  accountPerksMore.addEventListener("click", () => openUpgrade());
   signIn.addEventListener("click", () => openSignIn(signIn, "#account-phone-slot", accountMsg));
   switchAccount.addEventListener("click", () => openSignIn(switchAccount, "#account-phone-slot", accountMsg));
   signOutBtn.addEventListener("click", () => void signOut(accountMsg));
   buy.addEventListener("click", () => void startBuy(buy, "#upgrade-phone-slot", checkoutMsg));
-  upgradeWebCheckout.addEventListener("click", () => void checkout("buy", checkoutMsg));
   upgradeSignIn.addEventListener("click", () => openSignIn(upgradeSignIn, "#upgrade-phone-slot", checkoutMsg));
   upgradeSwitch.addEventListener("click", () => openSignIn(upgradeSwitch, "#upgrade-phone-slot", checkoutMsg));
   upgradeSignOut.addEventListener("click", () => void signOut(checkoutMsg));
@@ -370,16 +377,14 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     account.dataset.plan = state.pro ? "pro" : !trial || days <= 2 ? "ending" : "trial";
     account.dataset.signedIn = String(signedIn());
     accountText.textContent = state.account || t(signedIn() ? "accountConnected" : "accountSignedOut");
-    accountHeading.textContent = t(signedIn() ? "accountHeading" : "accountSignedOutSub");
+    accountHeading.textContent = t(signedIn() ? "accountHeading" : canBuy ? "accountSignedOutSub" : "accountSignedOutRestoreSub");
     planStatus.hidden = false;
     planTitle.textContent = t(state.pro ? "proActive" : trial ? "trialPlan" : "trialEnded");
     planDetail.textContent = state.pro ? t("proActiveDetail") : trial ? trialEnd : t("noProOnAccount");
     accountBuy.hidden = !canBuy || state.pro;
-    accountPerks.hidden = accountPerksMore.hidden = !canBuy || state.pro;
-    accountWebCheckout.hidden = !canBuy || state.pro;
-    accountOfficialLink.hidden = !canBuy;
-    accountWebLinks.hidden = accountWebCheckout.hidden && accountOfficialLink.hidden;
-    for (const button of [signIn, upgradeSignIn]) button.textContent = t(phoneSignIn ? "phoneSignIn" : "signIn");
+    accountPerks.hidden = !canBuy || state.pro;
+    const signInKey = canBuy ? "signInSecondary" : phoneSignIn ? "phoneSignIn" : "signIn";
+    for (const button of [signIn, upgradeSignIn]) button.textContent = t(signInKey);
     signIn.hidden = !canSignIn || signedIn();
     switchAccount.hidden = !canSignIn || !signedIn();
     accountActions.hidden = !canSignIn || !signedIn();
@@ -400,9 +405,6 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
       : !canSignIn ? "trialExpiredNoAccount" : signedIn() ? "trialExpiredNoPro" : "trialExpiredSignIn");
     buy.hidden = !canBuy || state.pro;
     upgradeSignIn.hidden = !canSignIn || signedIn();
-    upgradeWebCheckout.hidden = !canBuy || state.pro;
-    upgradeOfficialLink.hidden = !canBuy;
-    upgradeWebLinks.hidden = upgradeWebCheckout.hidden && upgradeOfficialLink.hidden;
     upgradeActions.hidden = accessible || !canSignIn || !signedIn();
     upgradeSwitch.hidden = upgradeActions.hidden;
     upgradeAccount.hidden = upgradeActions.hidden;

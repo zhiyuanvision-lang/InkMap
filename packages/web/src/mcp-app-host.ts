@@ -1175,7 +1175,7 @@ export class McpAppHost implements Host {
 
   async checkout(mode: "buy" | "restore") {
     if (mode !== "restore") throw new Error("Only account restoration is supported.");
-    const { url } = await this.callTool("inkmap_restore_access");
+    const { url } = await this.callTool("inkmap_restore_access", { locale: this.locale });
     if (typeof url !== "string" || new URL(url).protocol !== "https:") {
       throw new Error("Invalid account link.");
     }
@@ -1185,7 +1185,7 @@ export class McpAppHost implements Host {
 
   phoneSignIn = {
     send: async (phone: string): Promise<PhoneSignInResult> => {
-      const { result } = await this.callTool("inkmap_phone_send", { phone });
+      const { result } = await this.callTool("inkmap_phone_send", { phone, locale: this.locale });
       return result as PhoneSignInResult;
     },
     verify: async (phone: string, code: string): Promise<PhoneSignInResult<LicenseState>> => {

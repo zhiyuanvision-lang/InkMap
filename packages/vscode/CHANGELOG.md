@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.4
+
+- **Streamlined Two-Category Account & Payment UX**:
+  - **Category 1 (In-Plugin Direct Checkout)**: VS Code, Cursor, DeepSeek Harness, Qoder, and Browser IDE display payment directly inside the plugin (WeChat Pay QR **¥29.9** for Domestic edition, Card Checkout **\$15** for Overseas edition) with zero redundant browser links or popups.
+  - **Category 2 (Inline Email Sign-In + Email Checkout Link)**: OpenAI Codex, Claude Desktop, Claude Code, and Google Antigravity share the unified MCP App codebase and inline 6-digit email verification (auto-verifies immediately on the 6th digit).
+- **Strict Domestic (`¥29.9`) vs. Overseas (`$15`) Edition Separation**: Automatic detection by system timezone (`Asia/Shanghai`, etc.) or language (`zh*`) with zero cross-currency leakage across UI and verification emails, plus complete multi-client Pro perks coverage (`Cursor`, `VS Code`, `DeepSeek Harness`, `Qoder`, `WorkBuddy`, `Claude`, `Codex`, `Antigravity`, `Trae`).
+
 ## 0.3.3
 
 - **DeepSeek Harness Inline Pro Purchase & Email Verification**: Enabled inline WeChat Pay QR checkout, inline email verification sign-in, and official web checkout links directly inside the DeepSeek Harness sidebar (`dsh-inkmap`).

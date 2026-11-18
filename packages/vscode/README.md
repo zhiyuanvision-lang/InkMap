@@ -23,8 +23,8 @@
 
 ### Inkmap Pro 终身会员价格与权益
 
-- **中国大陆买断价格**：**¥29.90**（一次付费 · 终身永久使用 · 无任何自动续费）
-- **立即购买入口**：[**👉 点击前往官方收银台开通 Inkmap Pro（¥29.90 终身版）**](https://zhiyuanv.com/billing/purchase/inkmap-pro?start=1) ｜ [**🌐 访问中文官网定价与权益页**](https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing)
+- **中国大陆买断价格**：**¥29.9**（一次付费 · 终身永久使用 · 无任何自动续费）
+- **立即购买入口**：在导图工具栏右上角点击账号按钮选择 **「立即开通 Pro（¥29.9）」** 直接在插件内微信扫码开通 ｜ [**🌐 访问中文官网定价与权益页**](https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing)
 
 | Pro 终身会员核心权益 | 权益详情说明 |
 | --- | --- |
@@ -35,7 +35,7 @@
 | **5. 高清 PNG 与矢量 SVG 一键导出** | 一键导出带完整公式、表格与流程图的透明/高清 PNG 图片及矢量 SVG，直接放入文档与 PPT |
 | **6. 富文本节点与全图查找批量替换** | 完整支持 LaTeX 数学公式、Markdown 表格、代码块、图片，支持整张导图关键字查找与一键全部替换 |
 | **7. 逐节点聚焦演示放映模式** | 一键进入全屏演示模式，按分支/节点逐步聚焦放映，适合技术评审、课程讲解与汇报 |
-| **8. 一次买断 · 跨平台全客户端通用** | 登录同一账号即可在 **VS Code、Cursor、Claude Desktop、OpenAI Codex、Google Antigravity** 等多端自动同步 Pro 权益，免费包含后续全部更新 |
+| **8. 一次买断 · 跨平台全客户端通用** | 登录同一邮箱即可在 **Cursor、VS Code、DeepSeek Harness、Qoder、WorkBuddy、Claude Desktop、Claude Code、OpenAI Codex、Google Antigravity、Trae** 全端自动同步 Pro 权益，免费包含后续全部更新 |
 
 ![组织结构图](images/org-chart.png)
 
@@ -43,10 +43,9 @@
 
 ### 购买与激活方式
 
-1. **官网或插件内直接购买**：
-   - 点击 [**立即购买 Inkmap Pro（¥29.90）**](https://zhiyuanv.com/billing/purchase/inkmap-pro?start=1) 或访问 [https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing](https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing)；也可点击导图工具栏右上角账号按钮选择「购买 Pro」（或运行命令 **Inkmap: 升级到 Inkmap Pro**）。
-2. **微信扫码或验证码登录开通**：支持手机号验证码 / 邮箱登录并微信扫码支付（**¥29.90 一次买断**）。
-3. **跨端自动同步**：付款后返回编辑器自动解锁 Pro。在其他电脑或 AI 客户端（Claude、Codex、Cursor、Antigravity）中点击右上角「登录」使用同一账号，已有 Pro 权益自动同步。
+1. **插件内直接开通**：点击导图工具栏右上角账号按钮，选择 **「立即开通 Pro（¥29.9）」**，验证邮箱后直接在面板内微信扫码即可解锁（或访问 [https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing](https://zhiyuanv.com/software.html?lang=zh#inkmap-pricing)）。
+2. **输入 6 位验证码自动登录**：邮箱验证输入满 6 位数字自动提交完成登录，无需多余跳转。
+3. **跨端自动同步**：在其他电脑或任意 AI 客户端（Cursor、VS Code、DeepSeek Harness、Qoder、WorkBuddy、Claude、Codex、Antigravity、Trae）点击右上角登录同一邮箱，已有 Pro 权益自动同步。
 
 支持购买后 14 天内无理由全额退款。
 
@@ -106,8 +105,8 @@ Try all Pro features free for **7 days** from first use — no sign-in required.
 
 #### Inkmap Pro Price & Lifetime Benefits
 
-- **Lifetime License Price**: **US\$15.00** (One-time payment · Use forever · No recurring subscription)
-- **Purchase Links**: [**👉 Buy Inkmap Pro Now (US\$15.00 Lifetime Checkout)**](https://zhiyuanv.com/billing/purchase/inkmap-pro?start=1) ｜ [**🌐 Official Website & Pricing Details**](https://zhiyuanv.com/software.html?lang=en#inkmap-pricing)
+- **Lifetime License Price**: **\$15** (One-time payment · Use forever · No recurring subscription)
+- **Purchase Links**: Open the top-right account panel in the Inkmap toolbar and choose **Buy Pro (\$15)** ｜ [**🌐 Official Website & Pricing Details**](https://zhiyuanv.com/software.html?lang=en#inkmap-pricing)
 
 | Inkmap Pro Lifetime Benefit | What's Included |
 | --- | --- |
@@ -118,16 +117,15 @@ Try all Pro features free for **7 days** from first use — no sign-in required.
 | **5. High-Resolution PNG & Vector SVG Export** | One-click export to crisp PNG images and standalone vector SVGs (including math, tables, and diagrams) ready for slides and docs |
 | **6. Rich Nodes & Global Find & Replace** | Full support for LaTeX math, Markdown tables, code blocks, images, plus whole-map search and batch replace |
 | **7. Step-by-Step Presentation Mode** | Present your mind map node by node in fullscreen with keyboard or on-screen playback controls |
-| **8. Pay Once · Sync Across All Clients** | Sign in with the same account to sync Lifetime Pro across **VS Code, Cursor, Claude Desktop, OpenAI Codex, and Google Antigravity**, including all future updates |
+| **8. Pay Once · Sync Across All Clients** | Sign in with the same email to sync Lifetime Pro across **Cursor, VS Code, DeepSeek Harness, Qoder, WorkBuddy, Claude Desktop, Claude Code, OpenAI Codex, Google Antigravity, and Trae**, including all future updates |
 
 ![Timeline layout](images/timeline.png)
 
 #### Buying and Activating
 
-1. **Purchase on the Official Website or In-Extension**:
-   - Click [**Buy Inkmap Pro (US\$15.00)**](https://zhiyuanv.com/billing/purchase/inkmap-pro?start=1) or visit [https://zhiyuanv.com/software.html?lang=en#inkmap-pricing](https://zhiyuanv.com/software.html?lang=en#inkmap-pricing), or open the account panel on the top-right of the Inkmap toolbar and choose **Buy Pro** (or run **Inkmap: Get Inkmap Pro**).
-2. **Complete One-Time Checkout**: Sign in with your email verification code and pay **US\$15.00** once by bank card (no recurring fees).
-3. **Sync Across All Devices & AI Clients**: Return to the editor and Pro unlocks automatically. On any other machine or inside Claude Desktop, OpenAI Codex, Cursor, or Google Antigravity, click **Sign in** in the top-right corner with the same account to sync your Pro access automatically.
+1. **In-Extension Direct Checkout**: Open the account panel at the top-right of the Inkmap toolbar and click **Buy Pro (\$15)** (or visit [https://zhiyuanv.com/software.html?lang=en#inkmap-pricing](https://zhiyuanv.com/software.html?lang=en#inkmap-pricing)).
+2. **One-Step Email Verification**: Enter your email and 6-digit verification code (auto-verifies on the 6th digit) and pay **\$15** once by card (no recurring fees).
+3. **Sync Across All Devices & AI Clients**: On any other machine or inside Cursor, VS Code, DeepSeek Harness, Qoder, WorkBuddy, Claude Desktop, Claude Code, OpenAI Codex, Google Antigravity, or Trae, click the top-right account badge and verify the same email to sync Lifetime Pro automatically.
 
 Backed by a 14-day full refund guarantee.
 

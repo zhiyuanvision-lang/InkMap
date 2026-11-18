@@ -44,7 +44,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   const fallbackEditors = new Map<string, Promise<Served>>();
   const ads = adFeed(PRODUCT.adFeedUrl);
   const workspaces = createMcpWorkspaceManager();
-  const server = new McpServer({ name: "inkmap", version: "0.3.3" });
+  const server = new McpServer({ name: "inkmap", version: "0.3.4" });
 
   function isAntigravityHost(): boolean {
     const clientName = server.server.getClientVersion()?.name ?? "";
@@ -112,14 +112,15 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     if (!pending) {
       pending = (async () => {
         const source = await fileSource(filePath);
+        browserBilling ??= licenseService(fileSessionStorage(), billingOrigin);
         return serve({
           source,
           webRoot: WEB_ROOT,
           port: 0,
-          license: billing,
-          ads: async () => [],
+          license: browserBilling,
+          ads,
           sidebar: false,
-          loginOnly: true,
+          loginOnly: false,
           ideWorkspace: true,
         });
       })();
@@ -337,15 +338,18 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   }, async () => ({ content: [], structuredContent: { ...await billing.state() } }));
 
   server.registerTool("inkmap_restore_access", {
-    title: "Sign in to Yunfan", annotations: { destructiveHint: false }, _meta: appOnly,
-  }, async () => ({ content: [], structuredContent: { url: await billing.connect("restore") } }));
+    title: "Sign in to Yunfan",
+    inputSchema: { locale: z.string().optional() },
+    annotations: { destructiveHint: false },
+    _meta: appOnly,
+  }, async ({ locale }) => ({ content: [], structuredContent: { url: await billing.connect("restore", locale) } }));
 
   server.registerTool("inkmap_phone_send", {
     title: "Send phone verification code",
-    inputSchema: { phone: z.string() },
+    inputSchema: { phone: z.string(), locale: z.string().optional() },
     annotations: { destructiveHint: false },
     _meta: appOnly,
-  }, async ({ phone }) => ({ content: [], structuredContent: { result: await billing.sendPhoneCode(phone) } }));
+  }, async ({ phone, locale }) => ({ content: [], structuredContent: { result: await billing.sendPhoneCode(phone, locale) } }));
 
   server.registerTool("inkmap_phone_verify", {
     title: "Verify phone sign-in code",

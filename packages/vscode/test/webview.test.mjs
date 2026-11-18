@@ -79,12 +79,19 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
   });
 
   /** Opens the editor with a fake extension that keeps the document text and version. */
-  async function open({ lang, ads = [], chat = false, expired = false, viewState, beforeLoad, markdown = DOC, paidOnSignIn = true } = {}) {
+  async function open({ lang, timezone, ads = [], chat = false, expired = false, viewState, beforeLoad, markdown = DOC, paidOnSignIn = true } = {}) {
     const page = await browser.newPage();
     await page.setViewport({ width: 1400, height: 900 });
-    if (lang === "en") {
+    if (timezone) {
+      await page.emulateTimezone(timezone);
+    } else if (lang === "en") {
       await page.emulateTimezone("UTC");
-      await page.evaluateOnNewDocument(() => Object.defineProperty(navigator, "language", { get: () => "en-US" }));
+    }
+    if (lang === "en") {
+      await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, "language", { get: () => "en-US" });
+        Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
+      });
     }
     const errors = [];
     page.on("pageerror", e => errors.push(e.message));
@@ -103,15 +110,18 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
         await reply({ type: "license", state: ext.license });
       }
       if (msg.type === "orderPro") {
+        const isEn = msg.locale === "en";
         await reply({
           type: "proOrder",
           id: msg.id,
-          result: {
-            status: "qr",
-            qr: "data:image/png;base64," + PNG.toString("base64"),
-            amountFen: 2990,
-            expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
-          },
+          result: isEn
+            ? { status: "redirect", url: "https://checkout.example.com/card-15" }
+            : {
+                status: "qr",
+                qr: "data:image/png;base64," + PNG.toString("base64"),
+                amountFen: 2990,
+                expiresAt: new Date(Date.now() + 10 * 60_000).toISOString(),
+              },
         });
       }
       if (msg.type === "sendPhoneCode") {
@@ -469,11 +479,9 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     assert.equal(await page.$eval("#send-phone-code", el => el.disabled), true);
     assert.equal(ext.sent.find(msg => msg.type === "sendPhoneCode").phone, "13800008000");
     await page.type("#sign-in-code", "000000");
-    await page.click(".phone-sign-in button[type=submit]");
     await page.waitForSelector("#phone-sign-in-status[data-state=error]:not([hidden])");
     await page.type("#sign-in-code", "123456");
-    await page.click(".phone-sign-in button[type=submit]");
-    await waitFor(() => page.$eval("html", el => el.classList.contains("pro-member")), "pro unlocked");
+    await waitFor(() => page.$eval("html", el => el.classList.contains("pro-member")), "pro unlocked automatically on 6th digit");
     assert.equal(await page.$eval("#upgrade", el => el.hidden), true, "the editor unlocks without a second action");
     assert.equal(await page.$eval("#account-badge", el => el.textContent), "PRO");
     assert.equal(await page.$eval("#account-text", el => el.textContent), "138****8000");
@@ -505,27 +513,46 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     await page.close();
   });
 
-  it("switches between English and Chinese without reloading or losing Pro access", async () => {
-    const { page, ext, errors } = await open({ lang: "en", expired: true });
-    assert.equal(await page.$eval("html", el => el.lang), "en");
-    await page.select(".upgrade-language", "zh");
-    assert.equal(await page.$eval("html", el => el.lang), "zh-CN");
-    await page.click("#upgrade-sign-in");
-    await page.click("#phone-browser-sign-in");
-    await waitFor(() => page.$eval("html", el => el.classList.contains("pro-member")), "pro unlocked");
-    assert.equal(await page.$eval("#account-heading", el => el.textContent), "已登录");
-    await page.select("#bar .language-select", "en");
-    assert.equal(await page.$eval("#account-heading", el => el.textContent), "Signed in");
-    assert.equal(await page.$eval("#account-text", el => el.textContent), "u***@example.com");
-    assert.equal(await page.$eval("html", el => el.classList.contains("pro-member")), true);
-    assert.ok(ext.sent.some(m => m.type === "checkout"));
-    assert.deepEqual(errors, []);
-    await page.evaluate(() => localStorage.removeItem("inkmap.language"));
-    await page.close();
+  it("strictly separates Domestic (zh, ¥29.9 QR) and Overseas (en, $15 Card) editions by timezone or language", async () => {
+    // 1. English language + Asia/Shanghai timezone => Domestic edition (zh-CN, ¥29.9, WeChat QR, zero $15)
+    const dom = await open({ lang: "en", timezone: "Asia/Shanghai", paidOnSignIn: false });
+    assert.equal(await dom.page.$eval("html", el => el.lang), "zh-CN");
+    assert.equal(await dom.page.$(".language-select"), null, "manual language switcher removed");
+    await dom.page.click("#pro");
+    await dom.page.waitForSelector("#account-panel", { visible: true });
+    assert.equal(await dom.page.$eval("#account-buy", el => el.textContent), "立即开通 Pro（¥29.9）");
+    assert.equal(await dom.page.$eval("#account-sign-in", el => el.textContent), "已购买？登录同步");
+    assert.equal(await dom.page.$("#account-web-links"), null, "no redundant browser links in Category 1");
+    const domText = await dom.page.evaluate(() => document.body.innerText);
+    assert.doesNotMatch(domText, /\$15|US\$15|29\.90/, "domestic UI never exposes overseas $15 or 29.90");
+    await dom.page.click("#account-buy");
+    await dom.page.waitForSelector("#account-panel .wechat-pay", { visible: true });
+    assert.equal(await dom.page.$eval("#wechat-pay-amount", el => el.textContent), "¥29.9");
+    assert.equal(await dom.page.$eval("#wechat-pay-stage", el => el.hidden), false);
+    assert.equal(await dom.page.$eval("#card-pay-stage", el => el.hidden), true);
+    assert.deepEqual(dom.errors, []);
+    await dom.page.close();
+
+    // 2. English language + UTC timezone => Overseas edition (en, $15, Card Checkout, zero ¥29.9)
+    const intl = await open({ lang: "en", timezone: "UTC", paidOnSignIn: false });
+    assert.equal(await intl.page.$eval("html", el => el.lang), "en");
+    await intl.page.click("#pro");
+    await intl.page.waitForSelector("#account-panel", { visible: true });
+    assert.equal(await intl.page.$eval("#account-buy", el => el.textContent), "Buy Pro ($15)");
+    assert.equal(await intl.page.$eval("#account-sign-in", el => el.textContent), "Already bought? Sign in");
+    const intlText = await intl.page.evaluate(() => document.body.innerText);
+    assert.doesNotMatch(intlText, /¥|29\.9|WeChat/i, "overseas UI never exposes RMB or WeChat Pay");
+    await intl.page.click("#account-buy");
+    await intl.page.waitForSelector("#account-panel .wechat-pay", { visible: true });
+    assert.equal(await intl.page.$eval("#wechat-pay-amount", el => el.textContent), "$15");
+    assert.equal(await intl.page.$eval("#wechat-pay-stage", el => el.hidden), true);
+    assert.equal(await intl.page.$eval("#card-pay-stage", el => el.hidden), false);
+    assert.deepEqual(intl.errors, []);
+    await intl.page.close();
   });
 
-  it("lets a trial user sign in without enabling Pro", async () => {
-    const { page, ext, errors } = await open({ lang: "en", paidOnSignIn: false });
+  it("lets a trial user sign in without enabling Pro and view inline Domestic QR payment", async () => {
+    const { page, ext, errors } = await open({ paidOnSignIn: false });
     await page.setViewport({ width: 360, height: 620 });
     await page.focus("#pro");
     await page.keyboard.press("Enter");
@@ -538,28 +565,26 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     assert.equal(await page.$eval("#pro", el => el.getAttribute("aria-expanded")), "false");
     assert.equal(await page.evaluate(() => document.activeElement.id), "pro");
     await page.click("#pro");
-    assert.equal(await page.$eval("#account-sign-in", el => el.textContent), "Sign in with Email");
+    assert.equal(await page.$eval("#account-sign-in", el => el.textContent), "已购买？登录同步");
     await page.click("#account-sign-in");
     await page.type("#sign-in-phone", "13800008000");
     await page.type("#sign-in-code", "123456");
-    await page.click(".phone-sign-in button[type=submit]");
     await waitFor(() => page.$eval("#account-sign-in", el => el.hidden), "connected trial user");
     assert.equal(ext.sent.some(msg => msg.type === "checkout"), false);
     assert.equal(await page.$eval("#account-text", el => el.textContent), "138****8000");
-    assert.equal(await page.$eval("#account-heading", el => el.textContent), "Signed in");
+    assert.equal(await page.$eval("#account-heading", el => el.textContent), "已登录");
     assert.equal(await page.$eval("html", el => el.classList.contains("pro-member")), false);
     assert.equal(await page.$eval("#account-plan-status", el => el.hidden), false, "shows current trial status card inside account panel");
     assert.equal(await page.$eval("#account-perks", el => el.hidden), false, "shows Pro perks directly in the account panel");
     assert.equal(await page.$$eval("#account-perks .account-perks-list li", els => els.length), 7, "displays 7 rich Pro perks");
+    const perksText = await page.$eval("#account-perks", el => el.textContent);
+    for (const platform of ["Cursor", "VS Code", "DeepSeek", "Qoder", "WorkBuddy", "Claude", "Codex", "Antigravity", "Trae"]) {
+      assert.ok(perksText.includes(platform), `perks list includes ${platform}`);
+    }
     assert.equal(await page.$eval("#switch-account", el => el.hidden), false, "shows switch account button when signed in");
-    await page.click("#account-perks-more");
-    await page.waitForSelector("#buy-pro", { visible: true });
-    assert.equal(await page.$eval("#upgrade-sign-in", el => el.hidden), true, "the signed-in user only sees the purchase action");
-    await page.click(".upgrade-close");
-    await page.click("#pro");
     await page.click("#account-buy");
     await page.waitForSelector("#account-panel .wechat-pay", { visible: true });
-    assert.equal(await page.$eval("#wechat-pay-amount", el => el.textContent), "¥29.90");
+    assert.equal(await page.$eval("#wechat-pay-amount", el => el.textContent), "¥29.9");
     assert.match(await page.$eval("#wechat-pay-account", el => el.textContent), /138\*\*\*\*8000/);
     assert.match(await page.$eval("#wechat-pay-qr", el => el.getAttribute("src")), /^data:image\/png;base64,/);
     assert.deepEqual(errors, []);

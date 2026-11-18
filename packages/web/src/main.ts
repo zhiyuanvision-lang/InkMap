@@ -42,10 +42,7 @@ nodeStyle.textContent = nodesCss;
 document.head.append(nodeStyle);
 
 export async function start(host: Host) {
-  let savedLanguage: string | null = null;
-  try { savedLanguage = localStorage.getItem("inkmap.language"); } catch { /* storage can be unavailable */ }
-  const defaultLang = detectDefaultLocale(host.locale);
-  setLocale(savedLanguage === "zh" || savedLanguage === "en" ? savedLanguage : defaultLang);
+  setLocale(detectDefaultLocale(host.locale));
   applyI18n();
   const status = $("#status");
   const toast = $("#toast");
@@ -1091,31 +1088,6 @@ export async function start(host: Host) {
   });
   pro.onChange(() => applyLook(currentMarkdown()));
   fillPickers();
-  const languageSelects = document.querySelectorAll<HTMLSelectElement>(".language-select");
-  languageSelects.forEach(select => {
-    select.value = locale();
-    select.addEventListener("change", () => {
-      const next = select.value === "zh" ? "zh" : "en";
-      try { localStorage.setItem("inkmap.language", next); } catch { /* still switch for this session */ }
-      setLocale(next);
-      languageSelects.forEach(other => { other.value = next; });
-      applyI18n();
-      pro.refreshLanguage();
-      fillPickers();
-      setStatus((status.dataset.state as any) || "saved", synced());
-      chatAdd.innerHTML = `<span>${t("addToChat")}</span><kbd>${chatKey}</kbd>`;
-      chatAdd.title = t("addToChatTitle");
-      chatMenuItem.innerHTML = `<span>${t("addToChat")}</span><kbd>${chatKey}</kbd>`;
-      document.querySelectorAll<HTMLButtonElement>(".ink-diagram-zoom").forEach(btn => {
-        btn.textContent = t("zoomDiagram");
-      });
-      document.querySelectorAll<HTMLButtonElement>(".ink-diagram-edit").forEach(btn => {
-        const hasError = Boolean(btn.parentElement?.parentElement?.querySelector(".ink-diagram-error"));
-        btn.textContent = hasError ? t("diagramInvalid") : t("editDiagram");
-      });
-      host.refreshLanguage?.();
-    });
-  });
 
   // ---- export -----------------------------------------------------------
 

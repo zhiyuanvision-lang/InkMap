@@ -64,6 +64,7 @@ export interface Host {
   license(): Promise<LicenseState>;
   checkout(mode: "buy" | "restore"): Promise<void>;
   orderPro?(): Promise<WechatOrderResult>;
+  openExternalUrl?(url: string): void;
   phoneSignIn?: {
     send(phone: string): Promise<PhoneSignInResult>;
     verify(phone: string, code: string): Promise<PhoneSignInResult<LicenseState>>;
@@ -898,7 +899,7 @@ export class HttpHost implements Host {
     const tab = window.open("about:blank", "_blank");
     if (tab) tab.opener = null;
     try {
-      const res = await fetch(this.base + "api/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode }) });
+      const res = await fetch(this.base + "api/checkout", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ mode, locale: currentUiLocale() }) });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? res.statusText);
       if (!tab) throw new PopupBlockedError(t("allowAccountPopups"), body.url);
@@ -913,7 +914,7 @@ export class HttpHost implements Host {
     const res = await fetch(this.base + "api/order-pro", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: "{}",
+      body: JSON.stringify({ locale: currentUiLocale() }),
     });
     if (res.status === 501) {
       await this.checkout("buy");
@@ -922,11 +923,16 @@ export class HttpHost implements Host {
     const body = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(body.error ?? res.statusText);
     const result = body.result as WechatOrderResult;
-    if (result.status === "redirect") {
-      const tab = window.open(result.url, "_blank", "noopener,noreferrer");
-      if (!tab) throw new PopupBlockedError(t("allowAccountPopups"), result.url);
+    if (result.status === "redirect" && /^https:\/\//.test(result.url)) {
+      window.open(result.url, "_blank", "noopener,noreferrer");
     }
     return result;
+  }
+
+  openExternalUrl(url: string) {
+    if (/^https:\/\//.test(url)) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    }
   }
 
   phoneSignIn?: Host["phoneSignIn"] = {
@@ -934,7 +940,7 @@ export class HttpHost implements Host {
       const res = await fetch(this.base + "api/phone-send", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ phone }),
+        body: JSON.stringify({ phone, locale: currentUiLocale() }),
       });
       if (!res.ok) return { ok: false, reason: "unavailable" };
       return (await res.json()).result;
@@ -1001,9 +1007,10 @@ export type ToExtension =
   | ({ type: "addToChat" } & Partial<ChatTarget>)
   | { type: "undo" }
   | { type: "redo" }
-  | { type: "checkout"; id: number; mode: "buy" | "restore" }
-  | { type: "orderPro"; id: number }
-  | { type: "sendPhoneCode"; id: number; phone: string }
+  | { type: "checkout"; id: number; mode: "buy" | "restore"; locale?: string }
+  | { type: "orderPro"; id: number; locale?: string }
+  | { type: "openExternal"; url: string }
+  | { type: "sendPhoneCode"; id: number; phone: string; locale?: string }
   | { type: "signInByPhone"; id: number; phone: string; code: string }
   | { type: "signOut"; id: number }
   | { type: "saveFile"; id: number; name: string; dataUrl: string }
@@ -1134,14 +1141,14 @@ export class VsCodeHost implements Host {
 
   checkout(mode: "buy" | "restore"): Promise<void> {
     return this.request(
-      id => ({ type: "checkout", id, mode }),
+      id => ({ type: "checkout", id, mode, locale: currentUiLocale() }),
       () => undefined,
     );
   }
 
   orderPro(): Promise<WechatOrderResult> {
     return this.request(
-      id => ({ type: "orderPro", id }),
+      id => ({ type: "orderPro", id, locale: currentUiLocale() }),
       msg => {
         const { result } = msg as Extract<FromExtension, { type: "proOrder" }>;
         if (result.status === "active") this.currentLicense = result.state;
@@ -1150,9 +1157,15 @@ export class VsCodeHost implements Host {
     );
   }
 
+  openExternalUrl(url: string) {
+    if (/^https:\/\//.test(url)) {
+      this.post({ type: "openExternal", url });
+    }
+  }
+
   phoneSignIn = {
     send: (phone: string) => this.request(
-      id => ({ type: "sendPhoneCode", id, phone }),
+      id => ({ type: "sendPhoneCode", id, phone, locale: currentUiLocale() }),
       msg => (msg as Extract<FromExtension, { type: "phoneCodeSent" }>).result,
     ),
     verify: (phone: string, code: string) => this.request(

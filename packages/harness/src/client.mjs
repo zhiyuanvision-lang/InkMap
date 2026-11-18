@@ -4,7 +4,17 @@ import { actionSlot, bodySlot, fileAddress, kind, packageName, route, selectedFi
 
 export const inject = ["slots", "sidebarRight", "sidebarRightTabs"];
 
-const zh = () => /^zh\b/i.test(document.documentElement.lang || navigator.language);
+const zh = () => {
+  const docLang = typeof document !== "undefined" ? document.documentElement?.lang || "" : "";
+  const navLang = typeof navigator !== "undefined" ? navigator.language || "" : "";
+  if (/^zh\b/i.test(docLang || navLang)) return true;
+  try {
+    const opts = Intl.DateTimeFormat().resolvedOptions();
+    if (/^zh\b/i.test(opts.locale || "")) return true;
+    if (/^(Asia\/(Shanghai|Chongqing|Chungking|Harbin|Urumqi|Beijing)|PRC)$/i.test(opts.timeZone || "")) return true;
+  } catch {}
+  return false;
+};
 const label = () => zh() ? "用 Inkmap 打开" : "Open in Inkmap";
 const desktop = () => location.protocol === "dsh-app:" && location.hostname === "app";
 const actionClass = "inkmap-harness-open";
@@ -115,7 +125,7 @@ export function apply(ctx) {
       src: desktop() ? `${view.url}?account-navigation=host` : view.url,
       title: "Inkmap",
       referrerPolicy: "no-referrer",
-      sandbox: "allow-scripts allow-same-origin allow-downloads allow-popups allow-popups-to-escape-sandbox",
+      sandbox: "allow-scripts allow-forms allow-same-origin allow-downloads allow-popups allow-popups-to-escape-sandbox",
       style: { display: "block", width: "100%", height: "100%", border: 0 },
     });
   }

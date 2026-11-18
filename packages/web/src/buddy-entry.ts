@@ -97,7 +97,8 @@ class BuddyHost implements Host {
     if (!tab) throw new Error(sidebarText("请允许在浏览器中打开登录窗口。", "Allow the account sign-in window to open."));
     tab.opener = null;
     try {
-      tab.location.replace(await this.access.restore());
+      const url = await this.access.restore();
+      tab.location.replace(url + (url.includes("?") ? "&" : "?") + "lang=" + this.locale);
     } catch (error) {
       tab.close();
       throw error;

@@ -204,7 +204,7 @@ button, input, select { font: inherit; color: inherit; }
   border: 1px solid var(--ui-border-strong); border-radius: 16px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, .12), 0 24px 56px -12px rgba(15, 23, 42, .26); font-size: 13px; }
 .upgrade-card h2 { margin: 0; font-size: 20px; font-weight: 700; letter-spacing: -.02em; color: var(--ui-text); }
-.upgrade-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 5px; padding-right: 128px; }
+.upgrade-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 5px; padding-right: 40px; }
 .pro-pill { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 5px;
   background: linear-gradient(135deg, #3d78f7, #2557d6); color: #fff; font-size: 10.5px; font-weight: 750; letter-spacing: .05em; line-height: 1.4; }
 .upgrade-sub { margin: 0 0 12px; color: var(--ui-muted); font-size: 13px; }
@@ -212,14 +212,6 @@ button, input, select { font: inherit; color: inherit; }
   width: 28px; height: 28px; border: none; border-radius: 7px; background: transparent; font-size: 18px; line-height: 1;
   color: var(--ui-muted); cursor: pointer; transition: background .12s ease, color .12s ease; }
 .upgrade-close:hover { background: var(--ui-hover); color: var(--ui-text); }
-.upgrade-language { position: absolute; top: 16px; right: 48px; height: 28px; padding: 0 22px 0 9px; max-width: 98px;
-  appearance: none; -webkit-appearance: none; border: 1px solid var(--ui-border); border-radius: 7px;
-  background-color: var(--ui-subtle); background-repeat: no-repeat; background-position: right 7px center;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='%23646a73' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 3.8 5 6.3l2.5-2.5'/%3E%3C/svg%3E");
-  font-size: 12px; font-weight: 500; color: var(--ui-muted); cursor: pointer; transition: border-color .12s ease, color .12s ease; }
-.upgrade-language:hover { border-color: var(--ui-border-strong); color: var(--ui-text); }
-:root.dark .upgrade-language {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='%239aa0a8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 3.8 5 6.3l2.5-2.5'/%3E%3C/svg%3E"); }
 #trial-status { display: inline-flex; align-items: center; gap: 6px; margin: 0 0 12px; padding: 4px 10px; border-radius: 999px;
   background: rgba(51, 109, 244, .09); color: var(--ui-primary); font-size: 12px; font-weight: 560; font-variant-numeric: tabular-nums; }
 #trial-status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
@@ -288,22 +280,22 @@ button, input, select { font: inherit; color: inherit; }
 .phone-field { display: grid; gap: 5px; }
 .phone-sign-in label { font-size: 12px; font-weight: 540; color: var(--ui-muted); }
 
-.phone-input-wrap { position: relative; display: flex; align-items: center; }
+.phone-email-row { position: relative; padding: 0 5px 0 33px; }
 .phone-input-icon { position: absolute; left: 11px; pointer-events: none; color: var(--ui-muted); }
-#sign-in-phone { box-sizing: border-box; width: 100%; height: 38px; padding: 0 11px 0 33px;
-  border: 1px solid var(--ui-border-strong); border-radius: 9px; background: var(--ui-solid);
-  font-size: 13px; font-variant-numeric: tabular-nums; outline: none;
-  transition: border-color .14s ease, box-shadow .14s ease; }
+#sign-in-phone { flex: 1; min-width: 0; height: 100%; padding: 0 6px 0 0; border: none; background: transparent;
+  font-size: 13px; font-variant-numeric: tabular-nums; outline: none; }
 #sign-in-phone::placeholder, #sign-in-code::placeholder { color: color-mix(in srgb, var(--ui-muted) 72%, transparent); }
-#sign-in-phone:focus { border-color: var(--ui-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 16%, transparent); }
 
-.phone-code-row { display: flex; align-items: center; gap: 4px; height: 38px; padding: 0 5px 0 0; box-sizing: border-box;
+.phone-code-row { display: flex; align-items: center; gap: 4px; height: 38px; box-sizing: border-box;
   border: 1px solid var(--ui-border-strong); border-radius: 9px; background: var(--ui-solid);
   transition: border-color .14s ease, box-shadow .14s ease; }
 .phone-code-row:focus-within { border-color: var(--ui-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 16%, transparent); }
-#sign-in-code { flex: 1; min-width: 0; height: 100%; padding: 0 11px; border: none; background: transparent;
-  font-size: 14px; font-weight: 600; letter-spacing: .16em; font-variant-numeric: tabular-nums; outline: none; }
-#sign-in-code::placeholder { letter-spacing: normal; font-weight: 400; font-size: 13px; }
+#sign-in-code { box-sizing: border-box; width: 100%; height: 38px; padding: 0 11px;
+  border: 1px solid var(--ui-border-strong); border-radius: 9px; background: var(--ui-solid);
+  font-size: 15px; font-weight: 650; letter-spacing: .18em; font-variant-numeric: tabular-nums; outline: none;
+  transition: border-color .14s ease, box-shadow .14s ease; }
+#sign-in-code:focus { border-color: var(--ui-primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ui-primary) 16%, transparent); }
+#sign-in-code::placeholder { letter-spacing: normal; font-weight: 400; font-size: 12.5px; }
 #send-phone-code { flex: none; height: 28px; padding: 0 10px; border: none; border-radius: 7px;
   background: color-mix(in srgb, var(--ui-primary) 11%, transparent); color: var(--ui-primary);
   font-size: 12px; font-weight: 560; font-variant-numeric: tabular-nums; white-space: nowrap; cursor: pointer;
@@ -322,12 +314,6 @@ button, input, select { font: inherit; color: inherit; }
 .phone-sign-in .buy { min-height: 38px; margin-top: 1px; font-size: 13px; border-radius: 9px;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--ui-primary) 26%, transparent); }
 .phone-sign-in-hint { margin: -3px 0 0; text-align: center; font-size: 11px; color: var(--ui-muted); line-height: 1.35; }
-.phone-sign-in-links { display: flex; margin-top: -2px; padding-top: 8px; border-top: 1px solid var(--ui-border); }
-.browser-sign-in-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; width: 100%; height: 30px;
-  padding: 0 8px; border: none; border-radius: 6px; background: transparent; color: var(--ui-muted);
-  font-size: 12px; font-weight: 500; cursor: pointer; transition: background .12s ease, color .12s ease; }
-.browser-sign-in-btn:hover:not(:disabled) { background: var(--ui-hover); color: var(--ui-text); }
-.browser-sign-in-btn:disabled { opacity: .55; cursor: wait; }
 
 .popup-fallback-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
 .popup-fallback-link, .popup-copy-link { display: inline-flex; align-items: center; gap: 4px; height: 26px; padding: 0 9px;
@@ -352,11 +338,16 @@ button, input, select { font: inherit; color: inherit; }
 .wechat-pay-meta-info { display: grid; gap: 2px; min-width: 0; }
 .wechat-pay-product { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 600; color: var(--ui-text); }
 .wechat-pay-account { font-size: 11px; color: var(--ui-muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wechat-pay-account[hidden], .wechat-pay-expired[hidden] { display: none; }
+.wechat-pay-account[hidden], .wechat-pay-expired[hidden], .wechat-pay-stage[hidden], .card-pay-stage[hidden] { display: none !important; }
 .wechat-pay-amount { font-size: 17px; font-weight: 750; letter-spacing: -.02em; color: var(--ui-text); font-variant-numeric: tabular-nums; flex: none; }
 .wechat-pay-stage { position: relative; justify-self: center; width: 184px; height: 184px; padding: 8px; box-sizing: border-box;
   border-radius: 12px; background: #fff; border: 1px solid rgba(15, 23, 42, .1);
   box-shadow: 0 4px 16px rgba(15, 23, 42, .06); display: flex; align-items: center; justify-content: center; }
+.card-pay-stage { display: flex; padding: 4px 0; }
+.card-pay-stage .buy { width: 100%; min-height: 40px; font-size: 13px; border-radius: 9px; }
+.wechat-pay[data-mode="card"] .wechat-pay-icon { background: color-mix(in srgb, var(--ui-primary) 12%, transparent); color: var(--ui-primary); }
+.wechat-pay[data-mode="card"] .wechat-pay-status { background: color-mix(in srgb, var(--ui-primary) 10%, transparent); color: var(--ui-primary); }
+.wechat-pay[data-mode="card"] .wechat-pay-dot { background: var(--ui-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--ui-primary) 22%, transparent); }
 #wechat-pay-qr { display: block; width: 100%; height: 100%; border-radius: 4px; image-rendering: pixelated; }
 .wechat-pay-expired { position: absolute; inset: 0; border-radius: 12px; background: rgba(255, 255, 255, .94); backdrop-filter: blur(2px);
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; font-size: 12.5px; font-weight: 600; color: #1f2329; }

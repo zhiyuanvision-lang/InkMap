@@ -5,7 +5,6 @@ import { applyI18n, t } from "./i18n";
 export function createPhoneSignIn(
   api: NonNullable<Host["phoneSignIn"]>,
   onSignedIn: (state: LicenseState) => void,
-  openBrowser: () => Promise<boolean>,
 ) {
   const template = document.querySelector<HTMLTemplateElement>("#phone-sign-in-template")!;
   const form = template.content.firstElementChild!.cloneNode(true) as HTMLFormElement;
@@ -15,7 +14,6 @@ export function createPhoneSignIn(
   const code = form.querySelector<HTMLInputElement>("#sign-in-code")!;
   const send = form.querySelector<HTMLButtonElement>("#send-phone-code")!;
   const submit = form.querySelector<HTMLButtonElement>("button[type=submit]")!;
-  const browser = form.querySelector<HTMLButtonElement>("#phone-browser-sign-in")!;
   const cancel = form.querySelector<HTMLButtonElement>("#cancel-phone-sign-in")!;
   const status = form.querySelector<HTMLElement>("#phone-sign-in-status")!;
   let busy = false;
@@ -26,6 +24,7 @@ export function createPhoneSignIn(
   let timer = 0;
   let trigger: HTMLButtonElement | undefined;
   let request = 0;
+  let lastAutoSubmitted = "";
   let message: { key: Parameters<typeof t>[0]; error: boolean } | undefined;
 
   function render() {
@@ -36,7 +35,7 @@ export function createPhoneSignIn(
     submit.textContent = t(forPurchase ? "phoneVerifyAndPay" : "phoneVerifySubmit");
     send.textContent = seconds ? t("resendPhoneCode", { seconds }) : t("sendPhoneCode");
     send.disabled = busy || seconds > 0;
-    submit.disabled = browser.disabled = busy;
+    submit.disabled = busy;
     cancel.disabled = verifying;
     phone.readOnly = code.readOnly = busy;
     status.hidden = !message;
@@ -63,35 +62,72 @@ export function createPhoneSignIn(
     verifying = false;
     forPurchase = false;
     onVerified = undefined;
+    lastAutoSubmitted = "";
     message = undefined;
     if (restoreFocus) trigger?.focus();
     trigger = undefined;
   }
 
-  function failure(reason: PhoneSignInError, verifying: boolean) {
+  function failure(reason: PhoneSignInError, isVerify: boolean) {
     if (reason === "rateLimited") retryAt = Date.now() + 60_000;
     message = {
       key: reason === "rateLimited" ? "phoneRateLimited" : reason === "unavailable" ? "phoneSignInUnavailable"
-        : verifying ? "phoneCodeInvalid" : "phoneInvalid",
+        : isVerify ? "phoneCodeInvalid" : "phoneInvalid",
       error: true,
     };
   }
 
-  function normalizedPhone() {
+  function normalizedPhone(silent = false) {
     const raw = phone.value.normalize("NFKC").trim();
     if (raw.includes("@")) {
       const email = raw.toLowerCase();
       if (email.length <= 254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return email;
-      failure("invalid", false);
-      render();
-      phone.focus();
+      if (!silent) {
+        failure("invalid", false);
+        render();
+        phone.focus();
+      }
       return;
     }
     const number = raw.replace(/[\s\-–‑]/g, "").replace(/^(?:\+86|0086|86(?=1\d{10}$))/, "");
     if (/^1[3-9]\d{9}$/.test(number)) return number;
-    failure("invalid", false);
+    if (!silent) {
+      failure("invalid", false);
+      render();
+      phone.focus();
+    }
+  }
+
+  async function verifyCode(silentPhoneCheck = false) {
+    if (busy) return;
+    const number = normalizedPhone(silentPhoneCheck);
+    if (!number) return;
+    const digits = code.value.replace(/\D+/g, "").slice(0, 6);
+    if (digits.length !== 6) {
+      if (!silentPhoneCheck) {
+        failure("invalid", true);
+        render();
+        code.focus();
+      }
+      return;
+    }
+    const id = ++request;
+    busy = verifying = true;
+    message = undefined;
     render();
-    phone.focus();
+    const result = await api.verify(number, digits).catch(() => ({ ok: false, reason: "unavailable" } as const));
+    if (id !== request) return;
+    busy = verifying = false;
+    if (result.ok) {
+      const nextCallback = onVerified;
+      close();
+      onSignedIn(result.value);
+      nextCallback?.(result.value);
+      return;
+    }
+    failure(result.reason, true);
+    render();
+    code.select();
   }
 
   send.addEventListener("click", async () => {
@@ -99,6 +135,7 @@ export function createPhoneSignIn(
     if (!number || busy || Date.now() < retryAt) return;
     const id = ++request;
     busy = true;
+    lastAutoSubmitted = "";
     message = undefined;
     render();
     const result = await api.send(number).catch(() => ({ ok: false, reason: "unavailable" } as const));
@@ -114,48 +151,35 @@ export function createPhoneSignIn(
     render();
   });
 
-  form.addEventListener("submit", async event => {
+  form.addEventListener("submit", event => {
     event.preventDefault();
-    if (busy) return;
-    const number = normalizedPhone();
-    if (!number) return;
-    const id = ++request;
-    busy = verifying = true;
-    message = undefined;
-    render();
-    const result = await api.verify(number, code.value).catch(() => ({ ok: false, reason: "unavailable" } as const));
-    if (id !== request) return;
-    busy = verifying = false;
-    if (result.ok) {
-      const nextCallback = onVerified;
-      close();
-      onSignedIn(result.value);
-      nextCallback?.(result.value);
-      return;
-    }
-    failure(result.reason, true);
-    render();
-    code.select();
+    void verifyCode(false);
+  });
+
+  submit.addEventListener("click", event => {
+    event.preventDefault();
+    void verifyCode(false);
+  });
+
+  phone.addEventListener("input", () => {
+    lastAutoSubmitted = "";
   });
 
   code.addEventListener("input", () => {
     const digits = code.value.replace(/\D+/g, "").slice(0, 6);
     if (code.value !== digits) code.value = digits;
+    if (digits.length < 6) {
+      lastAutoSubmitted = "";
+      return;
+    }
+    const key = `${phone.value.trim()}:${digits}`;
+    if (digits.length === 6 && !busy && key !== lastAutoSubmitted && normalizedPhone(true)) {
+      lastAutoSubmitted = key;
+      void verifyCode(true);
+    }
   });
 
   cancel.addEventListener("click", () => close(true));
-  browser.addEventListener("click", async () => {
-    if (busy) return;
-    busy = true;
-    render();
-    try {
-      const opened = await openBrowser();
-      if (opened) close();
-    } finally {
-      busy = false;
-      if (form.isConnected) render();
-    }
-  });
 
   return {
     open(slot: HTMLElement, button: HTMLButtonElement, options?: { forPurchase?: boolean; onVerified?: (state: LicenseState) => void }) {
