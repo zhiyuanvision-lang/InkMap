@@ -3,10 +3,10 @@ import { openCheckout } from "./license";
 import { randomBytes } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import * as vscode from "vscode";
-import type { LicenseService } from "../../cli/src/license";
+import { detectOsLocale, type LicenseService } from "../../cli/src/license";
 import { addLinesToChat, chatAvailable, openChat, docDir, docName, replaceText, type DocState } from "./documents";
 import { webviewHtml } from "./html";
-import { isChinese, t } from "./i18n";
+import { t } from "./i18n";
 
 const VIEW_STATE_PREFIX = "inkmap.viewState:";
 
@@ -38,6 +38,14 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
   requestChat(): void | Thenable<unknown> {
     const panel = [...this.panels].find(p => p.active);
     return panel ? panel.webview.postMessage({ type: "requestChat" }) : openChat();
+  }
+
+  /** Opens the inline Category 1 account & payment panel directly inside the active Inkmap editor tab. */
+  openAccount(): boolean {
+    const panel = [...this.panels].find(p => p.active) ?? [...this.panels].find(p => p.visible);
+    if (!panel) return false;
+    void panel.webview.postMessage({ type: "openAccount" });
+    return true;
   }
 
   constructor(
@@ -232,6 +240,6 @@ async function editorHtml(webview: vscode.Webview, webRoot: vscode.Uri, assets: 
     assetBase: assets ? webview.asWebviewUri(assets).toString() + "/" : "",
     cspSource: webview.cspSource,
     nonce: randomBytes(16).toString("base64"),
-    locale: isChinese() ? "zh-cn" : vscode.env.language,
+    locale: detectOsLocale(),
   });
 }

@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { deflateRawSync } from "node:zlib";
+import { detectOsLocale } from "./license.js";
 
 export type InstallTarget = "claude" | "claude-code" | "cursor" | "vscode" | "antigravity" | "codex" | "deepseek";
 
@@ -129,18 +130,7 @@ function normalizeTarget(raw: string): InstallTarget | "all" | null {
 }
 
 function isChineseTerminalLocale(): boolean {
-  const explicit = (process.env.INKMAP_LOCALE || "").toLowerCase();
-  if (explicit.startsWith("zh")) return true;
-  if (explicit.startsWith("en")) return false;
-  const envLang = (process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "").toLowerCase();
-  if (envLang.startsWith("zh")) return true;
-  try {
-    const loc = Intl.DateTimeFormat().resolvedOptions().locale || "";
-    if (/^zh\b/i.test(loc)) return true;
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-    if (/^(Asia\/(Shanghai|Chongqing|Chungking|Harbin|Urumqi|Beijing)|PRC)$/i.test(tz)) return true;
-  } catch {}
-  return false;
+  return detectOsLocale() === "zh";
 }
 
 function getInkmapHome(): string {
@@ -357,7 +347,7 @@ function installIdeExtension(editorDir: string, cliCmd: string | null): string |
   }
 
   const extPkg = JSON.parse(readFileSync(join(vscodeBundle, "package.json"), "utf8")) as { version: string };
-  const version = extPkg.version || "0.3.4";
+  const version = extPkg.version || "0.3.5";
   const staging = mkdtempSync(join(tmpdir(), "inkmap-vsix-"));
 
   try {

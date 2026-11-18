@@ -1,4 +1,4 @@
-import * as vscode from "vscode";
+import { detectOsLocale } from "../../cli/src/license";
 
 const zh = {
   openMarkdownFirst: "请先打开一个 Markdown 文件",
@@ -44,16 +44,7 @@ const en: Record<Key, string> = {
   saveExport: "Export",
 };
 
-export const isChinese = () => {
-  if (/^zh/i.test(vscode.env.language)) return true;
-  try {
-    const opts = Intl.DateTimeFormat().resolvedOptions();
-    if (/^zh\b/i.test(opts.locale || "")) return true;
-    const tz = opts.timeZone || "";
-    if (/^(Asia\/(Shanghai|Chongqing|Chungking|Harbin|Urumqi|Beijing)|PRC)$/i.test(tz)) return true;
-  } catch {}
-  return false;
-};
+export const isChinese = () => detectOsLocale() === "zh";
 
 export function t(key: Key, vars: Record<string, string> = {}): string {
   return (isChinese() ? zh : en)[key].replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? "");

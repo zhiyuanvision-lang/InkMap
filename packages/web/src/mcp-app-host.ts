@@ -1204,7 +1204,7 @@ export class McpAppHost implements Host {
 
   onLicenseChange(listener: (state: LicenseState) => void) {
     const check = () => void this.license().then(listener).catch(() => {});
-    const interval = window.setInterval(check, 4500);
+    const interval = window.setInterval(check, 2000);
     window.addEventListener("focus", check);
     window.addEventListener("pagehide", () => {
       window.clearInterval(interval);

@@ -1,8 +1,58 @@
+import { execFileSync } from "node:child_process";
 import { link, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 import { PRODUCT, TRIAL_MS, billingFlowUrl, sanitizeAds, type Ad, type LicenseState, type PhoneSignInError, type PhoneSignInResult, type WechatOrderResult } from "@inkmap/core";
+
+let cachedOsLocale: "zh" | "en" | undefined;
+
+/**
+ * Detects Domestic ("zh") vs. Overseas ("en") strictly from the computer's OS timezone
+ * OR the computer's OS system language — never from an IDE/plugin UI language setting.
+ */
+export function detectOsLocale(): "zh" | "en" {
+  const explicit = (process.env.INKMAP_LOCALE || "").trim();
+  if (/^zh\b/i.test(explicit)) return "zh";
+  if (/^en\b/i.test(explicit)) return "en";
+  if (cachedOsLocale) return cachedOsLocale;
+
+  let domestic = false;
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+    if (/^(Asia\/(Shanghai|Chongqing|Chungking|Harbin|Urumqi|Beijing)|PRC)$/i.test(tz)) {
+      domestic = true;
+    }
+  } catch {}
+
+  if (!domestic) {
+    if (process.platform === "darwin") {
+      try {
+        const out = execFileSync("defaults", ["read", "-g", "AppleLanguages"], {
+          encoding: "utf8",
+          timeout: 800,
+          stdio: ["ignore", "pipe", "ignore"],
+        });
+        const firstLang = /"([^"]+)"/.exec(out)?.[1] ?? "";
+        if (/^zh\b/i.test(firstLang)) domestic = true;
+      } catch {
+        const raw = (process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "").trim();
+        if (/^zh\b/i.test(raw)) domestic = true;
+      }
+    } else if (process.platform === "win32") {
+      try {
+        const loc = Intl.DateTimeFormat().resolvedOptions().locale || "";
+        if (/^zh\b/i.test(loc)) domestic = true;
+      } catch {}
+    } else {
+      const raw = (process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "").trim();
+      if (/^zh\b/i.test(raw)) domestic = true;
+    }
+  }
+
+  cachedOsLocale = domestic ? "zh" : "en";
+  return cachedOsLocale;
+}
 
 export type CheckoutMode = "buy" | "restore";
 
@@ -51,6 +101,14 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
   let pendingWrite = Promise.resolve();
   let pendingCheckout: { origin: string; url: string; token: string; cookie?: string } | undefined;
   let cachedOrder: { at: number; origin: string; result: WechatOrderResult } | undefined;
+  let magicPollTimer: ReturnType<typeof setTimeout> | undefined;
+  let magicSession = 0;
+
+  function stopMagicPoll() {
+    ++magicSession;
+    clearTimeout(magicPollTimer);
+    magicPollTimer = undefined;
+  }
 
   function mergeCookies(existing: string | undefined, response: Response): string | undefined {
     const map = new Map<string, string>();
@@ -87,18 +145,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     const h = (hint || "").trim();
     if (/^zh\b/i.test(h)) return "zh";
     if (/^en\b/i.test(h)) return "en";
-    const envLocale = (process.env.INKMAP_LOCALE || "").trim();
-    if (/^zh\b/i.test(envLocale)) return "zh";
-    if (/^en\b/i.test(envLocale)) return "en";
-    const raw = (process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "").trim();
-    if (/^zh\b/i.test(raw)) return "zh";
-    try {
-      const opts = Intl.DateTimeFormat().resolvedOptions();
-      if (/^zh\b/i.test(opts.locale || "")) return "zh";
-      const tz = opts.timeZone || "";
-      if (/^(Asia\/(Shanghai|Chongqing|Chungking|Harbin|Urumqi|Beijing)|PRC)$/i.test(tz)) return "zh";
-    } catch {}
-    return "en";
+    return detectOsLocale();
   }
 
   function writeSession<T>(operation: () => Promise<T>): Promise<T> {
@@ -249,7 +296,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
         const state = await response.json();
         if (version !== generation || disposed) return;
         applyEntitlement(state);
-        delay = state.active !== true && state.pending === true ? 4000 : 60_000;
+        delay = state.active !== true && state.pending === true ? 2500 : 60_000;
       } catch {
         if (version === generation && Date.now() - lastCheck > 15 * 60_000) update(false);
       } finally {
@@ -257,6 +304,44 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       }
     })().finally(() => { connection = undefined; });
     return connection;
+  }
+
+  function startMagicPoll(origin: string, pendingToken: string) {
+    stopMagicPoll();
+    const id = magicSession;
+    const deadline = Date.now() + 10 * 60_000;
+    const poll = () => {
+      if (disposed || id !== magicSession || Date.now() >= deadline) return;
+      magicPollTimer = setTimeout(async () => {
+        if (disposed || id !== magicSession) return;
+        try {
+          const res = await entitlement(origin, pendingToken);
+          if (disposed || id !== magicSession) return;
+          if (res.status === 401) {
+            stopMagicPoll();
+            return;
+          }
+          if (res.ok) {
+            const body = await res.json();
+            if (body?.connected === true && body.entitlement === PRODUCT.entitlement) {
+              stopMagicPoll();
+              await writeSession(async () => {
+                if (disposed || origin !== billingOrigin(getOrigin())) return;
+                await storage.write(JSON.stringify({ origin, token: pendingToken }));
+                ++generation;
+                activeOrigin = origin;
+                applyEntitlement(body);
+                schedule(body.active === true ? 60_000 : 2500);
+              });
+              return;
+            }
+          }
+        } catch {}
+        if (!disposed && id === magicSession && Date.now() < deadline) poll();
+      }, 2000);
+      magicPollTimer.unref();
+    };
+    poll();
   }
 
   return {
@@ -408,7 +493,14 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
           }
         }
         const response = await phoneRequest(origin, "send", phone, undefined, locale);
-        return response.status === 204 ? { ok: true, value: undefined } : phoneFailure(response.status);
+        if (response.status === 204) {
+          const pendingToken = response.headers.get("x-inkmap-pending-token")?.trim();
+          if (pendingToken && /^[A-Za-z0-9_-]{43}$/.test(pendingToken)) {
+            startMagicPoll(origin, pendingToken);
+          }
+          return { ok: true, value: undefined };
+        }
+        return phoneFailure(response.status);
       } catch {
         return phoneFailure();
       }
@@ -486,6 +578,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
         if (cachedOrder?.result.status === "active") state.active = true;
         return await writeSession(async () => {
           if (version !== generation || disposed || origin !== billingOrigin(getOrigin())) return phoneFailure();
+          stopMagicPoll();
           await storage.write(JSON.stringify({ origin, token, ...(checkoutUrl && { checkoutUrl }), ...(cookie && { cookie }) }));
           ++generation;
           activeOrigin = origin;
@@ -499,6 +592,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       }
     },
     async deactivate() {
+      stopMagicPoll();
       pendingCheckout = undefined;
       cachedOrder = undefined;
       const saved = await writeSession(async () => {
@@ -566,7 +660,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
               installId: id,
               host: hostName,
               os,
-              version: "0.3.4",
+              version: "0.3.5",
               locale: clientLocale(),
               tier,
               events,
@@ -579,6 +673,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     },
     dispose() {
       disposed = true;
+      stopMagicPoll();
       clearTimeout(trialTimer);
       clearTimeout(timer);
       clearTimeout(telemetryTimer);

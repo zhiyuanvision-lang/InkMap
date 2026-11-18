@@ -16,6 +16,8 @@
     "package:antigravity": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build -w inkmap && npm run build:codex -w @inkmap/web && node scripts/package-antigravity.mjs",
     "package:npm": "npm run build -w @inkmap/core && npm run build -w @inkmap/web && npm run build:codex -w @inkmap/web && npm run build -w inkmap && node scripts/package-harness.mjs && node scripts/package-npm.mjs",
     "package:platforms": "npm run build:sidebars && npm run package:vscode",
+    "verify:parity": "node scripts/verify-parity.mjs",
+    "sync:all": "npm run package:platforms && npm run verify:parity && npm test && npm run test:sidebars && node dist/npm/inkmap-mcp/bin/inkmap.cjs install",
     "publish:npm": "node scripts/publish-npm.mjs",
     "publish:openvsx": "node packages/vscode/scripts/publish-openvsx.mjs",
     "publish:vscode": "node packages/vscode/scripts/publish-vscode.mjs",

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.5
+
+- **Decoupled Category 1 vs. Category 2 Verification Emails**: In-plugin direct checkout emails (Category 1) now show only the 6-digit verification code and Pro perks overview with zero external jump buttons; Category 2 emails include a device-bound Magic Link that automatically signs in the open plugin window without manual code entry and syncs Pro access upon 1-step payment.
+- **OS-Level Language & Timezone Detection**: Domestic (`¥29.9`) vs. Overseas (`$15`) edition routing now strictly reads the computer's OS system language and OS timezone (`detectOsLocale`), ignoring IDE/client UI language overrides (`vscode.env.language`), and removes legacy Command Palette browser-redirect commands.
+
 ## 0.3.4
 
 - **Streamlined Two-Category Account & Payment UX**:

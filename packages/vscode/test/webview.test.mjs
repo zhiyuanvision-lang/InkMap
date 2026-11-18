@@ -87,10 +87,10 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     } else if (lang === "en") {
       await page.emulateTimezone("UTC");
     }
-    if (lang === "en") {
+    if (lang === "en" || lang === "auto") {
       await page.evaluateOnNewDocument(() => {
-        Object.defineProperty(navigator, "language", { get: () => "en-US" });
-        Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"] });
+        Object.defineProperty(navigator, "language", { get: () => "en-US", configurable: true });
+        Object.defineProperty(navigator, "languages", { get: () => ["en-US", "en"], configurable: true });
       });
     }
     const errors = [];
@@ -514,8 +514,8 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
   });
 
   it("strictly separates Domestic (zh, ¥29.9 QR) and Overseas (en, $15 Card) editions by timezone or language", async () => {
-    // 1. English language + Asia/Shanghai timezone => Domestic edition (zh-CN, ¥29.9, WeChat QR, zero $15)
-    const dom = await open({ lang: "en", timezone: "Asia/Shanghai", paidOnSignIn: false });
+    // 1. Auto fallback: English language + Asia/Shanghai timezone => Domestic edition (zh-CN, ¥29.9, WeChat QR, zero $15)
+    const dom = await open({ lang: "auto", timezone: "Asia/Shanghai", paidOnSignIn: false });
     assert.equal(await dom.page.$eval("html", el => el.lang), "zh-CN");
     assert.equal(await dom.page.$(".language-select"), null, "manual language switcher removed");
     await dom.page.click("#pro");
@@ -533,8 +533,16 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     assert.deepEqual(dom.errors, []);
     await dom.page.close();
 
-    // 2. English language + UTC timezone => Overseas edition (en, $15, Card Checkout, zero ¥29.9)
-    const intl = await open({ lang: "en", timezone: "UTC", paidOnSignIn: false });
+    // 2. Overseas OS (data-os-locale="en") even if client UI navigator.language is Chinese => strictly Overseas edition (en, $15, Card Checkout, zero ¥29.9)
+    const intl = await open({
+      lang: "en",
+      timezone: "UTC",
+      paidOnSignIn: false,
+      beforeLoad: () => {
+        Object.defineProperty(navigator, "language", { get: () => "zh-CN" });
+        Object.defineProperty(navigator, "languages", { get: () => ["zh-CN", "zh"] });
+      },
+    });
     assert.equal(await intl.page.$eval("html", el => el.lang), "en");
     await intl.page.click("#pro");
     await intl.page.waitForSelector("#account-panel", { visible: true });

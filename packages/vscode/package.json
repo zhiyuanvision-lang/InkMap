@@ -2,7 +2,7 @@
   "name": "inkmap-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "publisher": "inkmap",
   "homepage": "https://zhiyuanv.com/software.html",
   "repository": {
@@ -118,16 +118,6 @@
       {
         "command": "inkmap.upgrade",
         "title": "%command.upgrade%",
-        "category": "Inkmap"
-      },
-      {
-        "command": "inkmap.restorePro",
-        "title": "%command.restorePro%",
-        "category": "Inkmap"
-      },
-      {
-        "command": "inkmap.signOut",
-        "title": "%command.signOut%",
         "category": "Inkmap"
       }
     ],

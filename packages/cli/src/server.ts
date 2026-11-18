@@ -5,7 +5,7 @@ import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile 
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { homedir } from "node:os";
 import { basename, delimiter, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
-import type { LicenseService } from "./license.js";
+import { detectOsLocale, type LicenseService } from "./license.js";
 
 const SKIP_SCAN_DIRS = new Set([
   ".git", ".hg", ".svn", "node_modules", "dist", "dist-codex", "dist-workbuddy",
@@ -331,8 +331,19 @@ export async function serve({ source: initialSource, webRoot, port = 4377, host 
   const sendFile = async (res: ServerResponse, full: string | null) => {
     if (!full) return json(res, 403, { error: "forbidden" });
     try {
+      const ext = extname(full).toLowerCase();
+      if (ext === ".html") {
+        const osLoc = detectOsLocale();
+        const htmlText = (await readFile(full, "utf8")).replace(
+          /<html\b([^>]*)>/i,
+          `<html lang="${osLoc === "zh" ? "zh-CN" : "en"}" data-os-locale="${osLoc}">`,
+        );
+        res.writeHead(200, { "content-type": TYPES[".html"]!, "cache-control": "no-store" });
+        res.end(htmlText, "utf8");
+        return;
+      }
       const body = await readFile(full);
-      res.writeHead(200, { "content-type": TYPES[extname(full).toLowerCase()] ?? "application/octet-stream", "cache-control": sidebar ? "no-store" : "no-cache" });
+      res.writeHead(200, { "content-type": TYPES[ext] ?? "application/octet-stream", "cache-control": sidebar ? "no-store" : "no-cache" });
       res.end(body);
     } catch {
       json(res, 404, { error: "not found" });

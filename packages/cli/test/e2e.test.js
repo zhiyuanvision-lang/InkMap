@@ -546,4 +546,47 @@ describe("licenseService", () => {
       globalThis.fetch = realFetch;
     }
   });
+
+  it("auto-completes Category 2 login via X-Inkmap-Pending-Token when the user clicks the email magic link", async () => {
+    let saved;
+    const origin = "https://billing.example.com";
+    const pendingToken = "m".repeat(43);
+    let magicClicked = false;
+    let paid = false;
+    const states = [];
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = async (url, init) => {
+      if (url === `${origin}/billing/v1/phone-sign-in/send`) {
+        return new Response(null, {
+          status: 204,
+          headers: { "x-inkmap-pending-token": pendingToken },
+        });
+      }
+      if (url === `${origin}/billing/v1/entitlement`) {
+        assert.equal(init.headers.authorization, "Bearer " + pendingToken);
+        return Response.json({
+          connected: magicClicked,
+          active: paid,
+          pending: !paid,
+          entitlement: "inkmap.pro",
+          ...(magicClicked && { account: "m***@example.com" }),
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    };
+    const svc = licenseService({ read: async () => saved, write: async v => { saved = v; } }, () => origin, { loginOnly: true });
+    svc.onChange(s => states.push(s));
+    try {
+      const sent = await svc.sendPhoneCode("magic@example.com", "zh");
+      assert.equal(sent.ok, true);
+      magicClicked = true;
+      await waitFor(() => states.some(s => s.connected === true && s.account === "m***@example.com"), "magic link auto login", 5000);
+      assert.equal(JSON.parse(saved).token, pendingToken);
+      paid = true;
+      await waitFor(() => states.some(s => s.pro === true), "magic link auto Pro unlock", 5000);
+    } finally {
+      svc.dispose();
+      globalThis.fetch = realFetch;
+    }
+  });
 });

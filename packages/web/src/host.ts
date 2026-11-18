@@ -71,6 +71,7 @@ export interface Host {
   };
   signOut(): Promise<void>;
   onLicenseChange(listener: (state: LicenseState) => void): void;
+  onOpenAccountRequest?(listener: () => void): void;
   ads(): Promise<Ad[]>;
   /** Saves an exported file given as a data URL; resolves false when the user cancels. */
   saveFile(name: string, dataUrl: string): Promise<boolean>;
@@ -1024,6 +1025,7 @@ export type FromExtension =
   | { type: "error"; id: number; message: string }
   | { type: "reveal"; line: number }
   | { type: "requestChat" }
+  | { type: "openAccount" }
   | { type: "license"; state: LicenseState }
   | { type: "checkout"; id: number }
   | { type: "proOrder"; id: number; result: WechatOrderResult }
@@ -1187,6 +1189,10 @@ export class VsCodeHost implements Host {
 
   onLicenseChange(listener: (state: LicenseState) => void) {
     this.on("license", msg => listener(msg.state));
+  }
+
+  onOpenAccountRequest(listener: () => void) {
+    this.on("openAccount", () => listener());
   }
 
   async ads(): Promise<Ad[]> {

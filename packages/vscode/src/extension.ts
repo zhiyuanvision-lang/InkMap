@@ -9,7 +9,7 @@ import { adFeed } from "../../cli/src/license";
 import { BrowserServers } from "./browser";
 import { chatAvailable, targetUri } from "./documents";
 import { t } from "./i18n";
-import { extensionLicense, offerPro, openCheckout } from "./license";
+import { extensionLicense } from "./license";
 import { MindmapEditorProvider } from "./mindmapEditor";
 
 function insideOrEqual(root: string, target: string): boolean {
@@ -276,7 +276,11 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand(
       "inkmap.openInBrowser",
       withUri(async uri => {
-        if (!hasAccess(await license.state()) && !(await offerPro(license))) return;
+        if (!hasAccess(await license.state())) {
+          await openToSide(uri);
+          setTimeout(() => editors.openAccount(), 250);
+          return;
+        }
         try {
           license.track?.("feature_browser");
           const url = await browsers.open(uri);
@@ -287,16 +291,12 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }),
     ),
-    vscode.commands.registerCommand("inkmap.upgrade", () => offerPro(license)),
-    vscode.commands.registerCommand("inkmap.restorePro", async () => {
-      try { await openCheckout(license, "restore"); }
-      catch (error) { vscode.window.showErrorMessage(error instanceof Error ? error.message : t("checkoutFailed")); }
-    }),
-    vscode.commands.registerCommand("inkmap.signOut", async () => {
-      const remove = t("remove");
-      if ((await vscode.window.showWarningMessage(t("removeConfirm"), { modal: true }, remove)) !== remove) return;
-      await license.deactivate();
-      vscode.window.showInformationMessage(t("removed"));
+    vscode.commands.registerCommand("inkmap.upgrade", async (arg?: unknown) => {
+      if (editors.openAccount()) return;
+      const uri = targetUri(arg);
+      if (!uri) return vscode.window.showWarningMessage(t("openMarkdownFirst"));
+      await openToSide(uri);
+      setTimeout(() => editors.openAccount(), 280);
     }),
   );
 }

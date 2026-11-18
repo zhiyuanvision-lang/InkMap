@@ -63,7 +63,7 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     setState(next);
     if (!panel.hidden) proBtn.focus();
     else if (!dialog.hidden) focusAction().focus();
-  });
+  }, !canBuy);
   const wechatPay = host.orderPro && createWechatPay(
     () => host.orderPro!(),
     () => host.license(),
@@ -419,9 +419,17 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     const wasSignedIn = signedIn();
     const wasPro = state.pro;
     state = next;
+    const autoCompletedViaMagicLink = !wasSignedIn && signedIn() && Boolean(phoneSignIn?.isOpen());
+    if (autoCompletedViaMagicLink) {
+      phoneSignIn?.close();
+    }
     if (state.pro && wechatPay?.isOpen()) {
       wechatPay.close();
-      if (!wasPro) showToast?.(t("proUnlocked"));
+    }
+    if (!wasPro && state.pro) {
+      showToast?.(t("proUnlocked"));
+    } else if (autoCompletedViaMagicLink) {
+      showToast?.(t("magicSignedIn"));
     }
     renderState();
     if (!wasSignedIn && signedIn()) {
@@ -438,6 +446,10 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
   host.onLicenseChange(next => {
     receivedUpdate = true;
     setState(next);
+  });
+  host.onOpenAccountRequest?.(() => {
+    if (!hasAccess(state)) openUpgrade();
+    else setPanel(true, true);
   });
   const initial = await host.license().catch(() => state);
   if (!receivedUpdate) setState(initial);

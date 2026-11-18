@@ -5,6 +5,7 @@ import { applyI18n, t } from "./i18n";
 export function createPhoneSignIn(
   api: NonNullable<Host["phoneSignIn"]>,
   onSignedIn: (state: LicenseState) => void,
+  magicLinkMode = false,
 ) {
   const template = document.querySelector<HTMLTemplateElement>("#phone-sign-in-template")!;
   const form = template.content.firstElementChild!.cloneNode(true) as HTMLFormElement;
@@ -143,7 +144,8 @@ export function createPhoneSignIn(
     if (id !== request) return;
     busy = false;
     if (result.ok) {
-      message = { key: "phoneCodeSent", error: false };
+      const useMagicHint = magicLinkMode && !forPurchase && number.includes("@");
+      message = { key: useMagicHint ? "phoneCodeSentMagic" : "phoneCodeSent", error: false };
       code.focus();
     } else {
       failure(result.reason, false);

@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { hasAccess, PRODUCT, YUNFAN_BILLING_ORIGIN } from "@inkmap/core";
-import { adFeed, fileSessionStorage, licenseService } from "./license.js";
+import { adFeed, detectOsLocale, fileSessionStorage, licenseService } from "./license.js";
 import { createMcpWorkspaceManager, writeTargetSelection } from "./mcp-files.js";
 import { fileSource, serve, type Served } from "./server.js";
 
@@ -31,12 +31,16 @@ function openSystemBrowser(url: string) {
 }
 
 export async function createInkmapMcpServer(options: { html?: string; billingOrigin?: () => string } = {}) {
-  const loadHtml = async () => options.html ?? await readFile(HTML, "utf8").catch(error => {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      throw new Error("MCP App editor assets are missing. Run npm run build:sidebars.");
-    }
-    throw error;
-  });
+  const loadHtml = async () => {
+    const raw = options.html ?? await readFile(HTML, "utf8").catch(error => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        throw new Error("MCP App editor assets are missing. Run npm run build:sidebars.");
+      }
+      throw error;
+    });
+    const osLoc = detectOsLocale();
+    return raw.replace(/<html\b([^>]*)>/i, `<html lang="${osLoc === "zh" ? "zh-CN" : "en"}" data-os-locale="${osLoc}">`);
+  };
   await loadHtml();
   const billingOrigin = options.billingOrigin ?? (() => process.env.INKMAP_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN);
   const billing = licenseService(fileSessionStorage(), billingOrigin, { loginOnly: true });
@@ -44,7 +48,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   const fallbackEditors = new Map<string, Promise<Served>>();
   const ads = adFeed(PRODUCT.adFeedUrl);
   const workspaces = createMcpWorkspaceManager();
-  const server = new McpServer({ name: "inkmap", version: "0.3.4" });
+  const server = new McpServer({ name: "inkmap", version: "0.3.5" });
 
   function isAntigravityHost(): boolean {
     const clientName = server.server.getClientVersion()?.name ?? "";

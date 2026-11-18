@@ -111,6 +111,8 @@ const zh = {
   sendPhoneCode: "获取验证码",
   resendPhoneCode: "{seconds}s 后重发",
   phoneCodeSent: "6 位验证码已发送至邮箱（10 分钟内有效），输入满 6 位自动验证。",
+  phoneCodeSentMagic: "邮件已发送！点击邮件内按钮可免输码自动完成登录/开通，或在此输入 6 位码。",
+  magicSignedIn: "✓ 邮箱已自动验证登录，正在同步权益",
   phoneInvalid: "请输入有效的邮箱地址。",
   phoneCodeInvalid: "验证码错误或已过期，请检查后重试。",
   phoneRateLimited: "请求过于频繁，请稍后重试。",
@@ -303,6 +305,8 @@ const en: Record<Key, string> = {
   sendPhoneCode: "Send code",
   resendPhoneCode: "Resend in {seconds}s",
   phoneCodeSent: "6-digit code sent (valid for 10 min)! Auto-verifies once entered.",
+  phoneCodeSentMagic: "Email sent! Click the button in the email for zero-code auto sign-in & checkout, or enter the 6-digit code.",
+  magicSignedIn: "✓ Email verified & signed in automatically",
   phoneInvalid: "Enter a valid email address.",
   phoneCodeInvalid: "The code is incorrect or expired. Check it and try again.",
   phoneRateLimited: "Too many attempts. Try again in a moment.",
@@ -383,7 +387,13 @@ const en: Record<Key, string> = {
 };
 
 export function isDomesticSystem(hint?: string): boolean {
+  if (typeof document !== "undefined") {
+    const osAttr = document.documentElement.dataset.osLocale;
+    if (osAttr === "zh") return true;
+    if (osAttr === "en") return false;
+  }
   if (hint && /^zh\b/i.test(hint)) return true;
+  if (hint && /^en\b/i.test(hint)) return false;
   try {
     const opts = Intl.DateTimeFormat().resolvedOptions();
     const tz = opts.timeZone || "";
