@@ -1,10 +1,10 @@
-# Inkmap 墨图 — Markdown 思维导图
+# Inkmap 墨图 — Markdown 思维导图 & Mermaid 流程图
 
-[English](#english)
+[English](#english) · [⚡ 在线免安装体验台 (Live Playground)](https://zhiyuanv.com/inkmap.html)
 
 把 Markdown 大纲当作思维导图来编辑。导图里的每一处改动都实时写回 Markdown，Markdown 的改动也立即出现在导图里。文件始终是普通 Markdown，Git、笔记软件和 AI 智能体都能直接读写。
 
-![编辑器旁边的思维导图](images/editor-zh.png)
+![Inkmap 双向 Markdown 思维导图与 Mermaid 流程图动态演示](images/demo-zh.gif)
 
 ## 为什么用 Inkmap
 
@@ -84,9 +84,11 @@ Inkmap 不收集、不上传你的文档，没有任何使用统计或跟踪。�
 
 ## English
 
+[⚡ Try Zero-Install Live Playground in Browser](https://zhiyuanv.com/inkmap.html?lang=en)
+
 Edit Markdown outlines as mind maps. Every change in the map is written straight back to the Markdown, and edits to the Markdown show up in the map immediately. Your file stays plain Markdown that Git, note apps and AI agents can read and write.
 
-![Mind map beside the editor](images/editor-en.png)
+![Inkmap interactive two-way Markdown mind map and Mermaid flowchart demo](images/demo-en.gif)
 
 ### Why Inkmap
 

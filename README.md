@@ -1,6 +1,10 @@
-# Inkmap（墨图）
+# Inkmap（墨图）— Markdown 双向思维导图 & Mermaid 流程图编辑器
 
-把 Markdown 大纲当作思维导图来编辑：在浏览器里像飞书思维导图一样增删、拖拽、改写节点，改动实时写回 `.md` 文件；文件在编辑器里或被 AI 智能体修改后，导图自动刷新。
+[**⚡ 在线免安装即刻体验 (Live Playground)**](https://zhiyuanv.com/inkmap.html) · [**VS Code 市场**](https://marketplace.visualstudio.com/items?itemName=inkmap.inkmap-vscode) · [**Open VSX (Cursor / Trae / Windsurf)**](https://open-vsx.org/extension/inkmap/inkmap-vscode) · [**官网与 Pro 终身版**](https://zhiyuanv.com/software.html#inkmap-pricing)
+
+![Inkmap 双向 Markdown 思维导图与 Mermaid 流程图动态演示](packages/vscode/images/demo-zh.gif)
+
+把 Markdown 大纲当作思维导图来编辑：在画布里像飞书/XMind 一样增删、拖拽、改写节点与内嵌 Mermaid 流程图，改动逐字节实时写回 `.md` 原文件；文件在编辑器里或被 AI 智能体修改后，导图自动刷新。
 
 文档始终是普通 Markdown，Cursor、Codex 等智能体可以直接读写。基于 [simple-mind-map](https://github.com/wanglin2/mind-map) 绘制。
 
