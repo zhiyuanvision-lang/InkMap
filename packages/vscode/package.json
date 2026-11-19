@@ -2,7 +2,7 @@
   "name": "inkmap-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.9",
+  "version": "0.3.10",
   "publisher": "inkmap",
   "homepage": "https://zhiyuanv.com/software.html",
   "repository": {

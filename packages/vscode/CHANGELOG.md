@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.10
+
+- **Studio Animated GIF Walkthroughs & Upgraded Visual Usage Guide**: Replaced static Marketplace & repository screenshots with three annotated animated GIF demos (real-time Markdown ⇄ Mindmap line sync & `Tab` write-back, inline Mermaid flowchart & KaTeX `⌘E` live source editing, and 9 layouts + Dusk dark theme + fullscreen spotlight presentation) alongside a streamlined 3-second quick-start and shortcut cheat sheet.
+
 ## 0.3.9
 
 - **First-Run Markdown Onboarding & Multi-Host Activation Funnel**: Added a one-time side-by-side mind map quick-open tip when opening a Markdown file for the first time, plus accurate activation funnel & host detection across VS Code, Cursor, Trae, Windsurf, Qoder, DeepSeek Harness, and MCP clients.

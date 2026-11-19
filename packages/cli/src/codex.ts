@@ -55,7 +55,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   const fallbackEditors = new Map<string, Promise<Served>>();
   const ads = adFeed(PRODUCT.adFeedUrl);
   const workspaces = createMcpWorkspaceManager();
-  const server = new McpServer({ name: "inkmap", version: "0.3.9" });
+  const server = new McpServer({ name: "inkmap", version: "0.3.10" });
 
   function isAntigravityHost(): boolean {
     const clientName = server.server.getClientVersion()?.name ?? "";

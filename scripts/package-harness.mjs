@@ -106,48 +106,62 @@ const localeZh = {
   },
 };
 
-const readmeZh = `# Inkmap 思维导图（DeepSeek Harness 原生插件）
+const readmeZh = `# Inkmap 思维导图（DeepSeek Harness 原生双向脑图与流程图工作台）
 
-将工作区内的本地 Markdown (\`.md\` / \`.markmap.md\`) 文件直接在 **DeepSeek Harness 右侧分栏** 渲染为可交互、可双向编辑的思维导图（Markmap）与 Mermaid 流程图。
+将工作区内的本地 Markdown (\`.md\` / \`.markmap.md\`) 文件直接在 **DeepSeek Harness 右侧分栏** 渲染为可交互、可双向拖拽编辑的思维导图（Markmap 增强替代）与 Mermaid 流程图。修改导图毫秒级逐字节写回原文件，未改动段落 100% 原样保留。
 
-## 核心特性
+![Inkmap 双向实时同步演示](https://www.zhiyuanv.com/gifs/demo-sync-zh.gif)
 
-- **右侧栏一键打开**：在 DeepSeek Harness 中预览任意 \`.md\` 文件时，点击右上角工具栏的 **「Inkmap（用 Inkmap 打开）」** 按钮，即可在右侧并排打开可编辑思维导图。
-- **Markdown ⇄ 思维导图双向实时同步**：在思维导图中增删改查或拖拽重组节点，底层 \`.md\` 源文件毫秒级自动写回，未修改段落原样保留。
-- **全套思维导图快捷键**：支持 \`Tab\`（添加子节点）、\`Enter\`（添加同级节点）、\`Shift+Tab\`（添加父节点）、\`⌘↑\` / \`⌘↓\`（上下移动节点）、\`⌘E\`（编辑节点 Markdown）、\`⌘S\`（立即保存）、\`Backspace\`（删除节点）及双击内联编辑。
-- **Mermaid 流程图 + LaTeX 数学公式 + Markdown 表格**：节点内原生渲染复杂流程图、状态图、时序图、数学公式与多列表格，支持独立弹窗无损缩放与源码实时编辑。
-- **9 种专业结构与 4 套主题配色**：逻辑结构图、左右思维导图、组织结构图、目录组织图、时间轴、鱼骨图及深色护眼主题，支持一键导出高清 PNG 与矢量 SVG。
+## 🚀 3 秒上手使用指南
 
-## 安装方式
+1. **右侧栏一键打开**：在 DeepSeek Harness 中预览任意 \`.md\` 文件时，点击右上角预览工具栏的 **「Inkmap」** 按钮，即可在右侧并排打开可编辑思维导图。
+2. **全屏三栏工作台**：需要同时对照项目目录树与源码精修时，点击导图工具栏右上角的 **「浏览器打开」** 即可一键展开全屏三栏 IDE 工作台。
+3. **在线免安装体验台**：https://www.zhiyuanv.com/inkmap.html
 
-- **方式一（在 DeepSeek Harness 插件页安装）**：打开左侧「插件」-> 点击右上角「+ 添加插件」-> 输入 \`dsh-inkmap\` 回车即可安装并自动启用。
-- **方式二（命令行一键安装全平台）**：
-  \`\`\`bash
-  npx -y inkmap-mcp@latest install
-  \`\`\`
-- **官方网站**：https://zhiyuanv.com/software.html
+## ✨ 核心特性动态展示
+
+### 1. 节点内嵌 Mermaid 流程图 + LaTeX 公式 + 表格实时编辑
+在节点下放置 \` \`\`\`mermaid \` 代码块，支持直接在导图节点内高清渲染流程图、时序图、状态图，点击 **「编辑流程图源码」**（\`⌘E\`）即可实时修改重绘，支持独立弹窗无损缩放：
+
+![Inkmap 内嵌 Mermaid 流程图编辑演示](https://www.zhiyuanv.com/gifs/demo-mermaid-zh.gif)
+
+### 2. 9 种专业结构 · 夜色护眼主题 · 全屏逐节点放映
+一键切换逻辑结构图、左右思维导图、组织结构图、目录组织图、时间轴、鱼骨图及夜色深色主题；点击 **「演示」** 直接当 PPT 逐节点聚焦汇报，支持导出高清 PNG、矢量 SVG 与离线交互 HTML：
+
+![Inkmap 多布局、深色主题与演示放映](https://www.zhiyuanv.com/gifs/demo-layouts-zh.gif)
+
+## ⌨️ 常用快捷键速查
+
+| 操作 | 快捷键 / 方式 | 操作 | 快捷键 / 方式 |
+| :--- | :--- | :--- | :--- |
+| **新增子节点** | \`Tab\` | **编辑流程图 / 公式 / 表格源码** | 双击节点 或 \`⌘E\` (\`Ctrl+E\`) |
+| **新增同级节点** | \`Enter\` | **上下调整节点顺序** | \`⌘↑\` / \`⌘↓\` (\`Alt+↑\` / \`Alt+↓\`) |
+| **新增父级节点** | \`Shift + Tab\` | **全图查找与批量替换** | \`⌘F\` (\`Ctrl+F\`) |
+| **删除 / 拖拽重组** | \`Backspace\` / 鼠标拖拽 | **立即保存 / 撤销重做** | \`⌘S\` / \`⌘Z\` / \`⇧⌘Z\` |
+
+- **官方网站与全平台支持**：https://www.zhiyuanv.com/software.html
 `;
 
-const readmeEn = `# Inkmap — Markdown mind map & Mermaid editor for DeepSeek Harness
+const readmeEn = `# Inkmap — Two-Way Markdown Mindmap & Mermaid Editor for DeepSeek Harness
 
-Render and edit local Markdown (\`.md\` / \`.markmap.md\`) files as interactive mind maps (Markmap) and Mermaid flowcharts directly inside the **DeepSeek Harness right sidebar**.
+Render and edit local Markdown (\`.md\` / \`.markmap.md\`) files as interactive two-way mind maps (Markmap alternative) and Mermaid flowcharts directly inside the **DeepSeek Harness right sidebar**.
 
-## Highlights
+![Inkmap Two-Way Sync Demo](https://www.zhiyuanv.com/gifs/demo-sync-en.gif)
 
-- **One-click sidebar action**: When previewing any \`.md\` file in DeepSeek Harness, click **Inkmap** in the top-right document preview toolbar to open an interactive mind map tab beside the preview.
-- **Real-time two-way Markdown sync**: Add, edit, reorder, or drag-and-drop nodes on the canvas and changes are written back to your local \`.md\` file immediately while preserving unmodified lines.
-- **Full mind map keyboard shortcuts**: \`Tab\` (insert child), \`Enter\` (insert sibling), \`Shift+Tab\` (insert parent), \`⌘↑\` / \`⌘↓\` (move node), \`⌘E\` (edit node Markdown), \`⌘S\` (save immediately), and \`Backspace\` (delete).
-- **Mermaid diagrams, LaTeX math & tables**: Native inline rendering of Mermaid flowcharts/sequence/state diagrams, KaTeX math formulas, and Markdown tables.
-- **9 layouts, 4 themes & PNG/SVG export**: Switch between logical structure, mind map, org chart, catalog, timeline, and fishbone layouts with dark mode and high-resolution export.
+## Quick Start
 
-## Installation
+1. **Open in Right Sidebar**: Preview any \`.md\` file in DeepSeek Harness and click **Inkmap** in the top-right preview toolbar.
+2. **Full-Screen 3-Column Browser IDE**: Click **Open in Browser** in the Inkmap toolbar for a full-screen Project Tree + Markdown + Mind Map workspace.
+3. **Live Browser Playground**: https://www.zhiyuanv.com/inkmap.html?lang=en
 
-- **In DeepSeek Harness**: Open **Plugins** -> Click **+ Add plugin** -> Enter \`dsh-inkmap\`.
-- **One-line CLI installer**:
-  \`\`\`bash
-  npx -y inkmap-mcp@latest install
-  \`\`\`
-- **Website**: https://zhiyuanv.com/software.html
+## Inline Mermaid Diagrams, 9 Layouts & Presentation Mode
+
+![Inkmap Inline Mermaid Demo](https://www.zhiyuanv.com/gifs/demo-mermaid-en.gif)
+
+![Inkmap Layouts & Presentation Demo](https://www.zhiyuanv.com/gifs/demo-layouts-en.gif)
+
+- **Shortcuts**: \`Tab\` (child), \`Enter\` (sibling), \`Shift+Tab\` (parent), \`⌘↑/↓\` (move), \`⌘E\` (edit Markdown/Mermaid source), \`⌘F\` (find & replace), \`⌘S\` (save).
+- **Website**: https://www.zhiyuanv.com/software.html?lang=en
 `;
 
 await rm(target, { recursive: true, force: true });

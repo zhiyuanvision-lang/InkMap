@@ -612,7 +612,7 @@ describe("licenseService", () => {
       await svc.flushTelemetry();
       assert.equal(payloads.length, 1);
       assert.equal(payloads[0].host, "trae");
-      assert.equal(payloads[0].version, "0.3.9");
+      assert.equal(payloads[0].version, "0.3.10");
       assert.equal(payloads[0].events.app_open, 1);
       assert.equal(payloads[0].events.plugin_activate, 1);
     } finally {
