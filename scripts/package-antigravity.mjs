@@ -56,7 +56,7 @@ try {
     .replace(/<link\b[^>]*href="\.\/assets\/index-[^"]+\.css"[^>]*>\s*/g, "")
     .replace("</head>", () => `  <style>${inlinedCss}</style>\n  <script defer src="/app.js"></script>\n</head>`);
 
-  const [, , , , , , , , , , , , , mcpBuild] = await Promise.all([
+  const [, , , , , , , , , , , , , , mcpBuild] = await Promise.all([
     copyFile(codexHtml, join(cli, "codex.html")),
     copyFile(codexHtml, join(plugin, "codex.html")),
     copyFile(join(source, "plugin.json"), join(plugin, "plugin.json")),
@@ -67,6 +67,7 @@ try {
     copyFile(join(source, "sidecar.json"), join(sidecar, "sidecar.json")),
     copyFile(join(source, "src", "bridge.js"), join(sidecar, "bridge.js")),
     cp(join(source, "skills"), join(plugin, "skills"), { recursive: true }),
+    cp(join(source, "rules"), join(plugin, "rules"), { recursive: true }),
     copyFile(join(notices, "images", "icon.svg"), join(plugin, "assets", "logo.svg")),
     copyFile(join(notices, "LICENSE.md"), join(plugin, "LICENSE.md")),
     writeFile(join(sidecarWeb, "index.html"), cleanHtml, "utf8"),

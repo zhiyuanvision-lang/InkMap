@@ -675,7 +675,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
               installId: id,
               host: hostName,
               os,
-              version: "0.3.7",
+              version: "0.3.8",
               locale: clientLocale(),
               tier,
               events,

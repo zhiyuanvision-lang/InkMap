@@ -70,7 +70,6 @@ export class McpAppHost implements Host {
   private splitMdBtn: HTMLButtonElement | null = null;
   private openRawBtn: HTMLButtonElement | null = null;
   private fullscreenBtn: HTMLButtonElement | null = null;
-  private openBrowserBtn: HTMLButtonElement | null = null;
   private mdPaneEl: HTMLElement | null = null;
   private mdTextareaEl: HTMLTextAreaElement | null = null;
   private mdTitleEl: HTMLElement | null = null;
@@ -425,11 +424,6 @@ export class McpAppHost implements Host {
       this.openRawBtn.textContent = sidebarText("原文件", "Raw");
       this.openRawBtn.title = sidebarText("在侧栏并排打开原始 Markdown 文件预览", "Open raw Markdown file in side pane");
     }
-    if (this.openBrowserBtn) {
-      const span = this.openBrowserBtn.querySelector("span");
-      if (span) span.textContent = sidebarText("大屏打开", "Browser");
-      this.openBrowserBtn.title = sidebarText("在独立浏览器窗口大屏打开双向同步思维导图", "Open two-way synced mind map in standalone browser window");
-    }
     if (this.mdCloseBtnEl) {
       this.mdCloseBtnEl.textContent = sidebarText("× 关闭MD", "× Close MD");
     }
@@ -460,7 +454,6 @@ export class McpAppHost implements Host {
       this.fileSelectEl.disabled = !this.cachedFiles.length;
     }
     if (this.openRawBtn) this.openRawBtn.disabled = !selected;
-    if (this.openBrowserBtn) this.openBrowserBtn.disabled = !selected;
     if (this.fileTriggerBtn) {
       this.fileTriggerBtn.disabled = !this.cachedFiles.length;
       const found = this.cachedFiles.find(f => f.path === selected) || this.cachedFiles[0];
@@ -623,7 +616,7 @@ export class McpAppHost implements Host {
       .ag-tree-empty {
         padding: 20px 12px; text-align: center; font-size: 12px; color: var(--ui-muted, #646a73);
       }
-      #ag-open-raw, #ag-split-md, #ag-fullscreen-btn, #ag-browser-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
+      #ag-open-raw, #ag-split-md, #ag-fullscreen-btn { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; }
       #ag-split-md[data-active="true"] { background: color-mix(in srgb, var(--ui-primary, #336df4) 14%, transparent); color: var(--ui-primary, #336df4); font-weight: 600; }
       #ag-md-pane {
         position: fixed; top: calc(var(--banner-offset, 0px) + var(--toolbar-height, 44px)); left: 0; bottom: 0;
@@ -826,25 +819,10 @@ export class McpAppHost implements Host {
       this.fullscreenBtn?.blur();
     });
 
-    this.openBrowserBtn = document.createElement("button");
-    this.openBrowserBtn.id = "ag-browser-btn";
-    this.openBrowserBtn.type = "button";
-    this.openBrowserBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 2.5h4v4"/><path d="M13.5 2.5 7.5 8.5"/><path d="M7 3.5H3.8A1.3 1.3 0 0 0 2.5 4.8v7.4c0 .72.58 1.3 1.3 1.3h7.4c.72 0 1.3-.58 1.3-1.3V9"/></svg><span>${sidebarText("大屏打开", "Browser")}</span>`;
-    this.openBrowserBtn.title = sidebarText("在独立浏览器窗口大屏打开双向同步思维导图", "Open two-way synced mind map in standalone browser window");
-    if (/antigravity/i.test(hostName)) {
-      this.openBrowserBtn.hidden = true;
-    }
-    this.openBrowserBtn.addEventListener("click", () => {
-      void this.callTool("inkmap_open_browser", {
-        ...(this.currentFile && { file: this.currentFile }),
-      }).catch(() => {});
-      this.openBrowserBtn?.blur();
-    });
-
     const sepEl = document.createElement("span");
     sepEl.className = "sep";
 
-    bar.prepend(pickerWrap, this.splitMdBtn, this.openRawBtn, this.fullscreenBtn, this.openBrowserBtn, sepEl);
+    bar.prepend(pickerWrap, this.splitMdBtn, this.openRawBtn, this.fullscreenBtn, sepEl);
 
     let lastHeight = window.innerHeight;
     window.addEventListener("resize", () => {
@@ -1214,6 +1192,12 @@ export class McpAppHost implements Host {
 
   async ads() {
     return [];
+  }
+
+  async openInBrowser() {
+    await this.callTool("inkmap_open_browser", {
+      ...(this.currentFile && { file: this.currentFile }),
+    });
   }
 
   async saveFile(name: string, dataUrl: string): Promise<boolean> {

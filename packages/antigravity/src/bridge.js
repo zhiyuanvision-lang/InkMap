@@ -1086,15 +1086,15 @@
               const lineHeight = 20.8;
               const padTop = 12;
               const target = Math.max(0, padTop + sLine * lineHeight - mdTextareaEl.clientHeight * 0.35);
-              try { mdTextareaEl.setSelectionRange(startOffset, Math.max(startOffset, endOffset)); } catch {}
+              if (document.activeElement === mdTextareaEl) {
+                try { mdTextareaEl.setSelectionRange(startOffset, Math.max(startOffset, endOffset)); } catch {}
+              }
               mdTextareaEl.scrollTop = target;
+              mdTextareaEl.scrollLeft = 0;
               requestAnimationFrame(() => {
                 if (!mdTextareaEl?.isConnected) return;
-                try {
-                  mdTextareaEl.focus({ preventScroll: true });
-                  mdTextareaEl.setSelectionRange(startOffset, Math.max(startOffset, endOffset));
-                } catch {}
                 mdTextareaEl.scrollTop = target;
+                mdTextareaEl.scrollLeft = 0;
               });
               renderMdGutterAndBand();
             }
@@ -1106,6 +1106,13 @@
           }
           case "redo": {
             window.inkmap?.mindMap?.execCommand("FORWARD");
+            return;
+          }
+          case "openInBrowser": {
+            await apiFetch("/api/open-browser", {
+              method: "POST",
+              body: JSON.stringify({ file: currentFile, workspaceUris }),
+            });
             return;
           }
           case "addToChat": {

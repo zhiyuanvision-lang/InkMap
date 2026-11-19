@@ -1,4 +1,4 @@
-import { isRich, plainText, type OutlineDoc, type OutlineNode } from "@inkmap/core";
+import { isRich, plainText, type DividerLine, type OutlineDoc, type OutlineNode } from "@inkmap/core";
 
 /** Node data as stored in simple-mind-map. Outline fields ride along so they survive moves and undo. */
 export interface MindNodeData {
@@ -9,6 +9,8 @@ export interface MindNodeData {
   level?: number;
   marker?: string;
   blankBefore?: number;
+  unindentedBlock?: boolean;
+  dividersBefore?: DividerLine[];
   expand?: boolean;
   uid?: string;
   [key: string]: unknown;
@@ -33,6 +35,8 @@ export function toMind(node: OutlineNode, expand: (path: string[], depth: number
       level: node.level,
       marker: node.marker,
       blankBefore: node.blankBefore,
+      unindentedBlock: node.unindentedBlock,
+      dividersBefore: node.dividersBefore,
       expand: node.children.length ? expand(here, depth) : true,
     },
     children: node.children.map(c => toMind(c, expand, here, depth + 1)),
@@ -50,6 +54,8 @@ export function fromMind(node: MindNode, uids?: Map<OutlineNode, string>): Outli
     level: data.level,
     marker: data.marker,
     blankBefore: data.blankBefore,
+    ...(data.unindentedBlock && { unindentedBlock: true }),
+    ...(data.dividersBefore?.length && { dividersBefore: data.dividersBefore }),
     children: (node.children ?? []).map(c => fromMind(c, uids)),
   };
   if (uids && data.uid) uids.set(out, data.uid);

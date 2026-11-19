@@ -105,7 +105,7 @@ test("inkmap-mcp npm tarball works standalone with zero dependencies across inst
 
   // Verify Antigravity dual-engine plugin installation
   const agyInstalled = join(agyConfigDir, "plugins", "inkmap");
-  for (const rel of ["plugin.json", "mcp_config.json", "server.cjs", "codex.html", "sidecars/inkmap/main.mjs", "sidecars/inkmap/web/app.js"]) {
+  for (const rel of ["plugin.json", "mcp_config.json", "rules/AGENTS.md", "server.cjs", "codex.html", "sidecars/inkmap/main.mjs", "sidecars/inkmap/web/app.js"]) {
     assert.ok(existsSync(join(agyInstalled, rel)), `Antigravity plugin missing ${rel}`);
   }
 

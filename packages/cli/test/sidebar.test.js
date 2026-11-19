@@ -80,4 +80,30 @@ test("an embedded loopback sidebar can edit and update the original Markdown", {
   });
   await frame.waitForFunction(async () => (await (await fetch("./api/doc")).json()).md.includes("From sidebar"));
   assert.match(await readFile(file, "utf8"), /From sidebar/);
+
+  // Verify `#open-browser` is visible in sidebar, launches standalone companion browser server (where `#open-browser` is hidden), and syncs two-way
+  process.env.INKMAP_NO_OPEN = "1";
+  assert.equal(await frame.$eval("#open-browser", el => el.hidden), false);
+  const openRes = await fetch(url + "api/open-browser", {
+    method: "POST",
+    headers: { origin: new URL(url).origin, "content-type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(openRes.status, 200);
+  const { url: browserUrl } = await openRes.json();
+  assert.match(browserUrl, /^http:\/\/127\.0\.0\.1:\d+\/$/);
+
+  const fullPage = await browser.newPage();
+  await fullPage.goto(browserUrl);
+  await fullPage.waitForFunction(() => window.inkmap?.mindMap?.renderer?.root);
+  assert.equal(await fullPage.$eval("#open-browser", el => el.hidden), true, "standalone browser hides redundant #open-browser button");
+  await fullPage.evaluate(() => {
+    const { mindMap } = window.inkmap;
+    mindMap.renderer.setNodeDataRender(mindMap.renderer.root.children[0], { md: "From browser", text: "From browser", rich: false });
+  });
+  await fullPage.waitForFunction(async () => (await (await fetch("./api/doc")).json()).md.includes("From browser"));
+  assert.match(await readFile(file, "utf8"), /From browser/);
+  await page.bringToFront();
+  await frame.waitForFunction(() => window.inkmap?.currentMarkdown().includes("From browser"));
+  await fullPage.close();
 });

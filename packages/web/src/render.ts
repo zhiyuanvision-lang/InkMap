@@ -62,6 +62,24 @@ const inlineMath: TokenizerAndRendererExtension = {
   renderer: token => renderMath((token as MathToken).tex, (token as MathToken).display),
 };
 
+const cjkStrong: TokenizerAndRendererExtension = {
+  name: "cjkStrong",
+  level: "inline",
+  start: src => src.indexOf("**"),
+  tokenizer(src) {
+    const m = /^\*\*(?!\s)([^\n*]+?(?:\*[^\n*]+?)*?)(?<!\s)\*\*(?!\*)/.exec(src);
+    if (!m || !/[\u2014-\u201f\u3000-\u303f\uff00-\uffef\u4e00-\u9fff]/.test(m[0])) return undefined;
+    return {
+      type: "cjkStrong",
+      raw: m[0],
+      tokens: this.lexer.inlineTokens(m[1]),
+    };
+  },
+  renderer(token) {
+    return `<strong>${this.parser.parseInline(token.tokens!)}</strong>`;
+  },
+};
+
 export function createRenderer(assetBase: string, privateDocument = false) {
   const resolve = (href: string) => {
     const absolute = /^([a-z][a-z0-9+.-]*:|[\\/])/i.test(href);
@@ -75,9 +93,10 @@ export function createRenderer(assetBase: string, privateDocument = false) {
   };
 
   const diagrams = new Map<string, DiagramImage | undefined>();
+  let nestedMarkdownDepth = 0;
   const marked = new Marked({
     gfm: true,
-    extensions: [blockMath, inlineMath],
+    extensions: [blockMath, inlineMath, cjkStrong],
     renderer: {
       html({ raw }: Tokens.HTML | Tokens.Tag) {
         return privateDocument ? escapeAttr(raw) : false;
@@ -89,7 +108,17 @@ export function createRenderer(assetBase: string, privateDocument = false) {
         return `<a href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
       },
       code({ lang, text }: Tokens.Code) {
-        if (lang?.trim().toLowerCase() !== "mermaid") return false;
+        const cleanLang = lang?.trim().toLowerCase() ?? "";
+        if ((cleanLang === "markdown" || cleanLang === "md") && nestedMarkdownDepth < 2) {
+          nestedMarkdownDepth++;
+          try {
+            const inner = marked.parse(text, { async: false }) as string;
+            return `<div class="ink-embedded-md">${inner}</div>`;
+          } finally {
+            nestedMarkdownDepth--;
+          }
+        }
+        if (cleanLang !== "mermaid") return false;
         const image = diagrams.get(text);
         const content = image
           ? `<div class="ink-diagram-viewport"><img class="ink-diagram-image" src="${image.src}" width="${image.width}" height="${image.height}" data-natural-width="${image.naturalWidth}" data-natural-height="${image.naturalHeight}" alt="Mermaid"></div>`

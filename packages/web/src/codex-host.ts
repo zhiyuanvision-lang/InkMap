@@ -13,8 +13,15 @@ export class CodexHost implements Host {
     saveTarget: "file", account: "restore", compact: true, restrictAssets: true,
   } satisfies HostCapabilities;
   private licenseCheck?: Promise<LicenseState>;
+  readonly openInBrowser?: () => Promise<void>;
 
-  constructor(private app: App, private resources: OpenAIResources, private file: FileInput) {}
+  constructor(private app: App, private resources: OpenAIResources, private file: FileInput) {
+    if (file.resourceUri.startsWith("file://")) {
+      this.openInBrowser = async () => {
+        await this.tool("inkmap_open_browser", { file: this.file.resourceUri });
+      };
+    }
+  }
 
   async load(): Promise<DocState> {
     const uri = this.file.resourceUri;

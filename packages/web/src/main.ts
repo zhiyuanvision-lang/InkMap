@@ -1359,6 +1359,14 @@ export async function start(host: Host) {
   });
   document.querySelectorAll<HTMLElement>("[data-export]").forEach(btn => btn.addEventListener("click", () => exportAs(btn.dataset.export as "png" | "svg" | "html")));
   click("#present", present);
+  const openBrowserBtn = $<HTMLButtonElement>("#open-browser");
+  openBrowserBtn.hidden = !host.openInBrowser;
+  click("#open-browser", () => {
+    if (!pro.allow("browser")) return;
+    void Promise.resolve(host.openInBrowser?.()).catch(err => {
+      showToast(String(err instanceof Error ? err.message : err));
+    });
+  });
   const levelSelect = $<HTMLSelectElement>("#level-select");
   levelSelect.addEventListener("change", () => {
     const level = levelSelect.value;

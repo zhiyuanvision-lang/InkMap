@@ -20,6 +20,7 @@ describe("round trip", () => {
     ["fenced code in item", "# R\n\n- code\n  ```js\n  - not an item\n  ```\n- after\n"],
     ["ordered markers", "# R\n\n1. one\n2. two\n   - inner\n"],
     ["paragraph block", "# R\n\nSome text\nmore text\n\n- item\n"],
+    ["thematic breaks between sections", "# Title\n\n---\n\n## Section 1\n\n- a\n\n---\n\n## Section 2\n\n- b\n\n---\n"],
     ["no trailing newline", "# R\n\n- a"],
   ])("%s", (_, md) => {
     expect(roundTrip(md)).toBe(md);
@@ -33,6 +34,24 @@ describe("structure", () => {
     expect(doc.root.md).toBe("Root");
     expect(doc.root.children[0].md).toBe("a");
     expect(doc.root.children[0].children[0].md).toBe("b");
+  });
+
+  it("omits horizontal rule dividers (---) from mind map nodes while keeping round-trip intact", () => {
+    const md = "# Title\n\n---\n\n## Part 1\n\n- item 1\n\n---\n\n## Part 2\n\n- item 2\n";
+    const doc = parse(md);
+    expect(doc.root.children.map(c => c.md)).toEqual(["Part 1", "Part 2"]);
+    expect(doc.root.children[0].children.map(c => c.md)).toEqual(["item 1"]);
+    expect(serialize(doc)).toBe(md);
+  });
+
+  it("attaches an unindented fenced block right under its preceding list item and round-trips byte for byte", () => {
+    const md = "# Draft\n\n---\n\n## Section\n\n- **Body**:\n```markdown\n### Subheading\n- bullet\n```\n";
+    const doc = parse(md);
+    const bodyItem = doc.root.children[0].children[0];
+    expect(bodyItem.md).toBe("**Body**:");
+    expect(bodyItem.children).toHaveLength(1);
+    expect(bodyItem.children[0].md).toContain("### Subheading");
+    expect(serialize(doc)).toBe(md);
   });
 
   it("takes the synthetic root title from front matter", () => {

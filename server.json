@@ -3,7 +3,7 @@
   "name": "io.github.zhiyuanvision-lang/inkmap-markdown-mindmap-markmap",
   "title": "Inkmap — Markdown Mind Map & Mermaid 思维导图/脑图/流程图",
   "description": "Two-way Markdown mind map (markmap), Mermaid flowchart & outline MCP App | 双向思维导图/脑图/流程图/大纲",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "websiteUrl": "https://zhiyuanv.com/software.html",
   "icons": [
     {
@@ -22,7 +22,7 @@
     {
       "registryType": "npm",
       "identifier": "inkmap-mcp",
-      "version": "0.3.7",
+      "version": "0.3.8",
       "transport": {
         "type": "stdio"
       },

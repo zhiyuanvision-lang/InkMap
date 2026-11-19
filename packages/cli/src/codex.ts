@@ -15,7 +15,14 @@ import { fileSource, serve, type Served } from "./server.js";
 
 const UI = "ui://inkmap/markdown.html";
 const HTML = new URL("./codex.html", import.meta.url);
-const WEB_ROOT = fileURLToPath(new URL("./web/", import.meta.url));
+const WEB_ROOT_CANDIDATES = [
+  fileURLToPath(new URL("./web/", import.meta.url)),
+  fileURLToPath(new URL("./sidecars/inkmap/web/", import.meta.url)),
+  fileURLToPath(new URL("../web/", import.meta.url)),
+];
+function resolveWebRoot(): string | null {
+  return WEB_ROOT_CANDIDATES.find(dir => existsSync(join(dir, "index.html"))) ?? null;
+}
 const INLINE_DOC_LIMIT = 256 * 1024;
 const appOnly = { ui: { visibility: ["app" as const] } };
 
@@ -48,7 +55,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   const fallbackEditors = new Map<string, Promise<Served>>();
   const ads = adFeed(PRODUCT.adFeedUrl);
   const workspaces = createMcpWorkspaceManager();
-  const server = new McpServer({ name: "inkmap", version: "0.3.7" });
+  const server = new McpServer({ name: "inkmap", version: "0.3.8" });
 
   function isAntigravityHost(): boolean {
     const clientName = server.server.getClientVersion()?.name ?? "";
@@ -111,7 +118,8 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   }
 
   async function openFallbackBrowserEditor(filePath: string, launchSystemBrowser = true): Promise<string | undefined> {
-    if (!existsSync(WEB_ROOT)) return undefined;
+    const webRoot = resolveWebRoot();
+    if (!webRoot) return undefined;
     let pending = fallbackEditors.get("__workspace__");
     if (!pending) {
       pending = (async () => {
@@ -119,13 +127,13 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
         browserBilling ??= licenseService(fileSessionStorage(), billingOrigin);
         return serve({
           source,
-          webRoot: WEB_ROOT,
+          webRoot,
           port: 0,
           license: browserBilling,
           ads,
           sidebar: false,
           loginOnly: false,
-          ideWorkspace: true,
+          ideWorkspace: false,
         });
       })();
       fallbackEditors.set("__workspace__", pending);
@@ -308,8 +316,12 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     annotations: { readOnlyHint: true },
     _meta: appOnly,
   }, async ({ file }) => {
+    if (!hasAccess(await billing.state())) {
+      throw new Error("Inkmap 免费试用已到期，请登录已购账号恢复 Pro 权益。");
+    }
     const opened = await workspaces.open({ path: file, fromModel: false });
     if (!opened.currentFile) throw new Error("未选择 Markdown 文件。");
+    billing.track?.("feature_browser", 1, detectMcpHost());
     const url = await openFallbackBrowserEditor(opened.currentFile);
     return { content: [], structuredContent: { url: url ?? "" } };
   });

@@ -1,4 +1,5 @@
 import { hasAccess, sanitizeViewState, type Ad, type ViewState } from "@inkmap/core";
+import { spawn } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { watch } from "node:fs";
 import { lstat, mkdir, readdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
@@ -194,10 +195,34 @@ function within(root: string, rel: string): string | null {
   return full.startsWith(base) ? full : null;
 }
 
+async function openBrowserWindow(url: string) {
+  if (process.env.INKMAP_NO_OPEN === "1" || !/^http:\/\/(?:127\.0\.0\.1|localhost|\[::1\]):[0-9]+\//.test(url)) return;
+  const run = (cmd: string, args: string[]) =>
+    new Promise<boolean>(done => {
+      const child = spawn(cmd, args, { stdio: "ignore", detached: true });
+      child.on("error", () => done(false));
+      child.on("exit", code => done(code === 0));
+      child.unref();
+    });
+  if (process.platform === "darwin") {
+    if (await run("open", ["-a", "Google Chrome", url])) return;
+    await run("open", [url]);
+    return;
+  }
+  if (process.platform === "win32") {
+    if (await run("cmd", ["/c", "start", "", "chrome", url])) return;
+    await run("cmd", ["/c", "start", "", url]);
+    return;
+  }
+  if (await run("google-chrome", [url])) return;
+  await run("xdg-open", [url]);
+}
+
 export async function serve({ source: initialSource, webRoot, port = 4377, host = "127.0.0.1", log = () => {}, license, ads, sidebar = false, sidebarPurchase = false, sidebarAccountNavigation = false, loginOnly = false, ideWorkspace = false, workspaceRoots = [] }: ServeOptions): Promise<Served> {
   if (sidebar && host !== "127.0.0.1") throw new Error("The sidebar bridge requires loopback.");
   const prefix = sidebar ? `/s/${randomBytes(24).toString("hex")}/` : "/";
   let activeSource = initialSource;
+  let browserCompanion: Promise<Served> | null = null;
   let bound: number;
   let current = await activeSource.read();
   let version = hash(current);
@@ -433,6 +458,41 @@ export async function serve({ source: initialSource, webRoot, port = 4377, host 
         if (typeof event === "string" && event) license?.track?.(event);
         return json(res, 200, { ok: true });
       }
+      if (url.pathname === "/api/open-browser" && req.method === "POST") {
+        if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });
+        if (license && !hasAccess(await license.state())) {
+          return json(res, 402, { error: detectOsLocale() === "zh" ? "免费试用已到期，请先解锁或恢复 Pro。" : "Trial expired. Unlock or restore Pro first." });
+        }
+        license?.track?.("feature_browser");
+        if (!sidebar) {
+          const directUrl = `http://${host}:${bound}/`;
+          await openBrowserWindow(directUrl);
+          return json(res, 200, { ok: true, url: directUrl });
+        }
+        if (!browserCompanion) {
+          browserCompanion = (async () => {
+            const src = activeSource.key ? await fileSource(activeSource.key) : activeSource;
+            return serve({
+              source: src,
+              webRoot,
+              host: "127.0.0.1",
+              port: 0,
+              license,
+              ads,
+              sidebar: false,
+              loginOnly: false,
+              workspaceRoots,
+            });
+          })();
+          browserCompanion.catch(() => {
+            browserCompanion = null;
+          });
+        }
+        const companion = await browserCompanion;
+        if (activeSource.key) await companion.switchToFile?.(activeSource.key).catch(() => {});
+        await openBrowserWindow(companion.url);
+        return json(res, 200, { ok: true, url: companion.url });
+      }
       if (url.pathname === "/api/checkout" && req.method === "POST") {
         if (!sameOriginPost()) return json(res, 403, { error: "forbidden" });
         const { mode, locale } = JSON.parse(await readBody(req));
@@ -513,6 +573,7 @@ export async function serve({ source: initialSource, webRoot, port = 4377, host 
         clearTimeout(pending);
         unwatch();
         unlisten();
+        if (browserCompanion) void browserCompanion.then(s => s.close()).catch(() => {});
         for (const res of clients) res.end();
         server.close(() => done());
       }),

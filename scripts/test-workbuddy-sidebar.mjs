@@ -54,9 +54,9 @@ test("WorkBuddy page imports a Markdown copy and exports the edited Markdown", a
   await frame.waitForFunction(() => window.inkmap.currentMarkdown().includes("Edited copy"));
   await frame.click("#buddy-download-markdown");
   let md;
-  for (let i = 0; i < 30 && md === undefined; i++) {
-    md = await readFile(join(downloads, "notes.markmap.md"), "utf8").catch(() => undefined);
-    if (md === undefined) await new Promise(ok => setTimeout(ok, 75));
+  for (let i = 0; i < 40 && !md; i++) {
+    md = await readFile(join(downloads, "notes.markmap.md"), "utf8").catch(() => "");
+    if (!md) await new Promise(ok => setTimeout(ok, 75));
   }
   assert.match(md ?? "", /Edited copy/);
   assert.equal(await readFile(file, "utf8"), original);

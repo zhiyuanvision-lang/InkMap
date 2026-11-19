@@ -135,6 +135,7 @@ const [cliBuild] = await Promise.all([
   copyFile(join(agySource, "sidecar.json"), join(agySidecar, "sidecar.json")),
   copyFile(join(agySource, "src", "bridge.js"), join(agySidecar, "bridge.js")),
   cp(join(agySource, "skills"), join(agyBundle, "skills"), { recursive: true }),
+  cp(join(agySource, "rules"), join(agyBundle, "rules"), { recursive: true }),
   copyFile(join(vscodeDir, "images", "icon.svg"), join(agyBundle, "assets", "logo.svg")),
   copyFile(join(vscodeDir, "images", "icon.png"), join(codexPlugin, "assets", "icon.png")),
   copyFile(join(vscodeDir, "LICENSE.md"), join(pkgDir, "LICENSE.md")),

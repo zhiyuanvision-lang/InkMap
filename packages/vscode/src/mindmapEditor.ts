@@ -25,6 +25,7 @@ type FromWebview =
   | { type: "signInByPhone"; id: number; phone: string; code: string }
   | { type: "signOut"; id: number }
   | { type: "saveFile"; id: number; name: string; dataUrl: string }
+  | { type: "openInBrowser" }
   | { type: "telemetry"; event: string };
 
 const CHANGE_DELAY = 120;
@@ -112,7 +113,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
         revealTimer = setTimeout(() => post({ type: "reveal", line: e.selections[0].active.line }), REVEAL_DELAY);
       }),
       webview.onDidReceiveMessage(async (msg: FromWebview) => {
-        const accountAction = msg.type === "checkout" || msg.type === "orderPro" || msg.type === "openExternal" || msg.type === "signOut" || msg.type === "sendPhoneCode" || msg.type === "signInByPhone" || msg.type === "telemetry";
+        const accountAction = msg.type === "checkout" || msg.type === "orderPro" || msg.type === "openExternal" || msg.type === "signOut" || msg.type === "sendPhoneCode" || msg.type === "signInByPhone" || msg.type === "openInBrowser" || msg.type === "telemetry";
         if (!accountAction && msg.type !== "ready" && msg.type !== "viewState" && msg.type !== "select" && !hasAccess(await this.license.state())) {
           if ("id" in msg) return post({ type: "error", id: msg.id, message: t("trialExpired") });
           return;
@@ -123,6 +124,8 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
             const [license, ads] = await Promise.all([this.license.state(), this.ads()]);
             return post({ type: "doc", doc: state(), license, ads, chat: await chatAvailable() });
           }
+          case "openInBrowser":
+            return vscode.commands.executeCommand("inkmap.openInBrowser", document.uri);
           case "telemetry": {
             this.license.track?.(msg.event);
             return;

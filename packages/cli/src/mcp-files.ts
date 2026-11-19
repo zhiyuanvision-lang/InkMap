@@ -290,12 +290,14 @@ export function createMcpWorkspaceManager() {
     }
 
     const home = await realpath(homedir()).catch(() => homedir());
-    if (insideOrEqual(home, real) && hasHiddenSegment(home, real)) {
+    const brainRoot = await realpath(join(home, ".gemini", "antigravity", "brain")).catch(() => null);
+    const inBrainArtifact = Boolean(brainRoot && insideOrEqual(brainRoot, real) && !hasHiddenSegment(brainRoot, real));
+    if (!inBrainArtifact && insideOrEqual(home, real) && hasHiddenSegment(home, real)) {
       throw new Error("不支持访问隐藏配置目录中的文件。");
     }
 
     const matchedRoot = roots.find(r => insideOrEqual(r.path, real));
-    const permitted = (target && target.file === real) || Boolean(matchedRoot);
+    const permitted = inBrainArtifact || (target && target.file === real) || Boolean(matchedRoot);
     if (!permitted) {
       if (!allowRegisterFromModel) {
         throw new Error("该文件不在当前允许的工作区或项目目录内。");

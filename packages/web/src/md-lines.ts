@@ -17,8 +17,10 @@ export function revealMarkdownLines(textarea: HTMLTextAreaElement, startLine: nu
     try { textarea.setSelectionRange(startOffset, Math.max(startOffset, endOffset)); } catch {}
   }
   textarea.scrollTop = target;
+  textarea.scrollLeft = 0;
   requestAnimationFrame(() => {
     if (!textarea.isConnected) return;
     textarea.scrollTop = target;
+    textarea.scrollLeft = 0;
   });
 }

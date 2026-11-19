@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.8
+
+- **Redesigned Brand Icon**: Crafted a clean, high-contrast Aurora Mind Tree squircle icon (`icon.svg` / `icon.png`) and browser tab favicon, sharp from 16×16 IDE tab pills up to 400×400 Marketplace banners.
+- **Unified "Open in Browser" (`浏览器打开`) Toolbar Action**: Added a one-click full-screen browser launch button across VS Code, Cursor, Antigravity Sidecar, DeepSeek Harness, Qoder, Claude, and Codex with live two-way file sync (automatically hidden when already inside a standalone browser window).
+- **Antigravity One-Click Mind Map Pill & Rich Markdown Rendering**: Added automatic `sidecar://inkmap/inkmap/` entrypoint rules, lossless horizontal-rule (`---`) & unindented fenced block round-tripping, formatted nested ```` ```markdown ```` cards, CJK punctuation-flanked bold (`**“...”**`), and automatic line wrapping inside code blocks.
+
+## 0.3.7
+
+- **Interactive Standalone HTML Export & Store ASO**: Added zero-dependency interactive HTML export (`exportAs("html")`), trial PNG/SVG watermark (removed automatically for Pro), and `AI` / `Notebooks` Marketplace categories.
+
 ## 0.3.6
 
 - **Multi-Platform Marketplace Search & Discovery Optimization**: Added bilingual search titles, descriptions, and enriched keyword coverage across Open VSX (Cursor, Trae, Windsurf), VS Code Marketplace, Official MCP Registry (`server.json`), Antigravity, Claude, Codex, Qoder, and DeepSeek Harness plugin catalogs.

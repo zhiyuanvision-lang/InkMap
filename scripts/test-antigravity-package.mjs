@@ -29,6 +29,8 @@ test("packaged Antigravity MCP App opens workspace Markdown, writes edits back, 
 
   const skill = await readFile(join(pluginRoot, "skills", "inkmap", "SKILL.md"), "utf8");
   assert.match(skill, /inkmap_open/);
+  const rule = await readFile(join(pluginRoot, "rules", "AGENTS.md"), "utf8");
+  assert.match(rule, /sidecar:\/\/inkmap\/inkmap\//);
 
   const workspace = join(dir, "workspace");
   const firstFile = join(workspace, "design.markmap.md");
@@ -50,6 +52,7 @@ test("packaged Antigravity MCP App opens workspace Markdown, writes edits back, 
       INKMAP_HOME: join(dir, "inkmap-home"),
       ANTIGRAVITY_CONFIG_DIR: join(dir, "gemini-config"),
       INKMAP_WORKSPACES: workspace,
+      INKMAP_NO_OPEN: "1",
     },
   });
   const client = new Client({ name: "antigravity-test-host", version: "2.0.0" });
@@ -161,7 +164,12 @@ test("packaged Antigravity MCP App opens workspace Markdown, writes edits back, 
   await frame.waitForFunction(() => window.inkmap?.mindMap?.renderer?.root);
   await frame.waitForSelector("#ag-file-select");
   await frame.waitForSelector("#ag-split-md");
+  await frame.waitForSelector("#open-browser:not([hidden])");
   await frame.waitForSelector(".ink-diagram-image");
+
+  // Verify `inkmap_open_browser` launches a live two-way synced standalone browser server
+  const browserRes = await client.callTool({ name: "inkmap_open_browser", arguments: { file: firstFile } });
+  assert.match(browserRes.structuredContent.url, /^http:\/\/127\.0\.0\.1:\d+\//);
 
   // Edit a node in the mind map and verify live write-back to disk
   await frame.evaluate(() => {
@@ -196,6 +204,33 @@ test("packaged Antigravity MCP App opens workspace Markdown, writes edits back, 
   }, { args: { path: secondFile, workspace }, result: secondResult });
 
   await frame.waitForFunction(() => window.inkmap?.currentMarkdown().includes("Milestone 1"));
+
+  // Verify packaged Antigravity Sidecar (`sidecars/inkmap/main.mjs`) `/api/open-browser` launches standalone two-way synced browser editor
+  process.env.INKMAP_NO_OPEN = "1";
+  process.env.INKMAP_HOME = join(dir, "inkmap-sidecar-home");
+  const { pathToFileURL } = await import("node:url");
+  const { createAntigravitySidecar } = await import(pathToFileURL(join(pluginRoot, "sidecars", "inkmap", "main.mjs")).href);
+  const routes = new Map();
+  const mockApp = {
+    page: () => {},
+    api: (route, handler, method = "POST") => routes.set(`${method} ${route}`, handler),
+  };
+  const sidecar = createAntigravitySidecar({ app: mockApp });
+  t.after(() => sidecar.close());
+
+  const openBrowserRes = await routes.get("POST /api/open-browser")({
+    file: firstFile,
+    workspaceUris: [pathToFileURL(workspace).href],
+  });
+  assert.equal(openBrowserRes.ok, true);
+  assert.match(openBrowserRes.url, /^http:\/\/127\.0\.0\.1:\d+\/$/);
+
+  const sidecarBrowserPage = await browser.newPage();
+  await sidecarBrowserPage.goto(openBrowserRes.url);
+  await sidecarBrowserPage.waitForFunction(() => window.inkmap?.mindMap?.renderer?.root);
+  assert.equal(await sidecarBrowserPage.$eval("#open-browser", el => el.hidden), true);
+  await sidecarBrowserPage.close();
+
   assert.deepEqual(errors, []);
   await page.close();
 });

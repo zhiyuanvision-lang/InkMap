@@ -1,5 +1,10 @@
 export type NodeKind = "heading" | "item" | "block";
 
+export interface DividerLine {
+  blankBefore: number;
+  line: string;
+}
+
 /** One node of the outline. `md` is the node's own Markdown, without list marker or indentation. */
 export interface OutlineNode {
   md: string;
@@ -10,6 +15,10 @@ export interface OutlineNode {
   marker?: string;
   /** Blank lines written before this node. */
   blankBefore?: number;
+  /** True when a top-column fenced block immediately follows a list item (`- label:\n```...`). */
+  unindentedBlock?: boolean;
+  /** Thematic break (`---`, `***`, `___`) lines appearing before this node. */
+  dividersBefore?: DividerLine[];
   children: OutlineNode[];
 }
 
@@ -22,8 +31,11 @@ export interface OutlineDoc {
   /** True when the root was synthesized because the document has no single top heading. */
   syntheticRoot: boolean;
   trailingNewline: boolean;
+  /** Trailing thematic break (`---`, `***`, `___`) lines at the end of the document. */
+  trailingDividers?: DividerLine[];
 }
 
+const THEMATIC_BREAK = /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/;
 const ITEM = /^(\s*)([-*+]|\d+[.)])(\s+)(.*)$/;
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/;
 const FENCE = /^\s*(```|~~~)/;
@@ -56,8 +68,12 @@ export function parse(markdown: string, title = "Untitled"): OutlineDoc {
   let leadingBlank = -1;
   let inFence = false;
   let current: Frame | null = null; // item or block currently receiving continuation lines
+  const pendingDividers: DividerLine[] = [];
 
   const attach = (node: OutlineNode) => {
+    if (pendingDividers.length) {
+      node.dividersBefore = pendingDividers.splice(0);
+    }
     if (leadingBlank < 0) leadingBlank = blank;
     else if (blank) node.blankBefore = blank;
     blank = 0;
@@ -67,17 +83,33 @@ export function parse(markdown: string, title = "Untitled"): OutlineDoc {
   for (; i < lines.length; i++) {
     const line = lines[i];
     if (inFence) {
-      if (FENCE.test(line)) inFence = false;
       appendLine(current!, line);
+      if (FENCE.test(line)) {
+        inFence = false;
+        if (current?.node.unindentedBlock) current = null;
+      }
       continue;
     }
     if (isBlank(line)) {
       blank++;
       continue;
     }
-    const item = ITEM.exec(line);
-    const heading = item ? null : HEADING.exec(line);
     const indent = indentOf(line);
+    const isThematic = THEMATIC_BREAK.test(line);
+    if (isThematic && (!current || current.node.kind !== "item" || indent < current.content)) {
+      while (stack.length > 1 && stack[stack.length - 1].heading === undefined) stack.pop();
+      current = null;
+      if (leadingBlank < 0) {
+        leadingBlank = blank;
+        pendingDividers.push({ blankBefore: 0, line });
+      } else {
+        pendingDividers.push({ blankBefore: blank, line });
+      }
+      blank = 0;
+      continue;
+    }
+    const item = isThematic ? null : ITEM.exec(line);
+    const heading = item ? null : HEADING.exec(line);
 
     if (current && !item && !heading && (indent >= current.content || (!blank && current.node.kind === "item" && indent > 0))) {
       flushBlank(current);
@@ -106,6 +138,15 @@ export function parse(markdown: string, title = "Untitled"): OutlineDoc {
       continue;
     }
 
+    // An unindented fenced block on the very next line after a list item (e.g. `- 正文：\n```markdown`) attaches under that item.
+    if (!blank && indent === 0 && FENCE.test(line) && current && current.node.kind === "item") {
+      const node: OutlineNode = { md: line, kind: "block", unindentedBlock: true, children: [] };
+      attach(node);
+      current = { node, indent: 0, content: 0 };
+      inFence = true;
+      continue;
+    }
+
     // A paragraph, table or other block outside any list item.
     while (stack.length > 1 && stack[stack.length - 1].heading === undefined) stack.pop();
     const node: OutlineNode = { md: line.slice(indent), kind: "block", children: [] };
@@ -122,12 +163,13 @@ export function parse(markdown: string, title = "Untitled"): OutlineDoc {
   }
 
   if (leadingBlank < 0) leadingBlank = 0;
+  const trailingDividers = pendingDividers.length ? pendingDividers.splice(0) : undefined;
   // A document with exactly one top-level heading uses that heading as the root.
   const tops = top.children;
   if (tops.length === 1 && tops[0].kind === "heading") {
-    return { frontMatter, leadingBlank, root: tops[0], syntheticRoot: false, trailingNewline };
+    return { frontMatter, leadingBlank, root: tops[0], syntheticRoot: false, trailingNewline, ...(trailingDividers && { trailingDividers }) };
   }
-  return { frontMatter, leadingBlank, root: top, syntheticRoot: true, trailingNewline };
+  return { frontMatter, leadingBlank, root: top, syntheticRoot: true, trailingNewline, ...(trailingDividers && { trailingDividers }) };
 }
 
 export function serialize(doc: OutlineDoc): string {
@@ -146,9 +188,20 @@ export function serializeWithLines(doc: OutlineDoc): { md: string; lines: Map<Ou
     for (const l of rest) out.push(l === "" ? "" : pad + l);
   };
 
+  const emitDividers = (divs?: DividerLine[], skipFirstBlank = false) => {
+    if (!divs?.length) return false;
+    divs.forEach((d, idx) => {
+      if (!(skipFirstBlank && idx === 0)) blanks(d.blankBefore);
+      out.push(d.line);
+    });
+    return true;
+  };
+
   const write = (node: OutlineNode, parent: OutlineNode, indent: number, headingLevel: number, first = false) => {
     // Blank lines around headings and blocks do not carry over once they are written as list items.
-    if (!first) blanks(parent.kind === "heading" || node.kind === "item" ? node.blankBefore : 0);
+    const keepSectionSpacing = parent.kind === "heading" || node.kind === "item";
+    const hadDividers = parent.kind === "heading" ? emitDividers(node.dividersBefore, first) : false;
+    if (!first || hadDividers) blanks(keepSectionSpacing ? node.blankBefore : 0);
     lines.set(node, offset + out.length);
     if (node.kind === "heading" && parent.kind === "heading") {
       const level = node.level && node.level > headingLevel ? node.level : headingLevel + 1;
@@ -156,7 +209,7 @@ export function serializeWithLines(doc: OutlineDoc): { md: string; lines: Map<Ou
       node.children.forEach(c => write(c, node, 0, level));
       return;
     }
-    if (node.kind === "block" && parent.kind === "heading") {
+    if (node.kind === "block" && (parent.kind === "heading" || node.unindentedBlock)) {
       pushLines("", node.md, "");
       node.children.forEach(c => write(c, node, 0, headingLevel));
       return;
@@ -173,10 +226,14 @@ export function serializeWithLines(doc: OutlineDoc): { md: string; lines: Map<Ou
     doc.root.children.forEach((c, k) => write(c, doc.root, 0, 0, k === 0));
   } else {
     const level = doc.root.level || 1;
+    if (emitDividers(doc.root.dividersBefore, true)) {
+      blanks(doc.root.blankBefore);
+    }
     lines.set(doc.root, offset + out.length);
     pushLines("#".repeat(level) + " ", doc.root.md, "");
     doc.root.children.forEach(c => write(c, doc.root, 0, level));
   }
+  emitDividers(doc.trailingDividers, out.length === 0);
   const body = out.join("\n");
   return { md: doc.frontMatter + body + (doc.trailingNewline ? "\n" : ""), lines };
 }

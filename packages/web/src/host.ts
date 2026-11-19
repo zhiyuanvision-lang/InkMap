@@ -65,6 +65,8 @@ export interface Host {
   checkout(mode: "buy" | "restore"): Promise<void>;
   orderPro?(): Promise<WechatOrderResult>;
   openExternalUrl?(url: string): void;
+  /** Opens the current Markdown document in a standalone full-screen browser window with live two-way sync. */
+  openInBrowser?(): Promise<void> | void;
   phoneSignIn?: {
     send(phone: string): Promise<PhoneSignInResult>;
     verify(phone: string, code: string): Promise<PhoneSignInResult<LicenseState>>;
@@ -131,6 +133,19 @@ export class HttpHost implements Host {
   get capabilities(): HostCapabilities {
     return { saveTarget: "file", account: this.account, compact: this.sidebar, restrictAssets: this.sidebar };
   }
+  openInBrowser = this.sidebar
+    ? async () => {
+        const res = await fetch(this.base + "api/open-browser", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "{}",
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error ?? res.statusText);
+        }
+      }
+    : undefined;
   assetBase = this.base + "doc-assets/";
   locale = browserLocale();
   private events = new EventSource(this.base + "api/events");
@@ -1011,6 +1026,7 @@ export type ToExtension =
   | { type: "checkout"; id: number; mode: "buy" | "restore"; locale?: string }
   | { type: "orderPro"; id: number; locale?: string }
   | { type: "openExternal"; url: string }
+  | { type: "openInBrowser" }
   | { type: "sendPhoneCode"; id: number; phone: string; locale?: string }
   | { type: "signInByPhone"; id: number; phone: string; code: string }
   | { type: "signOut"; id: number }
@@ -1163,6 +1179,10 @@ export class VsCodeHost implements Host {
     if (/^https:\/\//.test(url)) {
       this.post({ type: "openExternal", url });
     }
+  }
+
+  openInBrowser() {
+    this.post({ type: "openInBrowser" });
   }
 
   phoneSignIn = {

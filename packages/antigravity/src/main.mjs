@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { lstat, readdir, readFile, realpath } from "node:fs/promises";
@@ -7,7 +7,7 @@ import { basename, dirname, extname, isAbsolute, join, normalize, relative, reso
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { YUNFAN_BILLING_ORIGIN, hasAccess, sanitizeViewState } from "@inkmap/core";
 import { fileSessionStorage, licenseService } from "../../cli/dist/license.js";
-import { fileSource } from "../../cli/dist/server.js";
+import { fileSource, serve } from "../../cli/dist/server.js";
 import { targetStateFile } from "./select.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -163,12 +163,37 @@ function openExternalUrl(url) {
   execFile(cmd, args, () => {});
 }
 
+async function openBrowserWindow(url) {
+  if (process.env.INKMAP_NO_OPEN === "1" || typeof url !== "string" || !/^http:\/\/127\.0\.0\.1:[0-9]+\//.test(url)) return;
+  const run = (cmd, args) =>
+    new Promise(done => {
+      const child = spawn(cmd, args, { stdio: "ignore", detached: true });
+      child.on("error", () => done(false));
+      child.on("exit", code => done(code === 0));
+      child.unref();
+    });
+  if (process.platform === "darwin") {
+    if (await run("open", ["-a", "Google Chrome", url])) return;
+    await run("open", [url]);
+    return;
+  }
+  if (process.platform === "win32") {
+    if (await run("cmd", ["/c", "start", "", "chrome", url])) return;
+    await run("cmd", ["/c", "start", "", url]);
+    return;
+  }
+  if (await run("google-chrome", [url])) return;
+  await run("xdg-open", [url]);
+}
+
 export function createAntigravitySidecar({
   app,
   webRoot = defaultWebRoot,
   billingOrigin = () => process.env.INKMAP_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN,
 } = {}) {
   const license = licenseService(fileSessionStorage(), billingOrigin, { loginOnly: true, host: "antigravity" });
+  let browserLicense = null;
+  let browserServed = null;
   let activeFile = null;
 
   async function allowedRoots(workspaceUris = []) {
@@ -209,8 +234,10 @@ export function createAntigravitySidecar({
     const real = await realpath(raw);
     if (real !== raw || !/\.md$/i.test(real)) throw new Error("不支持符号链接或非 Markdown 文件。");
 
+    const brainRoot = await realpath(join(homedir(), ".gemini", "antigravity", "brain")).catch(() => null);
+    const inBrainArtifact = Boolean(brainRoot && insideOrEqual(brainRoot, real) && !real.includes(`${sep}.system_generated${sep}`));
     const { roots, target } = await allowedRoots(workspaceUris);
-    const permitted = (target && target.file === real) || roots.some(r => insideOrEqual(r.path, real));
+    const permitted = inBrainArtifact || (target && target.file === real) || roots.some(r => insideOrEqual(r.path, real));
     if (!permitted) throw new Error("该文件不在当前允许的工作区或项目目录内。");
     return real;
   }
@@ -437,6 +464,38 @@ export function createAntigravitySidecar({
     return { ok: true };
   }, "POST");
 
+  app.api("/api/open-browser", async data => {
+    if (!hasAccess(await license.state())) {
+      throw new Error("Inkmap 免费试用已到期，请先登录已购账号恢复 Pro。");
+    }
+    const workspaceUris = Array.isArray(data?.workspaceUris) ? data.workspaceUris : [];
+    const targetFile = await assertAllowedMarkdownFile(data?.file || activeFile, workspaceUris);
+    const { roots } = await allowedRoots(workspaceUris);
+    license.track?.("feature_browser", 1, "antigravity");
+    if (!browserServed) {
+      browserServed = (async () => {
+        browserLicense ??= licenseService(fileSessionStorage(), billingOrigin, { host: "antigravity" });
+        return serve({
+          source: await fileSource(targetFile),
+          webRoot,
+          host: "127.0.0.1",
+          port: 0,
+          license: browserLicense,
+          sidebar: false,
+          loginOnly: false,
+          workspaceRoots: roots.map(r => r.path),
+        });
+      })();
+      browserServed.catch(() => {
+        browserServed = null;
+      });
+    }
+    const served = await browserServed;
+    await served.switchToFile?.(targetFile).catch(() => {});
+    await openBrowserWindow(served.url);
+    return { ok: true, url: served.url };
+  }, "POST");
+
   app.api("/api/view", async data => {
     const workspaceUris = Array.isArray(data?.workspaceUris) ? data.workspaceUris : [];
     const file = await assertAllowedMarkdownFile(data?.file || activeFile, workspaceUris).catch(() => null);
@@ -493,7 +552,18 @@ export function createAntigravitySidecar({
     }
   }, "GET");
 
-  return { app, license };
+  return {
+    app,
+    license,
+    close: async () => {
+      browserLicense?.dispose?.();
+      license.dispose?.();
+      if (browserServed) {
+        const s = await browserServed.catch(() => null);
+        await s?.close();
+      }
+    },
+  };
 }
 
 if (process.env.ANTIGRAVITY_SIDECAR_WEB_PORT) {

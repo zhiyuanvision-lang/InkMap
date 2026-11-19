@@ -598,4 +598,56 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     assert.deepEqual(errors, []);
     await page.close();
   });
+
+  it("renders CJK flanking bold, embedded markdown blocks, wrapped code, suppressed --- dividers, and Open in Browser button", async () => {
+    const complexMd = [
+      "# 行前口语过渡底稿",
+      "",
+      "---",
+      "",
+      "## 一、小红书与知乎成稿",
+      "",
+      "- **正文样例**：",
+      "```text",
+      "这是一段非常长的不带缩进的长代码块内容，需要在节点内自动折行显示而不是横向溢出被裁剪掉。",
+      "```",
+      "- **知乎完整回答**：",
+      "```markdown",
+      "在认知心理学中，这叫**“迁移适当性加工”**（TAP），需要切换**（主动输出模式）**。",
+      "",
+      "### 核心要点",
+      "- ✅ 地道表达",
+      "```",
+      "",
+      "---",
+      "",
+    ].join("\n");
+
+    const { page, ext, errors } = await open({ markdown: complexMd });
+    await page.waitForSelector(".ink-embedded-md");
+    await page.evaluate(() => window.inkmap.mindMap.execCommand("EXPAND_ALL"));
+    await waitFor(() => page.$eval(".ink-embedded-md", el => el.textContent.includes("迁移适当性加工")), "embedded markdown rendered");
+
+    // 1. No standalone `---` nodes rendered on canvas, while currentMarkdown() preserves dividers losslessly
+    const allTexts = await page.$$eval(".smm-node", els => els.map(el => el.textContent.trim()));
+    assert.equal(allTexts.includes("---"), false, "horizontal rules are never rendered as standalone [ --- ] nodes");
+    assert.equal(await page.evaluate(() => window.inkmap.currentMarkdown()), complexMd, "round-trip preserves --- dividers and unindented code blocks byte-for-byte");
+
+    // 2. CJK punctuation flanking `**“...”**` and `**（...）**` renders as <strong>
+    const strongTexts = await page.$$eval(".ink-embedded-md strong", els => els.map(el => el.textContent));
+    assert.ok(strongTexts.some(t => t.includes("迁移适当性加工")), "CJK quote-flanked bold renders as <strong>");
+    assert.ok(strongTexts.some(t => t.includes("主动输出模式")), "CJK paren-flanked bold renders as <strong>");
+
+    // 3. Code block `pre` wraps long lines (`pre-wrap`) instead of cropping horizontally
+    const preWhiteSpace = await page.$eval(".ink-node pre", el => getComputedStyle(el).whiteSpace);
+    assert.equal(preWhiteSpace, "pre-wrap");
+
+    // 4. Unified `#open-browser` toolbar button is visible in VsCodeHost and posts `{ type: "openInBrowser" }`
+    assert.equal(await page.$eval("#open-browser", el => el.hidden), false);
+    await page.click("#open-browser");
+    await waitFor(() => ext.sent.some(msg => msg.type === "openInBrowser"), "openInBrowser message sent to host");
+
+    assert.deepEqual(errors, []);
+    await page.close();
+  });
 });

@@ -6,7 +6,7 @@ import { McpAppHost, type McpWorkspaceSnapshot } from "./mcp-app-host";
 import { sidebarGate, sidebarText } from "./sidebar-shell";
 
 const gate = sidebarGate(sidebarText("正在连接 Inkmap 思维导图面板…", "Connecting to Inkmap mind map panel…"));
-const app = new App({ name: "Inkmap", version: "0.3.7" }, {}, { autoResize: false });
+const app = new App({ name: "Inkmap", version: "0.3.8" }, {}, { autoResize: false });
 const extensions = new OpenAIExtensions(app);
 
 let compactBannerActive = false;
