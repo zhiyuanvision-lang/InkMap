@@ -13,7 +13,16 @@ const MAX_NODE_DIAGRAM_WIDTH = 920;
 const MIN_READABLE_SCALE = 0.78;
 const TARGET_INLINE_HEIGHT = 1200;
 
-const cache = new Map<string, Promise<DiagramImage | undefined>>();
+const MAX_CACHE = 128;
+/** How long a source Mermaid rejected is not rendered again (each Markdown-pane keystroke reloads the map). */
+const FAILED_RETRY_MS = 30_000;
+interface CacheEntry {
+  promise: Promise<DiagramImage | undefined>;
+  image?: DiagramImage;
+  failedAt?: number;
+}
+/** Rendered diagrams by source, least recently used first. */
+const cache = new Map<string, CacheEntry>();
 let mermaid: Promise<typeof import("mermaid").default> | undefined;
 let serial = 0;
 
@@ -22,14 +31,18 @@ let serial = 0;
  * for visual rendering only (Markdown source stays untouched). Mermaid sizes diamonds as
  * `w + h`, which blows up vertically on CJK sentences and shrinks the whole diagram.
  */
-function normalizeFlowchartShapes(source: string): string {
-  const header = /^\s*(?:---\s*\n[\s\S]*?\n---\s*\n\s*)?(?:%%\{[\s\S]*?\}%%\s*)*(?:flowchart|graph)\b/m;
+export function normalizeFlowchartShapes(source: string): string {
+  const header = /^\s*(?:---\s*\n[\s\S]*?\n---\s*\n\s*)?(?:%%\{[\s\S]*?\}%%\s*)*(?:flowchart|graph)\b/;
   if (!header.test(source)) return source;
   return source
     .split("\n")
     .map(line => {
       if (/^\s*%%/.test(line)) return line;
-      return line.replace(/(\b[A-Za-z0-9_]+)\{(?!\{)((?:"[^"\n]*"|[^}\n])+)\}(?!\})/g, "$1{{$2}}");
+      // Quoted labels and |edge labels| are matched first and kept, so braces inside them are never rewritten.
+      return line.replace(
+        /("[^"\n]*")|(\|[^|\n]*\|)|(\b[A-Za-z0-9_]+)\{(?!\{)((?:"[^"\n]*"|[^}\n])+)\}(?!\})/g,
+        (match, quoted, edgeLabel, id, body) => (quoted || edgeLabel ? match : `${id}{{${body}}}`),
+      );
     })
     .join("\n");
 }
@@ -150,17 +163,6 @@ async function render(source: string): Promise<DiagramImage> {
   root.setAttribute("height", String(height));
   root.style.removeProperty("max-width");
   const xml = new XMLSerializer().serializeToString(root);
-  try {
-    window.postMessage({
-      type: "__inkmap_debug",
-      event: "diagram.rendered",
-      width,
-      height,
-      naturalWidth,
-      naturalHeight,
-      bounds,
-    }, "*");
-  } catch {}
   return {
     src: "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml),
     width,
@@ -170,23 +172,45 @@ async function render(source: string): Promise<DiagramImage> {
   };
 }
 
+function touch(source: string, entry: CacheEntry) {
+  cache.delete(source);
+  cache.set(source, entry);
+}
+
+/** The rendered diagram for `source` once it is ready; reading it keeps the entry from being evicted. */
+export function cachedDiagram(source: string): DiagramImage | undefined {
+  const entry = cache.get(source);
+  if (!entry?.image) return undefined;
+  touch(source, entry);
+  return entry.image;
+}
+
 export function preloadDiagram(source: string): Promise<DiagramImage | undefined> {
   if (!hasVisibleViewport()) return Promise.resolve(undefined);
   const cached = cache.get(source);
-  if (cached) return cached;
-  const result = render(source).catch(err => {
-    try {
-      window.postMessage({
-        type: "__inkmap_debug",
-        event: "diagram.error",
-        error: String(err instanceof Error ? err.message : err),
-        innerW: window.innerWidth,
-        innerH: window.innerHeight,
-      }, "*");
-    } catch {}
-    cache.delete(source);
-    return undefined;
-  });
-  cache.set(source, result);
-  return result;
+  if (cached && (cached.failedAt === undefined || Date.now() - cached.failedAt < FAILED_RETRY_MS)) {
+    touch(source, cached);
+    return cached.promise;
+  }
+  const entry: CacheEntry = {
+    promise: render(source).then(
+      image => (entry.image = image),
+      (err: unknown) => {
+        // Bounds measured in a hidden viewport are retried as soon as the map is visible again.
+        if (String((err as Error)?.message).includes("hidden viewport")) {
+          if (cache.get(source) === entry) cache.delete(source);
+        } else {
+          entry.failedAt = Date.now();
+        }
+        return undefined;
+      },
+    ),
+  };
+  cache.delete(source);
+  if (cache.size >= MAX_CACHE) {
+    const oldest = cache.keys().next().value;
+    if (oldest !== undefined) cache.delete(oldest);
+  }
+  cache.set(source, entry);
+  return entry.promise;
 }

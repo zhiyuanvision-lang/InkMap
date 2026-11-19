@@ -32,30 +32,3 @@ export async function openCheckout(license: LicenseService, mode: CheckoutMode, 
   const url = await license.connect(mode, localeHint);
   if (!await vscode.env.openExternal(vscode.Uri.parse(url))) throw new Error(t("checkoutFailed"));
 }
-
-export async function offerPro(license: LicenseService): Promise<boolean> {
-  const state = await license.state();
-  const accountDetail = state.account ? t("accountLine", { account: state.account }) : state.connected ? t("accountConnected") : "";
-  if (state.pro) {
-    const signOut = t("remove");
-    const detail = [t("proActiveDetail"), accountDetail || t("accountConnected")].join("\n");
-    const pick = await vscode.window.showInformationMessage("Inkmap Pro", { modal: true, detail }, signOut);
-    if (pick === signOut) {
-      await license.deactivate();
-      vscode.window.showInformationMessage(t("removed"));
-    }
-    return true;
-  }
-  const buy = t("buyPro");
-  const signIn = t(state.connected ? "switchAccount" : "signIn");
-  const detail = accountDetail ? `${accountDetail}\n${t("checkoutHint")}` : t("checkoutHint");
-  const pick = await vscode.window.showInformationMessage("Inkmap Pro", { modal: true, detail }, buy, signIn);
-  if (pick) {
-    try {
-      await openCheckout(license, pick === buy ? "buy" : "restore");
-    } catch (error) {
-      vscode.window.showErrorMessage(error instanceof Error ? error.message : t("checkoutFailed"));
-    }
-  }
-  return false;
-}

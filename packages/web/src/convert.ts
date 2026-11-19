@@ -46,17 +46,19 @@ export function toMind(node: OutlineNode, expand: (path: string[], depth: number
 /** Read the saved Markdown of a node, keeping the source of rendered content intact. */
 export const markdownOf = (data: MindNodeData) => (data.rich ? data.md : String(data.text ?? "")).replace(/\r\n?/g, "\n");
 
-export function fromMind(node: MindNode, uids?: Map<OutlineNode, string>): OutlineNode {
+function fromMind(node: MindNode, uids?: Map<OutlineNode, string>): OutlineNode {
   const { data } = node;
+  const children = (node.children ?? []).map(c => fromMind(c, uids));
+  const inferredKind = data.kind ?? (children.some(c => c.kind === "heading") ? "heading" : "item");
   const out: OutlineNode = {
     md: markdownOf(data),
-    kind: data.kind ?? "item",
+    kind: inferredKind,
     level: data.level,
     marker: data.marker,
     blankBefore: data.blankBefore,
     ...(data.unindentedBlock && { unindentedBlock: true }),
     ...(data.dividersBefore?.length && { dividersBefore: data.dividersBefore }),
-    children: (node.children ?? []).map(c => fromMind(c, uids)),
+    children,
   };
   if (uids && data.uid) uids.set(out, data.uid);
   return out;

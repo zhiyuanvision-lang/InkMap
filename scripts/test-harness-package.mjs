@@ -108,8 +108,11 @@ test("the packaged Harness host confines file access and releases shared editors
   const updated = content.replace("Note", "External");
   await writeFile(inside, updated);
   assert.equal((await (await fetch(first.url + "api/doc")).json()).md, updated);
+  assert.equal((await request("POST", { action: "renew", lease: first.lease })).status, 200);
+  assert.equal((await request("POST", { action: "renew", lease: "unknown" })).status, 404);
   await request("DELETE", { lease: first.lease });
   assert.equal((await request("POST", { action: "sign-in", lease: first.lease })).status, 404);
+  assert.equal((await request("POST", { action: "renew", lease: first.lease })).status, 404);
   assert.equal((await fetch(first.url + "api/doc")).status, 200);
   await request("DELETE", { lease: second.lease });
   await assert.rejects(fetch(first.url + "api/doc"));

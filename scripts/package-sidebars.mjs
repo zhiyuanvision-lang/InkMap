@@ -1,16 +1,12 @@
 import { build } from "esbuild";
-import { cp, copyFile, mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
-import { execFileSync } from "node:child_process";
+import { copyFile, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { CODEX_HTML as codexHtml, copyTree, ROOT as root, writeJSON, zipDirectory } from "./lib/bundle-utils.mjs";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
 const out = join(root, "dist", "sidebars");
 const cli = join(root, "packages", "cli");
 const workbuddy = join(out, "workbuddy");
 const local = join(out, "inkmap-local-editor");
-const codexHtml = join(root, "packages", "web", "dist-codex", "index.html");
-const writeJSON = (path, data) => writeFile(path, JSON.stringify(data, null, 2) + "\n");
 
 for (const path of [workbuddy, local]) {
   await rm(path, { recursive: true, force: true });
@@ -27,16 +23,17 @@ await build({
   outfile: join(local, "inkmap.mjs"),
   banner: { js: 'import { createRequire } from "node:module"; const require = createRequire(import.meta.url);' },
 });
-await cp(join(cli, "dist", "web"), join(local, "web"), { recursive: true });
+await copyTree(join(cli, "dist", "web"), join(local, "web"));
 await copyFile(codexHtml, join(local, "codex.html"));
 const localArchive = join(out, "inkmap-local-editor.zip");
 await rm(localArchive, { force: true });
-execFileSync("zip", ["-q", "-r", localArchive, "inkmap-local-editor"], { cwd: out });
+zipDirectory(out, localArchive, "inkmap-local-editor");
 
 const buddyDist = join(root, "packages", "web", "dist-workbuddy");
 const files = (await readdir(buddyDist, { recursive: true, withFileTypes: true }))
-  .filter(file => file.isFile())
-  .map(file => join(file.parentPath.slice(buddyDist.length + 1), file.name))
+  // The manifest must list exactly what goes into the ZIP, which never contains Finder metadata.
+  .filter(file => file.isFile() && file.name !== ".DS_Store")
+  .map(file => join(file.parentPath.slice(buddyDist.length + 1), file.name).replaceAll("\\", "/"))
   .sort();
 for (const file of files) {
   const target = join(workbuddy, file);
@@ -49,5 +46,5 @@ await writeJSON(join(workbuddy, "manifest.json"), {
 
 const archive = join(out, "inkmap-workbuddy.zip");
 await rm(archive, { force: true });
-execFileSync("zip", ["-q", "-r", archive, "."], { cwd: workbuddy });
+zipDirectory(workbuddy, archive, ".");
 if ((await stat(archive)).size > 20_000_000) throw new Error("WorkBuddy ZIP exceeds 20 MB.");

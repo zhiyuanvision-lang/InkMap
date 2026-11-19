@@ -32,13 +32,12 @@ Cursor、Windsurf 等编辑器从 **Open VSX** 安装插件，VS Code 从 **Visu
 
 ### 每次发布前
 
-```bash
-npm run build && npm test                        # 全部测试
-node packages/vscode/scripts/screenshots.mjs     # 更新商店截图（images/）
-node packages/vscode/scripts/notices.mjs         # 更新第三方许可声明
-```
+先把 `packages/cli/package.json` 与 `packages/vscode/package.json` 的 `version` 改成同一个新版本号（`npm run verify:parity` 会检查两者一致；`packages/cli/src/version.ts` 在构建时自动生成），并更新 `packages/vscode/CHANGELOG.md`。然后：
 
-更新 `packages/vscode/package.json` 的 `version` 和 `packages/vscode/CHANGELOG.md`。
+```bash
+node packages/vscode/scripts/notices.mjs         # 先更新第三方许可声明，下面的构建才会打包新的声明
+npm run sync:all                                 # 全平台构建、一致性校验与测试
+```
 
 ### 商店页面中的图片
 

@@ -3,14 +3,16 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { getUiCapability, registerAppResource, registerAppTool, RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync } from "node:fs";
-import { readFile } from "node:fs/promises";
+import { lstat, readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
-import { hasAccess, PRODUCT, YUNFAN_BILLING_ORIGIN } from "@inkmap/core";
-import { adFeed, detectOsLocale, fileSessionStorage, licenseService } from "./license.js";
+import { hasAccess, YUNFAN_BILLING_ORIGIN } from "@inkmap/core";
+import { detectOsLocale, fileSessionStorage, licenseService } from "./license.js";
 import { createMcpWorkspaceManager, writeTargetSelection } from "./mcp-files.js";
+import { INKMAP_VERSION } from "./version.js";
+import { hasHiddenSegment, insideOrEqual, MAX_MARKDOWN_BYTES, say, uriToPath } from "./workspace-fs.js";
 import { fileSource, serve, type Served } from "./server.js";
 
 const UI = "ui://inkmap/markdown.html";
@@ -34,7 +36,24 @@ function openSystemBrowser(url: string) {
       : process.platform === "win32"
         ? ["cmd", ["/c", "start", "", url]]
         : ["xdg-open", [url]];
-  spawn(cmd, args, { stdio: "ignore", detached: true }).unref();
+  const child = spawn(cmd, args, { stdio: "ignore", detached: true });
+  child.on("error", () => {});
+  child.unref();
+}
+
+/** Resolves a regular, non-symlinked `.md` file up to 5 MiB that is not inside a hidden folder of the home directory. */
+async function validatedMarkdownFile(path: string | null): Promise<string> {
+  if (!path || !/\.md$/i.test(path)) throw new Error(say("请选择 .md 或 .markmap.md 文件。", "Choose a .md or .markmap.md file."));
+  const info = await lstat(path);
+  if (info.isSymbolicLink() || !info.isFile() || info.size > MAX_MARKDOWN_BYTES) {
+    throw new Error(say("请选择 5 MiB 以内的普通 Markdown 文件。", "Choose a regular Markdown file up to 5 MiB."));
+  }
+  const real = await realpath(path);
+  const home = await realpath(homedir()).catch(() => homedir());
+  if (!/\.md$/i.test(real) || (insideOrEqual(home, real) && hasHiddenSegment(home, real))) {
+    throw new Error(say("不支持访问该文件。", "This file cannot be opened."));
+  }
+  return real;
 }
 
 export async function createInkmapMcpServer(options: { html?: string; billingOrigin?: () => string } = {}) {
@@ -46,16 +65,15 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
       throw error;
     });
     const osLoc = detectOsLocale();
-    return raw.replace(/<html\b([^>]*)>/i, `<html lang="${osLoc === "zh" ? "zh-CN" : "en"}" data-os-locale="${osLoc}">`);
+    return raw.replace(/<html\b([^>]*)>/i, () => `<html lang="${osLoc === "zh" ? "zh-CN" : "en"}" data-os-locale="${osLoc}">`);
   };
   await loadHtml();
   const billingOrigin = options.billingOrigin ?? (() => process.env.INKMAP_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN);
   const billing = licenseService(fileSessionStorage(), billingOrigin, { loginOnly: true });
   let browserBilling: ReturnType<typeof licenseService> | undefined;
   const fallbackEditors = new Map<string, Promise<Served>>();
-  const ads = adFeed(PRODUCT.adFeedUrl);
   const workspaces = createMcpWorkspaceManager();
-  const server = new McpServer({ name: "inkmap", version: "0.3.10" });
+  const server = new McpServer({ name: "inkmap", version: INKMAP_VERSION });
 
   function isAntigravityHost(): boolean {
     const clientName = server.server.getClientVersion()?.name ?? "";
@@ -137,9 +155,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
           webRoot,
           port: 0,
           license: browserBilling,
-          ads,
           sidebar: false,
-          loginOnly: false,
           ideWorkspace: false,
         });
       })();
@@ -147,7 +163,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
       pending.catch(() => fallbackEditors.delete("__workspace__"));
     }
     const served = await pending;
-    await served.switchToFile?.(filePath).catch(() => {});
+    await served.switchToFile?.(filePath, { trustCaller: true }).catch(() => {});
     if (launchSystemBrowser) {
       openSystemBrowser(served.url);
     }
@@ -234,7 +250,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
         currentFileUri: opened.currentFileUri,
         targetSeq: opened.targetSeq,
         license: { ...license },
-        ...(openInRightEditor && { openedInEditorPane: true }),
+        ...((ackedByExtension || cursorHost) && { openedInEditorPane: true }),
         ...(ackedByExtension && { ackedByExtension: true }),
         ...(editorUrl && { editorUrl }),
         ...(includeDoc && { doc: opened.doc }),
@@ -295,7 +311,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     _meta: appOnly,
   }, async ({ file, md, baseVersion }) => {
     if (!hasAccess(await billing.state())) {
-      throw new Error("Inkmap 免费试用已到期，请登录已购账号恢复 Pro 权益。");
+      throw new Error(say("Inkmap 免费试用已到期，请登录已购账号恢复 Pro 权益。", "The Inkmap trial has ended. Sign in with the account that bought Pro to restore it."));
     }
     const saved = await workspaces.save({ file, md, baseVersion });
     if (saved.ok) billing.track?.("doc_edit", 1, detectMcpHost());
@@ -324,12 +340,15 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     _meta: appOnly,
   }, async ({ file }) => {
     if (!hasAccess(await billing.state())) {
-      throw new Error("Inkmap 免费试用已到期，请登录已购账号恢复 Pro 权益。");
+      throw new Error(say("Inkmap 免费试用已到期，请登录已购账号恢复 Pro 权益。", "The Inkmap trial has ended. Sign in with the account that bought Pro to restore it."));
     }
-    const opened = await workspaces.open({ path: file, fromModel: false });
-    if (!opened.currentFile) throw new Error("未选择 Markdown 文件。");
+    // A Codex file-panel resource (`file://…`) may live outside every registered workspace. Open exactly that
+    // validated file in the browser editor, without widening the roots the app-only tools may read or write.
+    const hostFile = file?.startsWith("file://") ? await validatedMarkdownFile(uriToPath(file)) : null;
+    const target = hostFile ?? (await workspaces.open({ path: file, fromModel: false })).currentFile;
+    if (!target) throw new Error(say("未选择 Markdown 文件。", "No Markdown file is selected."));
     billing.track?.("feature_browser", 1, detectMcpHost());
-    const url = await openFallbackBrowserEditor(opened.currentFile);
+    const url = await openFallbackBrowserEditor(target);
     return { content: [], structuredContent: { url: url ?? "" } };
   });
 
@@ -342,10 +361,12 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     _meta: appOnly,
   }, async ({ file }) => {
     const opened = await workspaces.open({ path: file, fromModel: false });
-    if (!opened.currentFile) throw new Error("未选择 Markdown 文件。");
+    if (!opened.currentFile) throw new Error(say("未选择 Markdown 文件。", "No Markdown file is selected."));
     const url = await openFallbackBrowserEditor(opened.currentFile, false);
     const payload = await writeTargetSelection(opened.currentFile, undefined, {
       openInEditorPane: true,
+      // Asked for by one panel's UI: the IDE focuses the file, other open panels stay on their documents.
+      editorOnly: true,
       ...(url && { editorUrl: url }),
     });
     const acked = await waitForEditorBridgeAck(payload.seq, 450);
@@ -376,10 +397,10 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
 
   server.registerTool("inkmap_phone_verify", {
     title: "Verify phone sign-in code",
-    inputSchema: { phone: z.string(), code: z.string() },
+    inputSchema: { phone: z.string(), code: z.string(), locale: z.string().optional() },
     annotations: { destructiveHint: false },
     _meta: appOnly,
-  }, async ({ phone, code }) => ({ content: [], structuredContent: { result: await billing.signInByPhone(phone, code) } }));
+  }, async ({ phone, code, locale }) => ({ content: [], structuredContent: { result: await billing.signInByPhone(phone, code, locale) } }));
 
   server.registerTool("inkmap_disconnect_access", {
     title: "Disconnect Inkmap access", annotations: { destructiveHint: true }, _meta: appOnly,

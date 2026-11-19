@@ -79,7 +79,7 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
   });
 
   /** Opens the editor with a fake extension that keeps the document text and version. */
-  async function open({ lang, timezone, ads = [], chat = false, expired = false, viewState, beforeLoad, markdown = DOC, paidOnSignIn = true } = {}) {
+  async function open({ lang, timezone, chat = false, expired = false, viewState, beforeLoad, markdown = DOC, paidOnSignIn = true } = {}) {
     const page = await browser.newPage();
     await page.setViewport({ width: 1400, height: 900 });
     if (timezone) {
@@ -102,7 +102,7 @@ describe("inkmap webview", { skip: !existsSync(CHROME) && "Chrome not found" }, 
     ext.reply = reply;
     await page.exposeFunction("__toExtension", async msg => {
       ext.sent.push(msg);
-      if (msg.type === "ready") await reply({ type: "doc", doc: ext.state(), license: ext.license, ads, chat });
+      if (msg.type === "ready") await reply({ type: "doc", doc: ext.state(), license: ext.license, chat });
       if (msg.type === "viewState") ext.viewState = msg.state;
       if (msg.type === "checkout") {
         await reply({ type: "checkout", id: msg.id });

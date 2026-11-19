@@ -5,18 +5,20 @@ import { fileURLToPath } from "node:url";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
-function latestSourceMtime(dir) {
+/** Newest modification time of a file, or of any file below a directory. */
+function latestSourceMtime(path) {
+  const stats = statSync(path);
+  if (!stats.isDirectory()) return stats.mtimeMs;
   let max = 0;
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const full = join(dir, entry.name);
-    if (entry.isDirectory()) {
-      max = Math.max(max, latestSourceMtime(full));
-    } else if (entry.isFile()) {
-      max = Math.max(max, statSync(full).mtimeMs);
-    }
+  for (const entry of readdirSync(path, { withFileTypes: true })) {
+    if (entry.name === ".DS_Store") continue;
+    const full = join(path, entry.name);
+    if (entry.isDirectory() || entry.isFile()) max = Math.max(max, latestSourceMtime(full));
   }
   return max;
 }
+
+const manifestVersion = relPath => JSON.parse(readFileSync(join(root, relPath), "utf8")).version;
 
 const cliPkg = JSON.parse(readFileSync(join(root, "packages", "cli", "package.json"), "utf8"));
 const vscodePkg = JSON.parse(readFileSync(join(root, "packages", "vscode", "package.json"), "utf8"));
@@ -25,10 +27,7 @@ const expectedVersion = cliPkg.version;
 // 1. Version parity across all entrypoints and packaged manifests
 assert.equal(vscodePkg.version, expectedVersion, "packages/vscode/package.json version mismatch");
 for (const [relPath, pattern] of [
-  ["packages/cli/src/index.ts", new RegExp(`INKMAP_VERSION\\s*=\\s*"${expectedVersion}"`)],
-  ["packages/cli/src/codex.ts", new RegExp(`version:\\s*"${expectedVersion}"`)],
-  ["packages/cli/src/license.ts", new RegExp(`version:\\s*"${expectedVersion}"`)],
-  ["packages/web/src/codex-entry.ts", new RegExp(`version:\\s*"${expectedVersion}"`)],
+  ["packages/cli/src/version.ts", new RegExp(`INKMAP_VERSION\\s*=\\s*"${expectedVersion}"`)],
 ]) {
   const content = readFileSync(join(root, relPath), "utf8");
   assert.match(content, pattern, `Version ${expectedVersion} missing in ${relPath}`);
@@ -58,7 +57,9 @@ assert.ok(jsHash && cssHash, "Could not locate built Vite asset hashes in packag
 
 for (const targetHtml of [
   "packages/vscode/dist/web/index.html",
+  "packages/cli/dist/web/index.html",
   "dist/sidebars/dsh-inkmap/web/index.html",
+  "dist/sidebars/inkmap-local-editor/web/index.html",
 ]) {
   const full = join(root, targetHtml);
   assert.ok(existsSync(full), `Missing ${targetHtml}`);
@@ -68,18 +69,40 @@ for (const targetHtml of [
 }
 
 // 3. Freshness check across all 3 host architectures (Webview, HTTP/Sidebar, Single-file MCP App)
-const newestSrc = Math.max(
-  latestSourceMtime(join(root, "packages", "core", "src")),
-  latestSourceMtime(join(root, "packages", "web", "src")),
-  statSync(join(root, "packages", "web", "index.html")).mtimeMs,
-);
+const sources = [
+  "packages/core/src",
+  "packages/web/src",
+  "packages/web/index.html",
+  "packages/cli/src",
+  "packages/vscode/src",
+  "packages/vscode/package.json",
+  "packages/harness/src",
+  "packages/antigravity/src",
+  "packages/antigravity/plugin.json",
+  "packages/antigravity/sidecar.json",
+  "packages/antigravity/mcp_config.json",
+  "packages/antigravity/skills",
+  "packages/antigravity/rules",
+  "packages/qoder/editor.mjs",
+  "packages/qoder/skills",
+  "packages/qoder/.qoder-plugin",
+  "scripts/lib",
+  ...readdirSync(join(root, "scripts")).filter(name => /^package-.*\.mjs$/.test(name)).map(name => `scripts/${name}`),
+];
+let newestSrc = 0;
+let newestSrcPath = "";
+for (const source of sources) {
+  const mtime = latestSourceMtime(join(root, source));
+  if (mtime > newestSrc) [newestSrc, newestSrcPath] = [mtime, source];
+}
 
 for (const artifact of [
   "packages/vscode/dist/inkmap.vsix",
   "dist/sidebars/dsh-inkmap/web/index.html",
   "dist/sidebars/inkmap-codex-desktop.zip",
-  "dist/sidebars/inkmap-qoder-0.1.0.zip",
-  "dist/sidebars/inkmap-antigravity-0.2.0.zip",
+  "dist/sidebars/inkmap-local-editor.zip",
+  `dist/sidebars/inkmap-qoder-${manifestVersion("packages/qoder/.qoder-plugin/plugin.json")}.zip`,
+  `dist/sidebars/inkmap-antigravity-${manifestVersion("packages/antigravity/plugin.json")}.zip`,
   "dist/sidebars/inkmap-workbuddy.zip",
   "dist/npm/inkmap-mcp/dist/codex.html",
   "dist/npm/inkmap-mcp/dist/web/app.js",
@@ -90,7 +113,7 @@ for (const artifact of [
   assert.ok(existsSync(full), `Missing packaged artifact: ${artifact}`);
   assert.ok(
     statSync(full).mtimeMs + 1000 >= newestSrc,
-    `Stale artifact ${artifact}: older than latest source edit in packages/core or packages/web. Run npm run package:platforms!`,
+    `Stale artifact ${artifact}: older than the latest edit to ${newestSrcPath}. Run npm run package:platforms!`,
   );
 }
 

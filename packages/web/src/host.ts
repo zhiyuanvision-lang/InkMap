@@ -1,6 +1,22 @@
-import type { Ad, LicenseState, PhoneSignInResult, ViewState, WechatOrderResult } from "@inkmap/core";
+import type { LicenseState, PhoneSignInResult, ViewState, WechatOrderResult } from "@inkmap/core";
 import { detectDefaultLocale, locale as currentUiLocale, t, type Locale } from "./i18n";
 import { revealMarkdownLines } from "./md-lines";
+import {
+  buildProjectTree,
+  editorApi,
+  expandSelectedAncestors,
+  fitMapSoon,
+  MarkdownGutter,
+  paneText,
+  resizeMap,
+  selectionLines,
+  treeIcons,
+  withDocumentEol,
+  type TreeFolder,
+  type WorkspaceFileEntry,
+} from "./workspace-tree";
+
+const NAV_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
 
 export interface DocState {
   name: string;
@@ -9,6 +25,8 @@ export interface DocState {
   viewState?: ViewState;
   /** False when the host cannot safely write this resource. */
   writable?: boolean;
+  /** Set when the host switched files while an edit typed in its Markdown pane was not applied yet, so it was dropped. */
+  discardedEdits?: boolean;
 }
 
 export interface ChatTarget {
@@ -48,8 +66,6 @@ export interface Host {
   onMapMarkdownChange?(md: string): void;
   /** Flushes any debounced host-side Markdown editor changes into the mind map before saving. */
   flushPendingEdits?(): Promise<void> | void;
-  /** Called when the user switches UI language in the toolbar. */
-  refreshLanguage?(): void;
   /** Set when the host can hand Markdown lines to an AI chat; resolves false where there is none. */
   canAddToChat?(): Promise<boolean>;
   /** Sends document lines `startLine`..`endLine` (zero-based, inclusive) to the chat; `text` narrows that to part of them. Without a target it only opens the chat. */
@@ -74,7 +90,6 @@ export interface Host {
   signOut(): Promise<void>;
   onLicenseChange(listener: (state: LicenseState) => void): void;
   onOpenAccountRequest?(listener: () => void): void;
-  ads(): Promise<Ad[]>;
   /** Saves an exported file given as a data URL; resolves false when the user cancels. */
   saveFile(name: string, dataUrl: string): Promise<boolean>;
   /** Reports an anonymous feature or funnel event count to the host. */
@@ -89,21 +104,14 @@ export class PopupBlockedError extends Error {
 
 export const browserLocale = (): Locale => detectDefaultLocale();
 
-interface HttpFileEntry {
-  path: string;
-  label: string;
-  group: "active" | "project";
-}
-
-export class HttpHost implements Host {
+class HttpHost implements Host {
   private base = /^\/s\/[a-f0-9]{48}\/$/.test(location.pathname) ? location.pathname : "/";
   private sidebar = this.base !== "/";
   private account: HostCapabilities["account"] = this.sidebar ? "restore" : "purchase";
   private hostAccountNavigation = false;
   private currentFile: string | null = null;
   private currentMd = "";
-  private currentVersion = "";
-  private cachedFiles: HttpFileEntry[] = [];
+  private cachedFiles: WorkspaceFileEntry[] = [];
   private expandedKeys = new Set<string>();
   private initializedExpansionForFile = "";
   private treeOpen = false;
@@ -113,6 +121,8 @@ export class HttpHost implements Host {
   private mdEditTimer = 0;
   private activeStartLine = 0;
   private activeEndLine = 0;
+  private gutter = new MarkdownGutter("md-gutter-ln", (zh, en) => this.uiText(zh, en));
+  private externalBound = false;
   private treeBtnEl: HTMLButtonElement | null = null;
   private splitBtnEl: HTMLButtonElement | null = null;
   private treePaneEl: HTMLElement | null = null;
@@ -150,55 +160,21 @@ export class HttpHost implements Host {
   locale = browserLocale();
   private events = new EventSource(this.base + "api/events");
 
+  constructor() {
+    window.addEventListener("pagehide", () => this.events.close(), { once: true });
+  }
+
   private uiText(zh: string, en: string) {
     return currentUiLocale() === "zh" ? zh : en;
   }
 
-  private parseFileEntry(item: HttpFileEntry) {
-    const label = typeof item.label === "string" ? item.label : "";
-    const sepIdx = label.indexOf(" / ");
-    if (sepIdx > 0) {
-      const project = label.slice(0, sepIdx).trim();
-      const rel = label.slice(sepIdx + 3).replace(/\\/g, "/");
-      return { project, rel, item };
-    }
-    const rel = (label || (item.path || "").split(/[\\/]/).pop() || "").replace(/\\/g, "/");
-    const normPath = (item.path || "").replace(/\\/g, "/");
-    const suffix = "/" + rel;
-    let project = this.uiText("当前项目", "Workspace");
-    if (normPath.endsWith(suffix)) {
-      const rootDir = normPath.slice(0, normPath.length - suffix.length);
-      project = rootDir.split("/").filter(Boolean).pop() || project;
-    }
-    return { project, rel, item };
-  }
-
-  private renderMdGutterAndBand() {
-    if (!this.mdTextareaEl) return;
-    const totalLines = Math.max(1, this.mdTextareaEl.value.split("\n").length);
-    const sLine = Math.max(0, Math.min(this.activeStartLine, totalLines - 1));
-    const eLine = Math.max(sLine, Math.min(this.activeEndLine, totalLines - 1));
-    if (this.mdLineBadgeEl) {
-      const label = sLine === eLine ? `${sLine + 1}` : `${sLine + 1}–${eLine + 1}`;
-      this.mdLineBadgeEl.textContent = this.uiText(`行 ${label}`, `Ln ${label}`);
-    }
-    if (this.mdGutterEl) {
-      const nums: string[] = [];
-      for (let i = 0; i < totalLines; i++) {
-        const active = i >= sLine && i <= eLine;
-        nums.push(`<div class="md-gutter-ln${active ? " is-active" : ""}">${i + 1}</div>`);
-      }
-      this.mdGutterEl.innerHTML = nums.join("");
-      this.mdGutterEl.scrollTop = this.mdTextareaEl.scrollTop;
-    }
-    if (this.mdBandEl) {
-      const lineHeight = 20.8; // 13px * 1.6
-      const padTop = 12;
-      const top = padTop + sLine * lineHeight - this.mdTextareaEl.scrollTop;
-      const height = Math.max(1, eLine - sLine + 1) * lineHeight;
-      this.mdBandEl.style.transform = `translateY(${top}px)`;
-      this.mdBandEl.style.height = `${height}px`;
-    }
+  private renderMdGutterAndBand(scrollOnly = false) {
+    this.gutter.render(
+      { textarea: this.mdTextareaEl, gutter: this.mdGutterEl, band: this.mdBandEl, badge: this.mdLineBadgeEl },
+      this.activeStartLine,
+      this.activeEndLine,
+      scrollOnly,
+    );
   }
 
   private syncMdPane(md = this.currentMd, force = false) {
@@ -209,7 +185,8 @@ export class HttpHost implements Host {
     }
     if (!this.mdTextareaEl) return;
     if (force || document.activeElement !== this.mdTextareaEl) {
-      if (this.mdTextareaEl.value !== md) this.mdTextareaEl.value = md;
+      const text = paneText(md);
+      if (this.mdTextareaEl.value !== text) this.mdTextareaEl.value = text;
     }
     this.renderMdGutterAndBand();
   }
@@ -253,104 +230,18 @@ export class HttpHost implements Host {
     if (this.mdOpen) this.syncMdPane(this.currentMd, true);
     if (this.treeOpen) this.renderTreeDom();
 
-    requestAnimationFrame(() => {
-      try {
-        const api = (window as any).inkmap;
-        api?.mindMap?.resize();
-        if (fitAfter) api?.mindMap?.view?.fit();
-      } catch {}
-    });
+    resizeMap(fitAfter);
   }
 
   private renderTreeDom() {
     if (!this.treeBodyEl) return;
-    const filterText = (this.treeSearchEl?.value ?? "").trim().toLowerCase();
-    const isFiltering = Boolean(filterText);
-
-    interface FileLeaf { name: string; path: string; rel: string; project: string; isMarkmap: boolean }
-    interface FolderNode { name: string; key: string; folders: Map<string, FolderNode>; sortedFolders: FolderNode[]; files: FileLeaf[]; totalFiles: number }
-    interface ProjNode { name: string; key: string; active: boolean; count: number; root: FolderNode }
-
-    const projMap = new Map<string, ProjNode>();
-    for (const raw of this.cachedFiles) {
-      const { project, rel, item } = this.parseFileEntry(raw);
-      if (filterText && !project.toLowerCase().includes(filterText) && !rel.toLowerCase().includes(filterText)) continue;
-      let proj = projMap.get(project);
-      if (!proj) {
-        proj = {
-          name: project,
-          key: `proj:${project}`,
-          active: item.group === "active",
-          count: 0,
-          root: { name: "", key: `proj:${project}`, folders: new Map(), sortedFolders: [], files: [], totalFiles: 0 },
-        };
-        projMap.set(project, proj);
-      }
-      if (item.group === "active") proj.active = true;
-      proj.count++;
-
-      const parts = rel.split("/").filter(Boolean);
-      const fileName = parts.pop() || rel;
-      let curr = proj.root;
-      let acc = `proj:${project}`;
-      for (const seg of parts) {
-        acc += `/${seg}`;
-        let next = curr.folders.get(seg);
-        if (!next) {
-          next = { name: seg, key: acc, folders: new Map(), sortedFolders: [], files: [], totalFiles: 0 };
-          curr.folders.set(seg, next);
-        }
-        curr = next;
-      }
-      curr.files.push({
-        name: fileName,
-        path: item.path,
-        rel,
-        project,
-        isMarkmap: /\.markmap\.md$/i.test(fileName),
-      });
-    }
-
-    const compactAndSort = (folder: FolderNode) => {
-      const compacted: FolderNode[] = [];
-      for (const child of folder.folders.values()) {
-        while (child.files.length === 0 && child.folders.size === 1) {
-          const only = [...child.folders.values()][0]!;
-          child.name = `${child.name}/${only.name}`;
-          child.key = only.key;
-          child.folders = only.folders;
-          child.files = only.files;
-        }
-        compactAndSort(child);
-        compacted.push(child);
-      }
-      compacted.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
-      folder.sortedFolders = compacted;
-      folder.files.sort((a, b) => {
-        if (a.isMarkmap !== b.isMarkmap) return a.isMarkmap ? -1 : 1;
-        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
-      });
-      let total = folder.files.length;
-      for (const c of compacted) total += c.totalFiles;
-      folder.totalFiles = total;
-    };
-
-    const projects = [...projMap.values()];
-    for (const p of projects) compactAndSort(p.root);
-    projects.sort((a, b) => (a.active !== b.active ? (a.active ? -1 : 1) : a.name.localeCompare(b.name)));
+    const filterText = this.treeSearchEl?.value ?? "";
+    const isFiltering = Boolean(filterText.trim());
+    const projects = buildProjectTree(this.cachedFiles, filterText, this.uiText("当前项目", "Workspace"));
 
     if (this.currentFile && this.initializedExpansionForFile !== this.currentFile) {
       this.initializedExpansionForFile = this.currentFile;
-      for (const p of projects) {
-        if (p.active) this.expandedKeys.add(p.key);
-        const mark = (f: FolderNode): boolean => {
-          let hit = f.files.some(x => x.path === this.currentFile);
-          for (const s of f.sortedFolders) if (mark(s)) hit = true;
-          if (hit) this.expandedKeys.add(f.key);
-          return hit;
-        };
-        if (mark(p.root)) this.expandedKeys.add(p.key);
-      }
+      expandSelectedAncestors(projects, this.currentFile, this.expandedKeys);
     }
 
     this.treeBodyEl.innerHTML = "";
@@ -364,12 +255,14 @@ export class HttpHost implements Host {
       return;
     }
 
-    const chevronSvg = `<svg class="http-tree-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>`;
-    const folderSvg = `<svg class="http-tree-icon http-icon-folder" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M1.75 2.5A1.75 1.75 0 0 0 0 4.25v7.5C0 12.716.784 13.5 1.75 13.5h12.5A1.75 1.75 0 0 0 16 11.75v-5.5A1.75 1.75 0 0 0 14.25 4.5H7.82a.25.25 0 0 1-.177-.073L6.28 3.063A1.75 1.75 0 0 0 5.043 2.5H1.75Z"/></svg>`;
-    const mapFileSvg = `<svg class="http-tree-icon http-icon-map" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1.75"/><circle cx="12.5" cy="4" r="1.75"/><circle cx="12.5" cy="12" r="1.75"/><path d="M5.25 7.3L10.75 4.7M5.25 8.7l5.5 2.6"/></svg>`;
-    const mdFileSvg = `<svg class="http-tree-icon http-icon-md" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 1.5H4A1.5 1.5 0 0 0 2.5 3v10A1.5 1.5 0 0 0 4 14.5h8a1.5 1.5 0 0 0 1.5-1.5V5.5L9.5 1.5Z"/><path d="M9.5 1.5v4h4"/></svg>`;
+    const icons = treeIcons("http-tree", "http-icon");
+    const toggle = (key: string) => {
+      if (this.expandedKeys.has(key)) this.expandedKeys.delete(key);
+      else this.expandedKeys.add(key);
+      this.renderTreeDom();
+    };
 
-    const renderFolder = (folder: FolderNode, container: HTMLElement, depth: number) => {
+    const renderFolder = (folder: TreeFolder, container: HTMLElement, depth: number) => {
       for (const sub of folder.sortedFolders) {
         const isOpen = isFiltering || this.expandedKeys.has(sub.key);
         const group = document.createElement("div");
@@ -379,14 +272,10 @@ export class HttpHost implements Host {
         row.type = "button";
         row.className = `http-tree-row http-tree-folder ${isOpen ? "is-open" : ""}`;
         row.style.paddingLeft = `${8 + depth * 13}px`;
-        row.innerHTML = `${chevronSvg}${folderSvg}<span class="http-tree-label"></span><span class="http-tree-count">${sub.totalFiles}</span>`;
+        row.innerHTML = `${icons.chevron}${icons.folder}<span class="http-tree-label"></span><span class="http-tree-count">${sub.totalFiles}</span>`;
         row.querySelector(".http-tree-label")!.textContent = sub.name;
         row.title = sub.name;
-        row.addEventListener("click", () => {
-          if (this.expandedKeys.has(sub.key)) this.expandedKeys.delete(sub.key);
-          else this.expandedKeys.add(sub.key);
-          this.renderTreeDom();
-        });
+        row.addEventListener("click", () => toggle(sub.key));
         group.appendChild(row);
 
         if (isOpen) {
@@ -404,7 +293,7 @@ export class HttpHost implements Host {
         btn.type = "button";
         btn.className = `http-tree-row http-tree-file ${isSelected ? "is-selected" : ""}`;
         btn.style.paddingLeft = `${8 + depth * 13}px`;
-        btn.innerHTML = `<span class="http-tree-check">${isSelected ? "✓" : ""}</span>${file.isMarkmap ? mapFileSvg : mdFileSvg}<span class="http-tree-label"></span>${file.isMarkmap ? `<span class="http-tree-tag">${this.uiText("导图", "Map")}</span>` : ""}`;
+        btn.innerHTML = `<span class="http-tree-check">${isSelected ? "✓" : ""}</span>${file.isMarkmap ? icons.mapFile : icons.mdFile}<span class="http-tree-label"></span>${file.isMarkmap ? `<span class="http-tree-tag">${this.uiText("导图", "Map")}</span>` : ""}`;
         btn.querySelector(".http-tree-label")!.textContent = file.name;
         btn.title = `${file.project} / ${file.rel}`;
         btn.addEventListener("click", () => {
@@ -422,13 +311,9 @@ export class HttpHost implements Host {
       const head = document.createElement("button");
       head.type = "button";
       head.className = `http-tree-row http-tree-proj-header ${isOpen ? "is-open" : ""}`;
-      head.innerHTML = `${chevronSvg}${folderSvg}<span class="http-tree-label"></span><span class="http-tree-count">${proj.count}</span>`;
+      head.innerHTML = `${icons.chevron}${icons.folder}<span class="http-tree-label"></span><span class="http-tree-count">${proj.count}</span>`;
       head.querySelector(".http-tree-label")!.textContent = proj.name;
-      head.addEventListener("click", () => {
-        if (this.expandedKeys.has(proj.key)) this.expandedKeys.delete(proj.key);
-        else this.expandedKeys.add(proj.key);
-        this.renderTreeDom();
-      });
+      head.addEventListener("click", () => toggle(proj.key));
       wrap.appendChild(head);
 
       if (isOpen) {
@@ -445,14 +330,14 @@ export class HttpHost implements Host {
     if (this.mdEditTimer) {
       window.clearTimeout(this.mdEditTimer);
       this.mdEditTimer = 0;
-      await (window as any).inkmap?.load?.(this.currentMd, true);
+      await editorApi()?.load(this.currentMd, true);
     }
   }
 
   private async switchFile(filePath: string) {
     if (!filePath || filePath === this.currentFile) return;
     await this.flushPendingEdits();
-    await (window as any).inkmap?.flushSave?.();
+    await editorApi()?.flushSave();
     const res = await fetch(this.base + "api/open", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -464,13 +349,10 @@ export class HttpHost implements Host {
     if (Array.isArray(data.files)) this.cachedFiles = data.files;
     if (data.doc) {
       this.currentMd = data.doc.md;
-      this.currentVersion = data.doc.version;
       this.syncMdPane(data.doc.md, true);
       this.renderTreeDom();
       this.externalListeners.forEach(fn => fn(data.doc));
-      window.setTimeout(() => {
-        try { (window as any).inkmap?.mindMap?.view?.fit(); } catch {}
-      }, 120);
+      fitMapSoon();
     }
   }
 
@@ -687,7 +569,7 @@ export class HttpHost implements Host {
         treeResizer.removeEventListener("pointermove", onMove);
         treeResizer.removeEventListener("pointerup", onUp);
         treeResizer.removeEventListener("pointercancel", onUp);
-        try { (window as any).inkmap?.mindMap?.view?.fit(); } catch {}
+        fitMapSoon(0);
       };
       treeResizer.addEventListener("pointermove", onMove);
       treeResizer.addEventListener("pointerup", onUp);
@@ -724,42 +606,35 @@ export class HttpHost implements Host {
       this.applyWorkspaceLayout(true);
     });
     this.mdTextareaEl?.addEventListener("scroll", () => {
-      this.renderMdGutterAndBand();
+      this.renderMdGutterAndBand(true);
     });
 
     const handleCursorMove = () => {
       if (!this.mdTextareaEl) return;
-      const startPos = this.mdTextareaEl.selectionStart ?? 0;
-      const endPos = this.mdTextareaEl.selectionEnd ?? startPos;
-      const startLine = this.mdTextareaEl.value.slice(0, startPos).split("\n").length - 1;
-      const endLine = this.mdTextareaEl.value.slice(0, endPos).split("\n").length - 1;
-      this.activeStartLine = startLine;
-      this.activeEndLine = Math.max(startLine, endLine);
+      const { start, end } = selectionLines(this.mdTextareaEl);
+      this.activeStartLine = start;
+      this.activeEndLine = end;
       this.renderMdGutterAndBand();
-      this.revealListeners.forEach(fn => fn(startLine));
+      this.revealListeners.forEach(fn => fn(start));
     };
     this.mdTextareaEl?.addEventListener("click", handleCursorMove);
     this.mdTextareaEl?.addEventListener("keyup", e => {
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(e.key)) {
-        handleCursorMove();
-      }
+      if (NAV_KEYS.has(e.key)) handleCursorMove();
     });
     this.mdTextareaEl?.addEventListener("input", () => {
-      const nextMd = this.mdTextareaEl!.value;
+      const textarea = this.mdTextareaEl!;
+      const nextMd = withDocumentEol(textarea.value, this.currentMd);
       this.currentMd = nextMd;
-      const startPos = this.mdTextareaEl!.selectionStart ?? 0;
-      const startLine = nextMd.slice(0, startPos).split("\n").length - 1;
-      this.activeStartLine = startLine;
-      this.activeEndLine = startLine;
+      const { start } = selectionLines(textarea);
+      this.activeStartLine = start;
+      this.activeEndLine = start;
       this.renderMdGutterAndBand();
       window.clearTimeout(this.mdEditTimer);
       this.mdEditTimer = window.setTimeout(() => {
-        const api = (window as any).inkmap;
-        if (api?.load) {
-          void api.load(nextMd, true).then(() => {
-            this.revealListeners.forEach(fn => fn(startLine));
-          });
-        }
+        this.mdEditTimer = 0;
+        void editorApi()?.load(nextMd, true).then(() => {
+          this.revealListeners.forEach(fn => fn(start));
+        });
       }, 280);
     });
 
@@ -777,7 +652,7 @@ export class HttpHost implements Host {
         mdResizer.removeEventListener("pointermove", onMove);
         mdResizer.removeEventListener("pointerup", onUp);
         mdResizer.removeEventListener("pointercancel", onUp);
-        try { (window as any).inkmap?.mindMap?.view?.fit(); } catch {}
+        fitMapSoon(0);
       };
       mdResizer.addEventListener("pointermove", onMove);
       mdResizer.addEventListener("pointerup", onUp);
@@ -797,7 +672,7 @@ export class HttpHost implements Host {
       fetch(this.base + "api/capabilities").then(r => (r.ok ? r.json() : null)).catch(() => null),
       fetch(this.base + "api/files").then(r => (r.ok ? r.json() : null)).catch(() => null),
     ]);
-    if (!res.ok) throw new Error(`读取文档失败：${res.status}`);
+    if (!res.ok) throw new Error(t("loadFailed", { status: res.status }));
     if (capabilities) {
       this.account = capabilities.purchase === true ? "purchase" : "restore";
     } else if (this.sidebar) {
@@ -808,7 +683,6 @@ export class HttpHost implements Host {
 
     const doc = (await res.json()) as DocState & { currentFile?: string };
     this.currentMd = doc.md;
-    this.currentVersion = doc.version;
     this.currentFile = filesRes?.currentFile ?? doc.currentFile ?? null;
     if (Array.isArray(filesRes?.files)) {
       this.cachedFiles = filesRes.files;
@@ -837,10 +711,6 @@ export class HttpHost implements Host {
     this.syncMdPane(md, false);
   }
 
-  refreshLanguage() {
-    this.applyWorkspaceLayout(false);
-  }
-
   async save(md: string, baseVersion: string): Promise<SaveResult> {
     this.currentMd = md;
     this.syncMdPane(md, false);
@@ -852,28 +722,34 @@ export class HttpHost implements Host {
     if (res.status === 409) {
       const conflictDoc = await res.json();
       this.currentMd = conflictDoc.md;
-      this.currentVersion = conflictDoc.version;
       this.syncMdPane(conflictDoc.md, true);
       return { ok: false, doc: conflictDoc };
     }
-    if (!res.ok) throw new Error(`保存失败：${res.status}`);
+    if (!res.ok) throw new Error(`${t("saveFailed")}: ${res.status}`);
     const saved = await res.json();
-    this.currentVersion = saved.version;
     return { ok: true, ...saved };
   }
 
   onExternalChange(listener: (doc: DocState) => void) {
     this.externalListeners.push(listener);
+    if (this.externalBound) return;
+    this.externalBound = true;
     this.events.addEventListener("change", e => {
       const next = JSON.parse((e as MessageEvent).data) as DocState & { currentFile?: string };
       const fileChanged = Boolean(next.currentFile && next.currentFile !== this.currentFile);
       const mdChanged = next.md !== this.currentMd;
+      // The server already serves the other file, so a pane edit still waiting for its debounce cannot be saved.
+      const discardedEdits = fileChanged && this.mdEditTimer !== 0;
+      if (fileChanged) {
+        window.clearTimeout(this.mdEditTimer);
+        this.mdEditTimer = 0;
+      }
       this.currentMd = next.md;
-      this.currentVersion = next.version;
       if (next.currentFile) this.currentFile = next.currentFile;
       if (fileChanged || mdChanged) this.syncMdPane(next.md, fileChanged);
       if (this.treeOpen) this.renderTreeDom();
-      listener(next);
+      const doc = discardedEdits ? { ...next, discardedEdits: true } : next;
+      this.externalListeners.forEach(fn => fn(doc));
     });
   }
 
@@ -892,7 +768,7 @@ export class HttpHost implements Host {
   }
 
   async checkout(mode: "buy" | "restore"): Promise<void> {
-    if (mode === "restore" && this.hostAccountNavigation) {
+    if (this.hostAccountNavigation) {
       await new Promise<void>((resolve, reject) => {
         const id = crypto.randomUUID();
         const type = "inkmap:open-account";
@@ -908,7 +784,7 @@ export class HttpHost implements Host {
         const timer = window.setTimeout(() => done(false), 12_000);
         window.addEventListener("message", receive);
         // The parent receives a request identifier and checkout mode. It creates the account link using its own lease.
-        window.parent.postMessage({ type, id, mode }, "*");
+        window.parent.postMessage({ type, id, mode, locale: currentUiLocale() }, "*");
       });
       return;
     }
@@ -965,7 +841,7 @@ export class HttpHost implements Host {
       const res = await fetch(this.base + "api/phone-verify", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ phone, code }),
+        body: JSON.stringify({ phone, code, locale: currentUiLocale() }),
       });
       if (!res.ok) return { ok: false, reason: "unavailable" };
       return (await res.json()).result;
@@ -985,11 +861,6 @@ export class HttpHost implements Host {
     const refresh = () => { void this.license().then(listener).catch(() => {}); };
     window.addEventListener("focus", refresh);
     window.addEventListener("pagehide", () => window.removeEventListener("focus", refresh), { once: true });
-  }
-
-  async ads(): Promise<Ad[]> {
-    const res = await fetch(this.base + "api/ads").catch(() => null);
-    return res?.ok ? res.json() : [];
   }
 
   async saveFile(name: string, dataUrl: string) {
@@ -1014,7 +885,7 @@ interface VsCodeApi {
 }
 
 /** Messages exchanged with the editor extension. */
-export type ToExtension =
+type ToExtension =
   | { type: "ready" }
   | { type: "save"; id: number; md: string; baseVersion: string }
   | { type: "mapMarkdownChange"; md: string }
@@ -1028,13 +899,13 @@ export type ToExtension =
   | { type: "openExternal"; url: string }
   | { type: "openInBrowser" }
   | { type: "sendPhoneCode"; id: number; phone: string; locale?: string }
-  | { type: "signInByPhone"; id: number; phone: string; code: string }
+  | { type: "signInByPhone"; id: number; phone: string; code: string; locale?: string }
   | { type: "signOut"; id: number }
   | { type: "saveFile"; id: number; name: string; dataUrl: string }
   | { type: "telemetry"; event: string };
 
-export type FromExtension =
-  | { type: "doc"; doc: DocState; license: LicenseState; ads: Ad[]; chat?: boolean }
+type FromExtension =
+  | { type: "doc"; doc: DocState; license: LicenseState; chat?: boolean }
   | { type: "change"; doc: DocState }
   | { type: "saved"; id: number; version: string }
   | { type: "conflict"; id: number; doc: DocState }
@@ -1050,7 +921,7 @@ export type FromExtension =
   | { type: "signedOut"; id: number }
   | { type: "fileSaved"; id: number; saved: boolean };
 
-export class VsCodeHost implements Host {
+class VsCodeHost implements Host {
   readonly capabilities = {
     saveTarget: "editor",
     account: window.INKMAP_ACCOUNT_MODE ?? "purchase",
@@ -1087,10 +958,21 @@ export class VsCodeHost implements Host {
     this.api.postMessage(msg);
   }
 
-  private request<T>(build: (id: number) => ToExtension, read: (msg: FromExtension) => T): Promise<T> {
+  /**
+   * Posts a request and waits for the reply with the same id. `timeoutMs` guards requests whose loss would stall the
+   * editor (e.g. a save that never answers would block every later save); account flows wait for the user instead.
+   */
+  private request<T>(build: (id: number) => ToExtension, read: (msg: FromExtension) => T, timeoutMs = 0): Promise<T> {
     const id = this.nextId++;
     return new Promise((resolve, reject) => {
+      const timer = timeoutMs
+        ? window.setTimeout(() => {
+            this.waiting.delete(id);
+            reject(new Error(t("saveFailed")));
+          }, timeoutMs)
+        : 0;
       this.waiting.set(id, msg => {
+        window.clearTimeout(timer);
         if (msg.type === "error") reject(new Error(msg.message));
         else resolve(read(msg));
       });
@@ -1113,6 +995,7 @@ export class VsCodeHost implements Host {
     return this.request(
       id => ({ type: "save", id, md, baseVersion }),
       msg => (msg.type === "saved" ? { ok: true, version: msg.version } : { ok: false, doc: (msg as Extract<FromExtension, { type: "conflict" }>).doc }),
+      30_000,
     );
   }
 
@@ -1191,7 +1074,7 @@ export class VsCodeHost implements Host {
       msg => (msg as Extract<FromExtension, { type: "phoneCodeSent" }>).result,
     ),
     verify: (phone: string, code: string) => this.request(
-      id => ({ type: "signInByPhone", id, phone, code }),
+      id => ({ type: "signInByPhone", id, phone, code, locale: currentUiLocale() }),
       msg => {
         const { result } = msg as Extract<FromExtension, { type: "phoneSignIn" }>;
         if (result.ok) this.currentLicense = result.value;
@@ -1213,10 +1096,6 @@ export class VsCodeHost implements Host {
 
   onOpenAccountRequest(listener: () => void) {
     this.on("openAccount", () => listener());
-  }
-
-  async ads(): Promise<Ad[]> {
-    return (await this.hello()).ads;
   }
 
   saveFile(name: string, dataUrl: string): Promise<boolean> {

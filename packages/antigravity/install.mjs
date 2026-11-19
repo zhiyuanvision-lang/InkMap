@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -35,8 +35,11 @@ try {
   const destination = join(pluginsDir, "inkmap");
 
   mkdirSync(pluginsDir, { recursive: true });
-  rmSync(destination, { recursive: true, force: true });
-  cpSync(source, destination, { recursive: true });
+  const samePath = existsSync(destination) && realpathSync(source) === realpathSync(destination);
+  if (!samePath) {
+    rmSync(destination, { recursive: true, force: true });
+    cpSync(source, destination, { recursive: true });
+  }
   await refreshAntigravityMcp();
 
   console.log(`已安装 Inkmap MCP App 插件到 ${destination}`);

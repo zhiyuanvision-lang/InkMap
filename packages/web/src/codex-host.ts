@@ -2,7 +2,7 @@ import type { App } from "@modelcontextprotocol/ext-apps";
 import type { OpenAIResources } from "@openai/mcp-extensions/app";
 import { hasAccess, type LicenseState, type PhoneSignInResult } from "@inkmap/core";
 import { browserLocale, type DocState, type Host, type HostCapabilities, type SaveResult } from "./host";
-import { sidebarText } from "./sidebar-shell";
+import { parseExportDataUrl, sidebarText } from "./sidebar-shell";
 
 type FileInput = { name: string; resourceUri: string };
 
@@ -13,6 +13,8 @@ export class CodexHost implements Host {
     saveTarget: "file", account: "restore", compact: true, restrictAssets: true,
   } satisfies HostCapabilities;
   private licenseCheck?: Promise<LicenseState>;
+  private changeListeners: ((doc: DocState) => void)[] = [];
+  private externalSubscribed = false;
   readonly openInBrowser?: () => Promise<void>;
 
   constructor(private app: App, private resources: OpenAIResources, private file: FileInput) {
@@ -43,13 +45,18 @@ export class CodexHost implements Host {
   }
 
   onExternalChange(listener: (doc: DocState) => void) {
+    this.changeListeners.push(listener);
+    if (this.externalSubscribed) return;
+    this.externalSubscribed = true;
     const uri = this.file.resourceUri;
     let revision = 0;
     let closed = false;
     const refresh = async () => {
       const request = ++revision;
       const doc = await this.load().catch(() => undefined);
-      if (!closed && request === revision && doc) listener(doc);
+      if (!closed && request === revision && doc) {
+        this.changeListeners.forEach(fn => fn(doc));
+      }
     };
     const dispose = this.resources.addUpdateHandler(({ params }) => {
       if (params.uri === uri) void refresh();
@@ -79,6 +86,7 @@ export class CodexHost implements Host {
       ...(typeof raw.trialUntil === "number" && { trialUntil: raw.trialUntil }),
       ...(raw.connected === true && { connected: true }),
       ...(typeof raw.account === "string" && { account: raw.account }),
+      ...(typeof raw.lastSignIn === "string" && { lastSignIn: raw.lastSignIn }),
     })).finally(() => { this.licenseCheck = undefined; });
   }
 
@@ -96,7 +104,7 @@ export class CodexHost implements Host {
       return result as PhoneSignInResult;
     },
     verify: async (phone: string, code: string): Promise<PhoneSignInResult<LicenseState>> => {
-      const { result } = await this.tool("inkmap_phone_verify", { phone, code });
+      const { result } = await this.tool("inkmap_phone_verify", { phone, code, locale: this.locale });
       return result as PhoneSignInResult<LicenseState>;
     },
   };
@@ -113,13 +121,12 @@ export class CodexHost implements Host {
     }, { once: true });
   }
 
-  async ads() { return []; }
   async saveFile(name: string, dataUrl: string) {
-    const data = /^data:(image\/(?:png|svg\+xml));base64,([\s\S]+)$/.exec(dataUrl);
-    if (!data) throw new Error("Unsupported export format.");
+    const parsed = parseExportDataUrl(dataUrl);
+    if (!parsed) throw new Error("Unsupported export format.");
     const { isError } = await this.app.downloadFile({ contents: [{
       type: "resource",
-      resource: { uri: "file:///" + encodeURIComponent(name), mimeType: data[1], blob: data[2] },
+      resource: { uri: "file:///" + encodeURIComponent(name), mimeType: parsed.mimeType, blob: parsed.blob },
     }] });
     return !isError;
   }

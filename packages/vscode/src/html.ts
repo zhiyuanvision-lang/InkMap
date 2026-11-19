@@ -11,7 +11,7 @@ export interface WebviewHtmlOptions {
 
 /** Adapts the built `index.html` to a webview: absolute asset URIs, a CSP, and editor settings. */
 export function webviewHtml(html: string, { webBase, assetBase, cspSource, nonce, locale }: WebviewHtmlOptions): string {
-  const osLoc = locale === "auto" ? "" : /^zh\b/i.test(locale) ? "zh" : "en";
+  const osLoc = locale === "auto" ? "" : /^zh(?:[-_.]|$)/i.test(locale) ? "zh" : "en";
   const csp = [
     "default-src 'none'",
     `img-src ${cspSource} https: data: blob:`,
@@ -23,10 +23,10 @@ export function webviewHtml(html: string, { webBase, assetBase, cspSource, nonce
   const head = `<meta http-equiv="Content-Security-Policy" content="${csp}">
   <script nonce="${nonce}">window.INKMAP_ASSET_BASE = ${JSON.stringify(assetBase)}; window.INKMAP_LOCALE = ${JSON.stringify(osLoc || locale)};</script>`;
   return html
-    .replace(/<html\b([^>]*)>/i, osLoc ? `<html lang="${osLoc === "zh" ? "zh-CN" : "en"}" data-os-locale="${osLoc}">` : "<html$1>")
+    .replace(/<html\b([^>]*)>/i, (_m, attrs) => osLoc ? `<html lang="${osLoc === "zh" ? "zh-CN" : "en"}" data-os-locale="${osLoc}">` : `<html${attrs}>`)
     .replace(/ crossorigin/g, "")
-    .replace(/(src|href)="\.\/assets\//g, `$1="${webBase}/assets/`)
-    .replace(/(src|href)="\.\/(app\.(?:js|css))"/g, `$1="${webBase}/$2"`)
-    .replace(/<script /g, `<script nonce="${nonce}" `)
-    .replace("<head>", `<head>\n  ${head}`);
+    .replace(/(src|href)="\.\/assets\//g, (_m, attr) => `${attr}="${webBase}/assets/`)
+    .replace(/(src|href)="\.\/(app\.(?:js|css))"/g, (_m, attr, file) => `${attr}="${webBase}/${file}"`)
+    .replace(/<script /g, () => `<script nonce="${nonce}" `)
+    .replace("<head>", () => `<head>\n  ${head}`);
 }

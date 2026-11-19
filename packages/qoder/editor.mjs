@@ -21,7 +21,12 @@ async function main(args) {
   }
 
   const source = await fileSource(file);
-  const license = licenseService(fileSessionStorage(), () => YUNFAN_BILLING_ORIGIN);
+  const license = licenseService(
+    fileSessionStorage(),
+    () => process.env.INKMAP_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN,
+    { host: "qoder" },
+  );
+  license.track?.("plugin_activate", 1, "qoder");
   const editor = await serve({
     source,
     license,
@@ -30,6 +35,7 @@ async function main(args) {
     sidebar: true,
     sidebarPurchase: true,
     workspaceRoots: [workspace],
+    confineToWorkspaceRoots: true,
   });
   console.log(editor.url);
   console.log("将上面的地址粘贴到 Qoder 内置浏览器。按 Ctrl+C 退出。");
@@ -37,6 +43,7 @@ async function main(args) {
   async function stop() {
     license.dispose();
     await editor.close();
+    process.exit(0);
   }
   process.once("SIGINT", stop);
   process.once("SIGTERM", stop);

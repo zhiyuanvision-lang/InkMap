@@ -24,3 +24,36 @@ export function revealMarkdownLines(textarea: HTMLTextAreaElement, startLine: nu
     textarea.scrollLeft = 0;
   });
 }
+
+/**
+ * Character ranges of the Mermaid sources the renderer draws for `md`, in document order: ```mermaid fences at the top
+ * level or inside up to two ```markdown fences (which the renderer expands), never ones inside other code blocks.
+ * Each range runs from the line after the opening fence to the start of its closing fence (or the end of the text).
+ */
+export function mermaidSourceRanges(md: string): Array<{ start: number; end: number }> {
+  const ranges: Array<{ start: number; end: number }> = [];
+  const open: Array<{ char: string; len: number; lang: string; start: number; diagram: boolean }> = [];
+  let offset = 0;
+  for (const line of md.split("\n")) {
+    const lineStart = offset;
+    offset += line.length + 1;
+    const m = /^\s*(`{3,}|~{3,})(.*)$/.exec(line);
+    if (!m) continue;
+    const char = m[1][0];
+    const len = m[1].length;
+    const info = m[2].trim();
+    const top = open.at(-1);
+    if (top && char === top.char && len >= top.len && info === "") {
+      open.pop();
+      if (top.diagram) ranges.push({ start: top.start, end: lineStart });
+      continue;
+    }
+    // Inside a code block that is not Markdown, fence-like lines are just text.
+    if (top && top.lang !== "markdown" && top.lang !== "md") continue;
+    if (char === "`" && info.includes("`")) continue;
+    const lang = info.split(/\s+/)[0].toLowerCase();
+    open.push({ char, len, lang, start: Math.min(offset, md.length), diagram: lang === "mermaid" && open.length <= 2 });
+  }
+  for (const fence of open) if (fence.diagram) ranges.push({ start: fence.start, end: md.length });
+  return ranges.sort((a, b) => a.start - b.start);
+}

@@ -8,10 +8,10 @@
 </head>
 <body>
   <header id="bar">
-    <button id="undo" class="icon-btn" data-i18n-title="undoTitle" aria-label="Undo">
+    <button id="undo" class="icon-btn" data-i18n-title="undoTitle" data-i18n-aria="undo" aria-label="Undo">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 6.5h6a3.5 3.5 0 1 1 0 7H7"/><path d="M6 4 3.5 6.5 6 9"/></svg>
     </button>
-    <button id="redo" class="icon-btn" data-i18n-title="redoTitle" aria-label="Redo">
+    <button id="redo" class="icon-btn" data-i18n-title="redoTitle" data-i18n-aria="redo" aria-label="Redo">
       <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12.5 6.5h-6a3.5 3.5 0 1 0 0 7H9"/><path d="M10 4l2.5 2.5L10 9"/></svg>
     </button>
     <span class="sep"></span>
@@ -192,7 +192,7 @@
       </div>
       <div class="phone-field">
         <label for="sign-in-code" data-i18n="phoneCode"></label>
-        <input id="sign-in-code" class="phone-code-input" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required data-i18n-placeholder="phoneCodePlaceholder">
+        <input id="sign-in-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" required data-i18n-placeholder="phoneCodePlaceholder">
       </div>
       <p id="phone-sign-in-status" class="billing-message" role="status" aria-live="polite" hidden></p>
       <button class="buy" type="submit" data-i18n="phoneVerifySubmit"></button>

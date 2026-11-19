@@ -1,14 +1,21 @@
 import { execFile, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
-import { lstat, readdir, readFile, realpath } from "node:fs/promises";
+import { lstat, readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, dirname, extname, isAbsolute, join, normalize, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, normalize, relative } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { YUNFAN_BILLING_ORIGIN, hasAccess, sanitizeViewState } from "@inkmap/core";
-import { fileSessionStorage, licenseService } from "../../cli/dist/license.js";
+import { detectOsLocale, fileSessionStorage, licenseService } from "../../cli/dist/license.js";
 import { fileSource, serve } from "../../cli/dist/server.js";
-import { targetStateFile } from "./select.mjs";
+import {
+  MAX_MARKDOWN_BYTES as MAX_BYTES,
+  createSerialQueue,
+  createWorkspaceAccess,
+  insideOrEqual,
+  readTargetSelection,
+  scanMarkdownFiles,
+} from "../../cli/dist/workspace-fs.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const defaultWebRoot = join(__dirname, "web");
@@ -21,28 +28,6 @@ class SidecarResponse {
     this.headers = headers;
   }
 }
-const MAX_BYTES = 5 * 1024 * 1024;
-const MAX_SCAN_DEPTH = 4;
-const MAX_FILES = 200;
-const SKIP_DIRS = new Set([
-  ".git",
-  ".hg",
-  ".svn",
-  "node_modules",
-  "dist",
-  "build",
-  "out",
-  ".next",
-  ".nuxt",
-  ".agents",
-  ".agent",
-  ".gemini",
-  ".venv",
-  "venv",
-  "target",
-  "coverage",
-]);
-
 const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "application/javascript; charset=utf-8",
@@ -53,6 +38,9 @@ const TYPES = {
   ".jpeg": "image/jpeg",
   ".gif": "image/gif",
   ".webp": "image/webp",
+  ".avif": "image/avif",
+  ".bmp": "image/bmp",
+  ".ico": "image/x-icon",
   ".woff2": "font/woff2",
   ".woff": "font/woff",
   ".ttf": "font/ttf",
@@ -60,101 +48,6 @@ const TYPES = {
 };
 
 const hash = text => createHash("sha1").update(text).digest("hex");
-
-function insideOrEqual(root, target) {
-  if (root === target) return true;
-  const rel = relative(root, target);
-  return Boolean(rel && !isAbsolute(rel) && rel !== ".." && !rel.startsWith(".." + sep));
-}
-
-function uriToPath(uri) {
-  if (typeof uri !== "string" || !uri) return null;
-  try {
-    if (uri.startsWith("file://")) return fileURLToPath(uri);
-    if (isAbsolute(uri)) return uri;
-  } catch {}
-  return null;
-}
-
-async function readTargetSelection() {
-  try {
-    const raw = JSON.parse(await readFile(targetStateFile(), "utf8"));
-    if (typeof raw?.file !== "string" || !/\.md$/i.test(raw.file)) return null;
-    const file = await realpath(raw.file);
-    const info = await lstat(file);
-    if (!info.isFile() || info.size > MAX_BYTES) return null;
-    const workspace = typeof raw.workspace === "string"
-      ? await realpath(raw.workspace).catch(() => dirname(file))
-      : dirname(file);
-    if (!insideOrEqual(workspace, file)) return null;
-    return { file, workspace, seq: Number(raw.seq) || 0 };
-  } catch {
-    return null;
-  }
-}
-
-async function discoverAntigravityProjects() {
-  const projectsDir = join(process.env.ANTIGRAVITY_CONFIG_DIR || join(homedir(), ".gemini", "config"), "projects");
-  const roots = [];
-  let entries = [];
-  try {
-    entries = await readdir(projectsDir);
-  } catch {
-    return roots;
-  }
-  for (const name of entries) {
-    if (!name.endsWith(".json")) continue;
-    try {
-      const data = JSON.parse(await readFile(join(projectsDir, name), "utf8"));
-      const resources = Array.isArray(data?.projectResources?.resources) ? data.projectResources.resources : [];
-      for (const r of resources) {
-        const uri = r?.gitFolder?.folderUri || r?.folderUri;
-        const p = uriToPath(uri);
-        if (!p) continue;
-        const real = await realpath(p).catch(() => null);
-        if (real) roots.push({ path: real, name: data.name || basename(real) });
-      }
-    } catch {}
-  }
-  return roots;
-}
-
-async function scanMarkdownFiles(rootDir) {
-  const found = [];
-  async function walk(dir, depth) {
-    if (depth > MAX_SCAN_DEPTH || found.length >= MAX_FILES) return;
-    let entries = [];
-    try {
-      entries = await readdir(dir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const entry of entries) {
-      if (found.length >= MAX_FILES) break;
-      if (entry.name.startsWith(".") && entry.isDirectory()) continue;
-      const full = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        if (!SKIP_DIRS.has(entry.name)) await walk(full, depth + 1);
-      } else if (entry.isFile() && /\.md$/i.test(entry.name)) {
-        try {
-          const info = await lstat(full);
-          if (info.isFile() && info.size <= MAX_BYTES) {
-            const real = await realpath(full);
-            if (insideOrEqual(rootDir, real)) found.push(real);
-          }
-        } catch {}
-      }
-    }
-  }
-  await walk(rootDir, 0);
-  found.sort((a, b) => {
-    const aMarkmap = /\.markmap\.md$/i.test(a) ? 0 : 1;
-    const bMarkmap = /\.markmap\.md$/i.test(b) ? 0 : 1;
-    if (aMarkmap !== bMarkmap) return aMarkmap - bMarkmap;
-    return a.localeCompare(b);
-  });
-  return found;
-}
 
 function openExternalUrl(url) {
   if (typeof url !== "string" || !/^https:\/\//i.test(url)) return;
@@ -195,52 +88,21 @@ export function createAntigravitySidecar({
   let browserLicense = null;
   let browserServed = null;
   let activeFile = null;
-
-  async function allowedRoots(workspaceUris = []) {
-    const roots = new Map(); // realpath -> { path, name, active }
-    const uris = Array.isArray(workspaceUris) ? workspaceUris : [];
-    for (const uri of uris) {
-      const p = uriToPath(uri);
-      if (!p) continue;
-      const real = await realpath(p).catch(() => null);
-      if (real && !roots.has(real)) {
-        roots.set(real, { path: real, name: basename(real), active: true });
-      }
-    }
-    const target = await readTargetSelection();
-    if (target && !roots.has(target.workspace)) {
-      roots.set(target.workspace, { path: target.workspace, name: basename(target.workspace), active: roots.size === 0 });
-    }
-    for (const proj of await discoverAntigravityProjects()) {
-      if (!roots.has(proj.path)) {
-        roots.set(proj.path, { path: proj.path, name: proj.name, active: false });
-      }
-    }
-    if (roots.size === 0) {
-      const cwd = await realpath(process.cwd()).catch(() => null);
-      if (cwd) roots.set(cwd, { path: cwd, name: basename(cwd), active: true });
-    }
-    return { roots: [...roots.values()], target };
-  }
-
-  async function assertAllowedMarkdownFile(candidatePath, workspaceUris = []) {
-    if (typeof candidatePath !== "string" || !candidatePath.trim()) {
-      throw new Error("未指定 Markdown 文件。");
-    }
-    const raw = uriToPath(candidatePath.trim()) || resolve(candidatePath.trim());
-    if (!/\.md$/i.test(raw)) throw new Error("请选择 .md 或 .markmap.md 文件。");
-    const info = await lstat(raw);
-    if (!info.isFile() || info.size > MAX_BYTES) throw new Error("请选择 5 MiB 以内的普通 Markdown 文件。");
-    const real = await realpath(raw);
-    if (real !== raw || !/\.md$/i.test(real)) throw new Error("不支持符号链接或非 Markdown 文件。");
-
-    const brainRoot = await realpath(join(homedir(), ".gemini", "antigravity", "brain")).catch(() => null);
-    const inBrainArtifact = Boolean(brainRoot && insideOrEqual(brainRoot, real) && !real.includes(`${sep}.system_generated${sep}`));
-    const { roots, target } = await allowedRoots(workspaceUris);
-    const permitted = inBrainArtifact || (target && target.file === real) || roots.some(r => insideOrEqual(r.path, real));
-    if (!permitted) throw new Error("该文件不在当前允许的工作区或项目目录内。");
-    return real;
-  }
+  const serialized = createSerialQueue();
+  const say = (zh, en) => (detectOsLocale() === "zh" ? zh : en);
+  /** Roots shown by the full-window browser editor; refreshed in place on every "Open in Browser". */
+  const browserRoots = [];
+  /** The file each open panel shows (by the panel id its bridge sends), so images resolve per panel. */
+  const panelFiles = new Map();
+  const rememberPanel = (panel, file) => {
+    if (typeof panel !== "string" || !panel || !file) return;
+    panelFiles.delete(panel);
+    panelFiles.set(panel, file);
+    if (panelFiles.size > 64) panelFiles.delete(panelFiles.keys().next().value);
+  };
+  // The same confinement rules as the MCP server (packages/cli/src/workspace-fs.ts).
+  const { allowedRoots, assertAllowedFile } = createWorkspaceAccess();
+  const assertAllowedMarkdownFile = (candidatePath, workspaceUris = []) => assertAllowedFile(candidatePath, workspaceUris);
 
   async function readDocState(filePath) {
     const source = await fileSource(filePath);
@@ -275,7 +137,7 @@ export function createAntigravitySidecar({
     }
 
     for (const root of roots) {
-      const files = await scanMarkdownFiles(root.path);
+      const files = (await scanMarkdownFiles(root.path)).map(entry => entry.path);
       for (const file of files) {
         if (seen.has(file)) continue;
         seen.add(file);
@@ -291,36 +153,24 @@ export function createAntigravitySidecar({
     return { files: items, target };
   }
 
-  // Serve index.html with preload.js and bridge.js injected before the web bundle.
   const rawHtml = readFileSync(join(webRoot, "index.html"), "utf8");
-  const pageHtml = rawHtml.replace(
-    "<head>",
-    '<head>\n  <script src="/preload.js"></script>\n  <script src="/bridge.js"></script>',
-  );
+  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">`;
   app.page("/", () => {
-    console.log("[inkmap] GET /");
-    return pageHtml;
+    const osLoc = detectOsLocale();
+    return rawHtml
+      .replace(/<html\b([^>]*)>/i, () => `<html lang="${osLoc === "zh" ? "zh-CN" : "en"}" data-os-locale="${osLoc}">`)
+      .replace("<head>", () => `<head>\n  ${cspMeta}\n  <script src="/preload.js"></script>\n  <script src="/bridge.js"></script>`);
   });
 
   const bridgeJs = readFileSync(join(__dirname, "bridge.js"), "utf8");
-  app.page("/bridge.js", () => {
-    console.log("[inkmap] GET /bridge.js");
-    return bridgeJs;
-  });
+  app.page("/bridge.js", () => bridgeJs);
   app.api("/bridge.js", () => new SidecarResponse(bridgeJs, { contentType: "application/javascript; charset=utf-8" }), "GET");
 
+  let preloadedAppJs = null;
   try {
-    const appJs = readFileSync(join(webRoot, "app.js"), "utf8");
-    app.page("/app.js", () => {
-      console.log(`[inkmap] GET /app.js (${appJs.length} chars)`);
-      return appJs;
-    });
+    preloadedAppJs = readFileSync(join(webRoot, "app.js"), "utf8");
+    app.page("/app.js", () => preloadedAppJs);
   } catch {}
-
-  app.api("/api/debug", async data => {
-    console.log("[inkmap] CLIENT_DEBUG:", JSON.stringify(data));
-    return { ok: true };
-  }, "POST");
 
   function registerStaticDir(dir, prefix = "") {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -330,22 +180,18 @@ export function createAntigravitySidecar({
         registerStaticDir(full, route);
       } else if (entry.isFile() && route !== "/index.html") {
         const contentType = TYPES[extname(entry.name).toLowerCase()] || "application/octet-stream";
-        const body = readFileSync(full);
-        app.api(route, () => {
-          console.log(`[inkmap] GET ${route} (${body.length} bytes)`);
-          return new SidecarResponse(body, {
-            contentType,
-            headers: { "Cache-Control": "private, max-age=3600" },
-          });
-        }, "GET");
+        const body = route === "/app.js" && preloadedAppJs ? Buffer.from(preloadedAppJs, "utf8") : readFileSync(full);
+        app.api(route, () => new SidecarResponse(body, {
+          contentType,
+          headers: { "Cache-Control": "private, max-age=3600" },
+        }), "GET");
       }
     }
   }
   registerStaticDir(webRoot);
 
-  app.api("/api/init", async data => {
+  app.api("/api/init", data => serialized(async () => {
     const workspaceUris = Array.isArray(data?.workspaceUris) ? data.workspaceUris : [];
-    console.log(`[inkmap] /api/init workspaces=${JSON.stringify(workspaceUris)} requested=${data?.requestedFile || ""}`);
     const { files, target } = await collectFiles(workspaceUris);
     let chosen = null;
     if (typeof data?.requestedFile === "string" && data.requestedFile.trim()) {
@@ -371,13 +217,17 @@ export function createAntigravitySidecar({
         license: lic,
         doc: {
           name: "Inkmap",
-          md: "# Inkmap\n\n- 请在工作区中添加或选择一份 `.md` / `.markmap.md` 文件\n- 或在对话中告诉 AI：「用 Inkmap 打开某文件」\n",
+          md: say(
+            "# Inkmap\n\n- 请在工作区中添加或选择一份 `.md` / `.markmap.md` 文件\n- 或在对话中告诉 AI：「用 Inkmap 打开某文件」\n",
+            "# Inkmap\n\n- Add or pick a `.md` / `.markmap.md` file in this workspace\n- Or ask the AI: \"Open <file> with Inkmap\"\n",
+          ),
           version: "empty",
           writable: false,
         },
       };
     }
     activeFile = chosen;
+    rememberPanel(data?.panel, chosen);
     license.track?.("doc_open", 1, "antigravity");
     const { doc } = await readDocState(chosen);
     return {
@@ -388,12 +238,13 @@ export function createAntigravitySidecar({
       license: lic,
       doc,
     };
-  }, "POST");
+  }), "POST");
 
-  app.api("/api/open", async data => {
+  app.api("/api/open", data => serialized(async () => {
     const workspaceUris = Array.isArray(data?.workspaceUris) ? data.workspaceUris : [];
     const file = await assertAllowedMarkdownFile(data?.file, workspaceUris);
     activeFile = file;
+    rememberPanel(data?.panel, file);
     license.track?.("doc_open", 1, "antigravity");
     const [{ doc }, { files, target }] = await Promise.all([
       readDocState(file),
@@ -406,14 +257,15 @@ export function createAntigravitySidecar({
       targetSeq: target?.seq || 0,
       doc,
     };
-  }, "POST");
+  }), "POST");
 
-  const pollHandler = async data => {
+  const pollHandler = data => serialized(async () => {
     const target = await readTargetSelection();
     const clientSeq = Number(data?.targetSeq) || 0;
-    if (target && target.seq > clientSeq && target.file !== data?.file) {
-      console.log(`[inkmap] /api/poll SWITCH data=${JSON.stringify(data)} targetSeq=${target.seq}`);
+    // A focus request from one panel's UI (`editorOnly`) moves the IDE editor, not the other panels.
+    if (target && target.seq > clientSeq && !target.editorOnly && target.file !== data?.file) {
       activeFile = target.file;
+      rememberPanel(data?.panel, target.file);
       const { doc } = await readDocState(target.file);
       return {
         switchedFile: target.file,
@@ -425,7 +277,8 @@ export function createAntigravitySidecar({
     const file = data?.file || activeFile;
     if (!file) return { unchanged: true, targetSeq: target?.seq || clientSeq };
     try {
-      const { doc } = await readDocState(file);
+      const valid = await assertAllowedMarkdownFile(file, Array.isArray(data?.workspaceUris) ? data.workspaceUris : []);
+      const { doc } = await readDocState(valid);
       if (data?.version && doc.version !== data.version) {
         return { changed: true, doc, targetSeq: target?.seq || clientSeq };
       }
@@ -433,19 +286,19 @@ export function createAntigravitySidecar({
     } catch {
       return { unchanged: true, targetSeq: target?.seq || clientSeq };
     }
-  };
+  });
   app.api("/api/poll", pollHandler, "GET");
   app.api("/api/poll", pollHandler, "POST");
 
-  app.api("/api/save", async data => {
+  app.api("/api/save", data => serialized(async () => {
     const workspaceUris = Array.isArray(data?.workspaceUris) ? data.workspaceUris : [];
     const file = await assertAllowedMarkdownFile(data?.file || activeFile, workspaceUris);
     const md = data?.md;
     if (typeof md !== "string" || Buffer.byteLength(md, "utf8") > MAX_BYTES) {
-      throw new Error("Markdown 内容无效或超过 5 MiB 限制。");
+      throw new Error(say("Markdown 内容无效或超过 5 MiB 限制。", "The Markdown is invalid or larger than 5 MiB."));
     }
     if (!hasAccess(await license.state())) {
-      throw new Error("Inkmap 免费试用已到期，请登录或解锁 Pro。");
+      throw new Error(say("Inkmap 免费试用已到期，请登录或解锁 Pro。", "The Inkmap trial has ended. Sign in or unlock Pro."));
     }
     const { source, doc } = await readDocState(file);
     if (data?.baseVersion && data.baseVersion !== doc.version) {
@@ -456,7 +309,7 @@ export function createAntigravitySidecar({
       license.track?.("doc_edit", 1, "antigravity");
     }
     return { ok: true, version: hash(md) };
-  }, "POST");
+  }), "POST");
 
   app.api("/api/telemetry", async data => {
     const ev = typeof data?.event === "string" ? data.event : "";
@@ -464,13 +317,15 @@ export function createAntigravitySidecar({
     return { ok: true };
   }, "POST");
 
-  app.api("/api/open-browser", async data => {
+  app.api("/api/open-browser", data => serialized(async () => {
     if (!hasAccess(await license.state())) {
-      throw new Error("Inkmap 免费试用已到期，请先登录已购账号恢复 Pro。");
+      throw new Error(say("Inkmap 免费试用已到期，请先登录已购账号恢复 Pro。", "The Inkmap trial has ended. Sign in with the account that bought Pro first."));
     }
     const workspaceUris = Array.isArray(data?.workspaceUris) ? data.workspaceUris : [];
     const targetFile = await assertAllowedMarkdownFile(data?.file || activeFile, workspaceUris);
     const { roots } = await allowedRoots(workspaceUris);
+    // serve() reads this array on every request, so the browser's file tree follows workspace changes.
+    browserRoots.splice(0, browserRoots.length, ...roots.map(r => r.path));
     license.track?.("feature_browser", 1, "antigravity");
     if (!browserServed) {
       browserServed = (async () => {
@@ -482,8 +337,7 @@ export function createAntigravitySidecar({
           port: 0,
           license: browserLicense,
           sidebar: false,
-          loginOnly: false,
-          workspaceRoots: roots.map(r => r.path),
+          workspaceRoots: browserRoots,
         });
       })();
       browserServed.catch(() => {
@@ -491,12 +345,12 @@ export function createAntigravitySidecar({
       });
     }
     const served = await browserServed;
-    await served.switchToFile?.(targetFile).catch(() => {});
+    await served.switchToFile?.(targetFile, { trustCaller: true }).catch(() => {});
     await openBrowserWindow(served.url);
     return { ok: true, url: served.url };
-  }, "POST");
+  }), "POST");
 
-  app.api("/api/view", async data => {
+  app.api("/api/view", data => serialized(async () => {
     const workspaceUris = Array.isArray(data?.workspaceUris) ? data.workspaceUris : [];
     const file = await assertAllowedMarkdownFile(data?.file || activeFile, workspaceUris).catch(() => null);
     if (!file) return { ok: false };
@@ -506,22 +360,25 @@ export function createAntigravitySidecar({
       await source.writeView?.(cleaned).catch(() => {});
     }
     return { ok: true };
-  }, "POST");
+  }), "POST");
 
   app.api("/api/license", async () => await license.state(), "GET");
 
-  app.api("/api/checkout", async () => {
-    const url = await license.connect("restore");
+  app.api("/api/checkout", async data => {
+    const locale = typeof data?.locale === "string" ? data.locale : undefined;
+    const url = await license.connect("restore", locale);
     openExternalUrl(url);
     return { url };
   }, "POST");
 
   app.api("/api/phone-send", async data => {
-    return { result: await license.sendPhoneCode(String(data?.phone ?? "")) };
+    const locale = typeof data?.locale === "string" ? data.locale : undefined;
+    return { result: await license.sendPhoneCode(String(data?.phone ?? ""), locale) };
   }, "POST");
 
   app.api("/api/phone-verify", async data => {
-    return { result: await license.signInByPhone(String(data?.phone ?? ""), String(data?.code ?? "")) };
+    const locale = typeof data?.locale === "string" ? data.locale : undefined;
+    return { result: await license.signInByPhone(String(data?.phone ?? ""), String(data?.code ?? ""), locale) };
   }, "POST");
 
   app.api("/api/signout", async () => {
@@ -531,7 +388,7 @@ export function createAntigravitySidecar({
 
   app.api("/api/doc-asset", async data => {
     const notFound = () => new SidecarResponse("not found", { status: 404 });
-    const file = activeFile;
+    const file = (typeof data?.panel === "string" && panelFiles.get(data.panel)) || activeFile;
     const rel = typeof data?.path === "string" ? data.path.replace(/\?.*$/, "") : "";
     if (!file || !rel) return notFound();
     try {
@@ -539,13 +396,18 @@ export function createAntigravitySidecar({
       const candidate = normalize(join(dir, decodeURIComponent(rel)));
       if (!insideOrEqual(dir, candidate) || candidate === dir) return notFound();
       const realAsset = await realpath(candidate);
-      if (!insideOrEqual(dir, realAsset) || !/\.(?:png|jpe?g|gif|webp|svg)$/i.test(realAsset)) return notFound();
+      if (!insideOrEqual(dir, realAsset) || !/\.(?:png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(realAsset)) return notFound();
       const info = await lstat(realAsset);
       if (!info.isFile() || info.size > MAX_BYTES) return notFound();
-      const type = TYPES[extname(realAsset).toLowerCase()] || "application/octet-stream";
+      const ext = extname(realAsset).toLowerCase();
+      const type = TYPES[ext] || "application/octet-stream";
+      const headers = { "Cache-Control": "no-cache" };
+      if (ext === ".svg") {
+        headers["Content-Security-Policy"] = "default-src 'none'; style-src 'unsafe-inline'; img-src data:; sandbox";
+      }
       return new SidecarResponse(await readFile(realAsset), {
         contentType: type,
-        headers: { "Cache-Control": "no-cache" },
+        headers,
       });
     } catch {
       return notFound();

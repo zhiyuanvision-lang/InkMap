@@ -1,5 +1,5 @@
 import katex from "katex";
-import { preloadDiagram, type DiagramImage } from "./diagrams";
+import { cachedDiagram, preloadDiagram } from "./diagrams";
 import { Marked, type TokenizerAndRendererExtension, type Tokens } from "marked";
 import DOMPurify from "dompurify";
 
@@ -89,10 +89,17 @@ export function createRenderer(assetBase: string, privateDocument = false) {
       const target = new URL(href, location.origin + assetBase);
       return target.origin === location.origin && target.pathname.startsWith(assetBase) ? target.href : "";
     }
-    return absolute ? href : assetBase + href.replace(/^\.\//, "");
+    const rel = href.replace(/^\.\//, "");
+    if (absolute) return href;
+    if (!assetBase.endsWith("=")) return assetBase + rel;
+    // A query-string base needs one encoding; decode first so `my%20pic.png` is not sent as `my%2520pic.png`.
+    let path = rel;
+    try {
+      path = decodeURIComponent(rel);
+    } catch {}
+    return assetBase + encodeURIComponent(path);
   };
 
-  const diagrams = new Map<string, DiagramImage | undefined>();
   let nestedMarkdownDepth = 0;
   const marked = new Marked({
     gfm: true,
@@ -102,8 +109,9 @@ export function createRenderer(assetBase: string, privateDocument = false) {
         return privateDocument ? escapeAttr(raw) : false;
       },
       link({ href, tokens }: Tokens.Link) {
-        if (!privateDocument) return false;
         const label = this.parser.parseInline(tokens);
+        if (/^\s*(?:javascript|vbscript|data):/i.test(href)) return label;
+        if (!privateDocument) return false;
         if (!/^(https?:\/\/|mailto:)/i.test(href)) return label;
         return `<a href="${escapeAttr(href)}" target="_blank" rel="noopener noreferrer">${label}</a>`;
       },
@@ -119,7 +127,7 @@ export function createRenderer(assetBase: string, privateDocument = false) {
           }
         }
         if (cleanLang !== "mermaid") return false;
-        const image = diagrams.get(text);
+        const image = cachedDiagram(text);
         const content = image
           ? `<div class="ink-diagram-viewport"><img class="ink-diagram-image" src="${image.src}" width="${image.width}" height="${image.height}" data-natural-width="${image.naturalWidth}" data-natural-height="${image.naturalHeight}" alt="Mermaid"></div>`
           : `<pre class="ink-diagram-error"><code>${escapeAttr(text)}</code></pre>`;
@@ -138,12 +146,24 @@ export function createRenderer(assetBase: string, privateDocument = false) {
     },
   });
 
+  /** Mermaid sources in `md`, including those inside ```markdown fences, which the code renderer expands. */
+  function collectDiagrams(md: string, out: Set<string>, depth = 0) {
+    marked.walkTokens(marked.lexer(md), token => {
+      if (token.type !== "code") return;
+      const lang = token.lang?.trim().toLowerCase();
+      if (lang === "mermaid") out.add(token.text);
+      else if ((lang === "markdown" || lang === "md") && depth < 2 && /mermaid/i.test(token.text)) {
+        collectDiagrams(token.text, out, depth + 1);
+      }
+    });
+  }
+
   let mathFontsReady: Promise<unknown> | undefined;
 
   return {
     render(md: string): string {
       const html = marked.parse(md, { async: false }) as string;
-      return privateDocument ? DOMPurify.sanitize(html) : html;
+      return DOMPurify.sanitize(html, { ADD_ATTR: ["target"] });
     },
 
     /** Loads image sizes and math fonts before layout so node boxes are measured accurately. */
@@ -157,13 +177,7 @@ export function createRenderer(assetBase: string, privateDocument = false) {
           const src = resolve(m[1]);
           if (src) srcs.add(src);
         }
-        if (/mermaid/i.test(md)) {
-          marked.walkTokens(marked.lexer(md), token => {
-            if (token.type === "code" && token.lang?.trim().toLowerCase() === "mermaid") {
-              diagramSources.add(token.text);
-            }
-          });
-        }
+        if (/mermaid/i.test(md)) collectDiagrams(md, diagramSources);
       }
       if (needsMath && typeof document !== "undefined" && document.fonts) {
         mathFontsReady ??= Promise.all(
@@ -174,12 +188,7 @@ export function createRenderer(assetBase: string, privateDocument = false) {
       }
       await Promise.all([
         mathFontsReady,
-        ...[...diagramSources].map(async source => {
-          if (!diagrams.get(source)) {
-            const img = await preloadDiagram(source);
-            if (img) diagrams.set(source, img);
-          }
-        }),
+        ...[...diagramSources].map(source => preloadDiagram(source)),
         ...[...srcs].filter(src => !sizes.has(src)).map(
           src =>
             new Promise<void>(done => {

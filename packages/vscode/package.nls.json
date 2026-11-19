@@ -9,6 +9,7 @@
   "command.showSource": "Open Markdown to the Side",
   "command.addToChat": "Add to Chat",
   "command.upgrade": "Get Inkmap Pro",
+  "command.installDeepSeekHarness": "Install in DeepSeek Harness",
   "config.billingOrigin": "HTTPS origin of the Inkmap checkout service.",
   "config.browser": "Browser used by “Open Mind Map in Browser”",
   "config.browser.chrome": "Google Chrome (falls back to the default browser when not found)",

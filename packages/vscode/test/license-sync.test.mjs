@@ -158,6 +158,9 @@ test("records plugin_activate on startup and offers one-time Markdown onboarding
   const globalStore = new Map();
   const subscriptions = [];
   const mdUri = FakeUri.file("/tmp/demo.md");
+  // Keep the DeepSeek Harness check away from this computer's real ~/.dsh.
+  const savedDshHome = process.env.DSH_HOME;
+  process.env.DSH_HOME = join(fileURLToPath(new URL("../", import.meta.url)), "no-such-dsh-home");
   vscode.window.activeTextEditor = { document: { languageId: "markdown", uri: mdUri } };
 
   try {
@@ -183,5 +186,7 @@ test("records plugin_activate on startup and offers one-time Markdown onboarding
     assert.equal(infoPrompts.length, 1);
   } finally {
     for (const sub of subscriptions) sub?.dispose?.();
+    if (savedDshHome === undefined) delete process.env.DSH_HOME;
+    else process.env.DSH_HOME = savedDshHome;
   }
 });

@@ -47,6 +47,20 @@ async function assertFile(path) {
   if (!info.isFile() || info.size > maxBytes || await realpath(path) !== path) throw new FileUnavailable();
 }
 
+/** Re-checks the file on every read and caps writes, so a swapped-in symlink or huge write is refused. */
+async function confinedSource(path) {
+  const source = await fileSource(path);
+  return {
+    ...source,
+    read: async () => { await assertFile(path); return source.read(); },
+    write: async md => {
+      if (Buffer.byteLength(md) > maxBytes) throw new FileUnavailable();
+      await assertFile(path);
+      return source.write(md);
+    },
+  };
+}
+
 function json(res, status, body) {
   res.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
   res.end(JSON.stringify(body));
@@ -64,10 +78,14 @@ async function readBody(req) {
   catch { return null; }
 }
 
+const LEASE_TIMEOUT_MS = 15 * 60_000;
+const LEASE_SWEEP_MS = 5 * 60_000;
+
 export function apply(ctx) {
-  const license = licenseService(fileSessionStorage(), () => YUNFAN_BILLING_ORIGIN, { host: "deepseek" });
+  const license = licenseService(fileSessionStorage(), () => process.env.INKMAP_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN, { host: "deepseek" });
   license.track?.("plugin_activate", 1, "deepseek");
   const editors = new Map();
+  /** lease id → { path, seen }: one per open tab; tabs renew every 5 minutes (see client.mjs). */
   const leases = new Map();
   let disposed = false;
 
@@ -75,6 +93,21 @@ export function apply(ctx) {
     if (editors.get(path) === editor) editors.delete(path);
     return editor.server.then(server => server.close(), () => {});
   }
+
+  function releaseLease(id) {
+    const lease = leases.get(id);
+    if (!lease) return;
+    leases.delete(id);
+    const editor = editors.get(lease.path);
+    if (editor && --editor.users === 0) return closeEditor(lease.path, editor);
+  }
+
+  // A renderer that crashed never sends DELETE; without this its editor server and file watcher would stay open.
+  const sweep = setInterval(() => {
+    const cutoff = Date.now() - LEASE_TIMEOUT_MS;
+    for (const [id, lease] of leases) if (lease.seen < cutoff) void releaseLease(id);
+  }, LEASE_SWEEP_MS);
+  sweep.unref?.();
 
   ctx.effect(() => {
     const unregister = ctx.webServer.register({
@@ -91,18 +124,21 @@ export function apply(ctx) {
         const body = await readBody(req).catch(() => null);
         if (!body || typeof body !== "object") return json(res, 400, {});
         if (req.method === "DELETE") {
-          const path = leases.get(body?.lease);
-          if (path === undefined) return json(res, 200, {});
-          leases.delete(body.lease);
-          const editor = editors.get(path);
-          if (editor && --editor.users === 0) await closeEditor(path, editor);
+          await releaseLease(body?.lease);
+          return json(res, 200, {});
+        }
+        if (body.action === "renew") {
+          const lease = leases.get(body.lease);
+          if (disposed || !lease) return json(res, 404, {});
+          lease.seen = Date.now();
           return json(res, 200, {});
         }
         if (body.action === "sign-in" || body.action === "buy") {
           if (disposed || !leases.has(body.lease)) return json(res, 404, {});
           try {
             const mode = body.action === "buy" ? "buy" : "restore";
-            return json(res, 200, { url: await license.connect(mode) });
+            const locale = typeof body.locale === "string" ? body.locale : undefined;
+            return json(res, 200, { url: await license.connect(mode, locale) });
           } catch {
             return json(res, 502, {});
           }
@@ -113,18 +149,13 @@ export function apply(ctx) {
           if (disposed) return json(res, 503, {});
           let editor = editors.get(path);
           if (!editor) {
-            const server = fileSource(path).then(source => serve({
-              source: {
-                ...source,
-                workspaceRoot: root,
-                read: async () => { await assertFile(path); return source.read(); },
-                write: async md => {
-                  if (Buffer.byteLength(md) > maxBytes) throw new FileUnavailable();
-                  await assertFile(path);
-                  return source.write(md);
-                },
-              },
-              webRoot, license, port: 0, sidebar: true, sidebarPurchase: true, sidebarAccountNavigation: true, workspaceRoots: [root],
+            const server = confinedSource(path).then(source => serve({
+              source,
+              webRoot, license, port: 0, sidebar: true, sidebarPurchase: true, sidebarAccountNavigation: true,
+              // Stay inside the session's working directory, even when a .git folder sits above it.
+              workspaceRoots: [root],
+              confineToWorkspaceRoots: true,
+              openSource: async next => { await assertFile(next); return confinedSource(next); },
             }));
             editor = { users: 0, server };
             editors.set(path, editor);
@@ -132,11 +163,20 @@ export function apply(ctx) {
               if (editors.get(path)?.server === server) editors.delete(path);
             });
           }
-          const server = await editor.server;
-          if (disposed) return json(res, 503, {});
-          const lease = randomUUID();
-          leases.set(lease, path);
           editor.users++;
+          let server;
+          try {
+            server = await editor.server;
+          } catch (err) {
+            if (--editor.users === 0) void closeEditor(path, editor);
+            throw err;
+          }
+          if (disposed) {
+            if (--editor.users === 0) void closeEditor(path, editor);
+            return json(res, 503, {});
+          }
+          const lease = randomUUID();
+          leases.set(lease, { path, seen: Date.now() });
           return json(res, 200, { url: server.url, lease });
         } catch (error) {
           const unavailable = error instanceof FileUnavailable || ["ENOENT", "EACCES", "EPERM"].includes(error?.code);
@@ -146,6 +186,7 @@ export function apply(ctx) {
     });
     return () => {
       disposed = true;
+      clearInterval(sweep);
       unregister();
       license.dispose();
       leases.clear();

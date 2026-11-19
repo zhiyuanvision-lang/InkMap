@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { copyFile, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -242,15 +242,17 @@ describe("inkmap editor", { skip: !existsSync(CHROME) && "Chrome not found" }, (
       await t.page.keyboard.press("Escape");
       assert.ok(await t.page.$("#upgrade:not([hidden])"));
       assert.equal(await t.page.$eval("#map", el => el.inert), true);
-      const status = await t.page.evaluate(async () => {
+      const { status, error } = await t.page.evaluate(async () => {
         const doc = await (await fetch("/api/doc")).json();
         const response = await fetch("/api/doc", {
           method: "PUT", headers: { "content-type": "application/json" },
           body: JSON.stringify({ md: "# blocked", baseVersion: doc.version }),
         });
-        return response.status;
+        return { status: response.status, error: (await response.json()).error };
       });
+      // A same-origin save reaches the trial check; an Origin regression would answer "forbidden" instead.
       assert.equal(status, 403);
+      assert.equal(error, "Inkmap trial expired");
       assert.equal(await readFile(t.file, "utf8"), SIMPLE);
     }, { license: { state: async () => ({ pro: false, trialUntil: 1 }), onChange: () => () => {} } });
   });
@@ -336,6 +338,46 @@ describe("inkmap editor", { skip: !existsSync(CHROME) && "Chrome not found" }, (
     );
   });
 
+  it("shows a login-only paywall with the remembered email ready to send, and unlocks after payment", async () => {
+    let state = { pro: false, trialUntil: 1, lastSignIn: "buyer@example.com" };
+    let notify;
+    const sent = [];
+    const license = {
+      state: async () => state,
+      onChange(listener) { notify = listener; return () => {}; },
+      async sendPhoneCode(phone) {
+        sent.push(phone);
+        return { ok: true, value: undefined };
+      },
+      // The code is right, but the account has not paid yet.
+      async signInByPhone() { return { ok: false, reason: "notPro" }; },
+      async connect() { throw new Error("login-only hosts never open checkout"); },
+      async deactivate() {},
+    };
+    await withDoc("restore.md", SIMPLE, async t => {
+      const { page } = t;
+      await page.waitForSelector("#upgrade:not([hidden]) #upgrade-phone-slot .phone-sign-in");
+      assert.equal(await page.$eval("#sign-in-phone", el => el.value), "buyer@example.com", "the remembered email is filled in");
+      assert.equal(await page.$eval("#cancel-phone-sign-in", el => el.hidden), true, "the paywall form cannot be closed away");
+      assert.equal(await page.$eval("#upgrade-sign-in", el => el.hidden), true, "no extra sign-in button");
+      assert.doesNotMatch(await page.$eval("#upgrade-title", el => el.textContent), /已登录|Signed in/);
+      assert.equal(await page.evaluate(() => document.activeElement?.id), "send-phone-code", "one click sends the email");
+
+      await page.click("#send-phone-code");
+      await waitFor(() => page.$eval("#sign-in-code", el => !el.readOnly && document.activeElement === el), "the code field after sending");
+      assert.deepEqual(sent, ["buyer@example.com"]);
+      await page.type("#sign-in-code", "123456");
+      await waitFor(() => page.$eval("#phone-sign-in-status", el => !el.hidden && /尚未开通 Pro|doesn't have Pro yet/.test(el.textContent)),
+        "the unpaid-account explanation");
+
+      // Paying from the email signs the plugin in by itself.
+      state = { pro: true, connected: true, account: "b***@example.com", lastSignIn: "buyer@example.com" };
+      notify(state);
+      await waitFor(() => page.$eval("#upgrade", el => el.hidden), "the paywall closes after payment");
+      assert.equal(await page.$eval("#account", el => el.dataset.plan), "pro");
+    }, { license, allowPurchase: false });
+  });
+
   it("edits rich nodes through the source panel", async () => {
     await withDoc("table.md", SIMPLE, async t => {
       assert.ok(await activate(t.page, "| a | b |"));
@@ -404,7 +446,7 @@ describe("licenseService", () => {
       assert.equal(signedIn.ok, true);
       assert.equal(signedIn.value.pro, true);
       assert.equal(signedIn.value.account, "138****8000");
-      assert.deepEqual(JSON.parse(saved), { origin, token: newToken });
+      assert.deepEqual(JSON.parse(saved), { origin, token: newToken, lastSignIn: "13800008000" }, "the number is remembered to prefill the form");
     } finally {
       service.dispose();
       globalThis.fetch = realFetch;
@@ -548,6 +590,10 @@ describe("licenseService", () => {
   });
 
   it("auto-completes Category 2 login via X-Inkmap-Pending-Token when the user clicks the email magic link", async () => {
+    // During the trial the email's button signs in at once; after it, only a payment does (license-sign-in.test.js).
+    const prevHome = process.env.INKMAP_HOME;
+    const freshHome = await mkdtemp(join(tmpdir(), "inkmap-magic-test-"));
+    process.env.INKMAP_HOME = freshHome;
     let saved;
     const origin = "https://billing.example.com";
     const pendingToken = "m".repeat(43);
@@ -577,6 +623,7 @@ describe("licenseService", () => {
     const svc = licenseService({ read: async () => saved, write: async v => { saved = v; } }, () => origin, { loginOnly: true });
     svc.onChange(s => states.push(s));
     try {
+      await svc.state();
       const sent = await svc.sendPhoneCode("magic@example.com", "zh");
       assert.equal(sent.ok, true);
       magicClicked = true;
@@ -587,6 +634,9 @@ describe("licenseService", () => {
     } finally {
       svc.dispose();
       globalThis.fetch = realFetch;
+      if (prevHome === undefined) delete process.env.INKMAP_HOME;
+      else process.env.INKMAP_HOME = prevHome;
+      await rm(freshHome, { recursive: true, force: true });
     }
   });
 
@@ -612,7 +662,7 @@ describe("licenseService", () => {
       await svc.flushTelemetry();
       assert.equal(payloads.length, 1);
       assert.equal(payloads[0].host, "trae");
-      assert.equal(payloads[0].version, "0.3.10");
+      assert.equal(payloads[0].version, JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version);
       assert.equal(payloads[0].events.app_open, 1);
       assert.equal(payloads[0].events.plugin_activate, 1);
     } finally {

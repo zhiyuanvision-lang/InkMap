@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DAY_MS, hasAccess, isRich, parse, plainText, serialize, serializeWithLines, trialDaysLeft } from "../src/index";
+import { DAY_MS, documentSetting, frontMatterTitle, hasAccess, isRich, parse, plainText, serialize, serializeWithLines, trialDaysLeft, withDocumentSetting, withFrontMatterTitle } from "../src/index";
 
 const roundTrip = (md: string) => serialize(parse(md));
 
@@ -22,8 +22,22 @@ describe("round trip", () => {
     ["paragraph block", "# R\n\nSome text\nmore text\n\n- item\n"],
     ["thematic breaks between sections", "# Title\n\n---\n\n## Section 1\n\n- a\n\n---\n\n## Section 2\n\n- b\n\n---\n"],
     ["no trailing newline", "# R\n\n- a"],
+    ["headings ending in hash like C# and F#", "# Learn C#\n\n## Functional F#\n\n- Issue #1#\n"],
+    ["nested 4-backtick markdown fence", "# R\n\n- outer\n  ````markdown\n  ```mermaid\n  flowchart LR\n    A --> B\n  ```\n  ## Not a live heading\n  ````\n- sibling\n"],
+    ["inline triple-backtick code span in bullet", "# R\n\n- ```inline``` code\n- next item\n"],
+    ["leading horizontal rule not misparsed as YAML frontmatter", "---\n\n# Real Heading\n\n- item\n\n---\n"],
+    ["Windows CRLF line endings preserved", "---\r\ntitle: Win\r\n---\r\n\r\n# Root\r\n\r\n- item\r\n"],
   ])("%s", (_, md) => {
     expect(roundTrip(md)).toBe(md);
+  });
+
+  it("serializes children added under H6 as list items so hierarchy survives reload", () => {
+    const doc = parse("# H1\n\n###### H6\n");
+    doc.root.children[0].children.push({ md: "Under H6", kind: "heading", children: [] });
+    const saved = serialize(doc);
+    const reloaded = parse(saved);
+    expect(reloaded.root.children[0].md).toBe("H6");
+    expect(reloaded.root.children[0].children.map(c => c.md)).toEqual(["Under H6"]);
   });
 });
 
@@ -80,6 +94,152 @@ describe("structure", () => {
     a.children.push({ ...h, children: [] });
     doc.root.children.push(a);
     expect(serialize(doc)).toBe("# R\n\n- a\n  - H\n");
+  });
+
+  it("keeps typed node text that looks like a divider or a fence from breaking the outline", () => {
+    const doc = parse("# R\n\n- a\n- b\n");
+    doc.root.children[0].md = "--";
+    doc.root.children[1].md = "```";
+    doc.root.children.push({ md: "c", kind: "item", children: [] });
+    const reloaded = parse(serialize(doc));
+    expect(reloaded.root.children.map(n => n.md)).toEqual(["\\--", "\\```", "c"]);
+  });
+
+  it("round-trips empty list items", () => {
+    const md = "# R\n\n- a\n-\n- b\n";
+    const doc = parse(md);
+    expect(doc.root.children.map(n => [n.kind, n.md])).toEqual([["item", "a"], ["item", ""], ["item", "b"]]);
+    expect(serialize(doc)).toBe(md);
+  });
+
+  it("recognizes front matter with compact YAML sequences and quoted keys", () => {
+    const doc = parse("---\ntitle: T\ntags:\n- a\n- b\n\"x-key\": 1\n---\n- one\n- two\n");
+    expect(doc.frontMatter).toBe("---\ntitle: T\ntags:\n- a\n- b\n\"x-key\": 1\n---\n");
+    expect(doc.root.md).toBe("T");
+  });
+
+  it("ignores empty and block-scalar front matter titles", () => {
+    expect(frontMatterTitle("---\ntitle:\nauthor: bob\n---\n")).toBeUndefined();
+    expect(frontMatterTitle("---\ntitle: >\n  folded\n---\n")).toBeUndefined();
+    expect(frontMatterTitle("---\r\ntitle: \"Plan\"\r\n---\r\n")).toBe("Plan");
+  });
+
+  it("strips trailing YAML comments from inkmap settings", () => {
+    expect(documentSetting("---\ninkmap:\n  theme: dark # night\n---\n", "theme")).toBe("dark");
+    expect(documentSetting("---\ninkmap:\n  theme: \"a # b\"\n---\n", "theme")).toBe("a # b");
+  });
+});
+
+describe("front matter keys and titles", () => {
+  it.each([
+    ["Chinese keys", "---\n标题: 测试\n作者: 张三\n---\n- a\n", "测试"],
+    ["keys with spaces", "---\nLast Modified: 2024-01-01\ntitle: Notes\n---\n- a\n", "Notes"],
+    ["keys with an inner colon", "---\nog:image: /a.png\ntitle: T\n---\n- a\n", "T"],
+  ])("recognizes front matter with %s", (_, md, title) => {
+    const doc = parse(md);
+    expect(doc.frontMatter).not.toBe("");
+    expect(doc.root.children.map(n => n.md)).toEqual(["a"]);
+    if (title !== "测试") expect(doc.root.md).toBe(title);
+    expect(serialize(doc)).toBe(md);
+  });
+
+  it("still treats a leading thematic break before a heading as content", () => {
+    expect(parse("---\n# Real Heading\n- item\n---\n").frontMatter).toBe("");
+  });
+
+  it("reads quoted titles the way YAML does", () => {
+    expect(frontMatterTitle('---\ntitle: "My \\"Doc\\""\n---\n')).toBe('My "Doc"');
+    expect(frontMatterTitle("---\ntitle: 'It''s here'\n---\n")).toBe("It's here");
+    expect(frontMatterTitle('---\ntitle: "Plan" # draft\n---\n')).toBe("Plan");
+    expect(frontMatterTitle("---\ntitle: Learn C#\n---\n")).toBe("Learn C#");
+  });
+
+  it("writes titles that read back unchanged", () => {
+    for (const title of ['My "Doc"', "a \\ b", "$& price", "中文 标题"]) {
+      expect(frontMatterTitle(withFrontMatterTitle("---\nauthor: x\n---\n", title))).toBe(title);
+    }
+  });
+
+  it("replaces an empty or block-scalar title instead of adding a second one", () => {
+    expect(withFrontMatterTitle("---\ntitle:\nauthor: x\n---\n", "New")).toBe('---\ntitle: "New"\nauthor: x\n---\n');
+    expect(withFrontMatterTitle("---\ntitle: >\n  folded\n  text\nauthor: x\n---\n", "New")).toBe('---\ntitle: "New"\nauthor: x\n---\n');
+    expect(withFrontMatterTitle("", "New", "\r\n")).toBe('---\r\ntitle: "New"\r\n---\r\n');
+    expect(withFrontMatterTitle("---\r\nauthor: x\r\n---\r\n", "New")).toBe('---\r\nauthor: x\r\ntitle: "New"\r\n---\r\n');
+  });
+
+  it("drops a comment after a quoted inkmap setting", () => {
+    expect(documentSetting('---\ninkmap:\n  theme: "dark" # night\n---\n', "theme")).toBe("dark");
+  });
+});
+
+describe("paragraphs, fences and empty items", () => {
+  it("does not let a lone list marker split a paragraph", () => {
+    for (const md of ["# R\n\n$$\na\n-\nb\n$$\n", "# R\n\nThe report was published in\n2024.\n"]) {
+      const doc = parse(md);
+      expect(doc.root.children).toHaveLength(1);
+      expect(serialize(doc)).toBe(md);
+    }
+  });
+
+  it("keeps an empty item that follows a paragraph", () => {
+    const doc = parse("# R\n\npara\n");
+    doc.root.children.push({ md: "", kind: "item", children: [] });
+    const reloaded = parse(serialize(doc));
+    expect(reloaded.root.children.map(n => [n.kind, n.md])).toEqual([["block", "para"], ["item", ""]]);
+  });
+
+  it("closes a code fence left open in node text so it cannot swallow later nodes", () => {
+    const doc = parse("# R\n\n- a\n- b\n");
+    doc.root.children[0].md = "intro\n```js\nconst x = 1;";
+    const reloaded = parse(serialize(doc));
+    expect(reloaded.root.children.map(n => n.md)).toEqual(["intro\n```js\nconst x = 1;\n```", "b"]);
+  });
+
+  it("keeps a paragraph typed as a divider", () => {
+    const doc = parse("# R\n\npara\n\n- b\n");
+    doc.root.children[0].md = "---";
+    expect(parse(serialize(doc)).root.children.map(n => n.md)).toEqual(["\\---", "b"]);
+  });
+
+  it("leaves an unclosed fence at the end of the file byte for byte", () => {
+    for (const md of ["# R\n\n- a\n- ```", "# R\n\n- a\n  ```js\n  code\n", "# R\n\n```js\ncode\n"]) {
+      expect(roundTrip(md)).toBe(md);
+    }
+  });
+});
+
+describe("CRLF / BOM / front matter edge cases", () => {
+  const roundTrip = (md: string) => serialize(parse(md));
+  it.each([
+    ["front matter only LF", "---\ntitle: T\n---\n"],
+    ["front matter only CRLF", "---\r\ntitle: T\r\n---\r\n"],
+    ["BOM + heading", "\uFEFF# R\n\n- a\n"],
+    ["BOM + CRLF front matter", "\uFEFF---\r\ntitle: Bom\r\n---\r\n\r\n- a\r\n"],
+    ["CRLF fm, no trailing newline", "---\r\ntitle: T\r\n---\r\n\r\n# Root\r\n\r\n- a"],
+    ["CRLF fenced code in item", "# R\r\n\r\n- code\r\n  ```js\r\n  x\r\n  ```\r\n"],
+    ["CRLF fm + 2 blank lines", "---\r\ntitle: T\r\n---\r\n\r\n\r\n- a\r\n  - b\r\n"],
+    ["CRLF unclosed fm", "---\r\ntitle: T\r\n\r\n# R\r\n"],
+  ])("round-trips %s", (_, md) => expect(roundTrip(md)).toBe(md));
+
+  it("normalizes mixed line endings to CRLF when the file uses any CRLF", () => {
+    expect(serialize(parse("# R\r\n\n- a\n- b\r\n"))).toBe("# R\r\n\r\n- a\r\n- b\r\n");
+  });
+
+  it("keeps CRLF when inkmap settings are written into front matter", () => {
+    const fm = withDocumentSetting("---\r\ntitle: T\r\n---\r\n", "layout", "x");
+    expect(fm).toBe("---\r\ntitle: T\r\ninkmap:\r\n  layout: x\r\n---\r\n");
+    expect(documentSetting(fm, "layout")).toBe("x");
+    expect(withDocumentSetting(fm, "layout", "y")).toBe("---\r\ntitle: T\r\ninkmap:\r\n  layout: y\r\n---\r\n");
+  });
+
+  it("reads the title behind a BOM", () => {
+    expect(parse("\uFEFF---\r\ntitle: Bom\r\n---\r\n\r\n- a\r\n").root.md).toBe("Bom");
+  });
+
+  it("keeps CRLF for newly added multi-line nodes", () => {
+    const doc = parse("---\r\ntitle: T\r\n---\r\n\r\n# Root\r\n\r\n- a\r\n");
+    doc.root.children.push({ md: "new\nline", kind: "item", children: [] });
+    expect(serialize(doc)).toBe("---\r\ntitle: T\r\n---\r\n\r\n# Root\r\n\r\n- a\r\n- new\r\n  line\r\n");
   });
 });
 

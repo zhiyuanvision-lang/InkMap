@@ -32,7 +32,12 @@ const zh = {
   pending: "待保存",
   saving: "保存中…",
   saveFailed: "保存失败",
+  loadFailed: "读取文档失败：{status}",
+  cardComingSoon: "海外银行卡支付即将上线。",
   conflict: "文件已在别处修改，已载入最新内容；刚才这一步修改没有写入，请重做。",
+  unsavedDiscarded: "已切换到另一个文件，上一个文件中尚未保存的最后修改没有写入。",
+  chatContextFile: "请结合思维导图文件 `{file}` 进行分析。",
+  chatContextLines: "来自 `{file}`（第 {start}–{end} 行）：",
   selectNode: "先选中一个节点",
   newTopic: "新主题",
 
@@ -87,7 +92,6 @@ const zh = {
   proSubtitle: "一次购买，永久使用，包含后续全部更新",
   "feature.markdown": "在思维导图中编辑 Markdown，并与源文件同步",
   "feature.diagram": "预览 Mermaid 流程图和状态图，修改源码即更新",
-  "feature.noAds": "去除全部广告，界面清爽专注",
   "feature.browser": "在 Chrome 中全屏编辑，与编辑器实时同步",
   "feature.export": "导出无水印高清 PNG、SVG 矢量图与交互式分享 HTML，直接放进文档和 PPT",
   "feature.layouts": "7 种额外结构：组织结构图、目录组织图、时间轴、鱼骨图等",
@@ -95,7 +99,6 @@ const zh = {
   "feature.replace": "整张导图查找替换，一键批量修改",
   "feature.present": "演示模式：逐个节点放映，适合讲解、汇报和复习",
   "feature.updates": "终身会员：之后新增的 Pro 功能全部免费获得",
-  "featureName.noAds": "去除广告",
   "featureName.browser": "浏览器全屏编辑",
   "featureName.export": "导出图片",
   "featureName.layouts": "更多结构",
@@ -114,7 +117,8 @@ const zh = {
   sendPhoneCode: "获取验证码",
   resendPhoneCode: "{seconds}s 后重发",
   phoneCodeSent: "6 位验证码已发送至邮箱（10 分钟内有效），输入满 6 位自动验证。",
-  phoneCodeSentMagic: "邮件已发送！点击邮件内按钮可免输码自动完成登录/开通，或在此输入 6 位码。",
+  phoneCodeSentMagic: "邮件已发送！在邮件里完成付款后，这里会自动开通 Pro，无需输入验证码；已开通 Pro 的邮箱可直接输入 6 位验证码。",
+  phoneNotPro: "该邮箱尚未开通 Pro。请在邮件里点击按钮完成付款，付款后这里会自动开通。",
   magicSignedIn: "✓ 邮箱已自动验证登录，正在同步权益",
   phoneInvalid: "请输入有效的邮箱地址。",
   phoneCodeInvalid: "验证码错误或已过期，请检查后重试。",
@@ -133,10 +137,11 @@ const zh = {
   trialUntil: "免费试用至 {date}",
   trialExpired: "7 天免费试用已结束。开通 Pro（¥29.9 一次买断）即可永久使用；若已购买请直接登录。",
   trialExpiredSignedIn: "7 天免费试用已结束。当前账号尚未开通 Pro，可立即开通（¥29.9）或切换已购账号。",
-  trialExpiredSignIn: "7 天免费试用已结束。请验证邮箱登录以同步或获取 Pro 终身权益。",
+  trialExpiredSignIn: "7 天免费试用已结束。获取验证码后会收到开通邮件：在邮件里完成付款，这里会自动开通 Pro，无需输入验证码；已开通 Pro 的邮箱输入验证码即可登录。",
   trialExpiredNoPro: "7 天免费试用已结束。请查看验证邮件中的专属开通链接，或切换到已开通 Pro 的邮箱。",
   trialExpiredNoAccount: "7 天免费试用已结束。请在支持账号登录的客户端中同步 Pro 权益。",
   accountHeading: "已登录",
+  accountTitle: "Inkmap 账号",
   accountSignedOutSub: "一次买断 · 全平台一账通用",
   accountSignedOutRestoreSub: "验证邮箱以同步或开通 Pro 权益",
   accountConnected: "已登录",
@@ -182,17 +187,6 @@ const zh = {
   presentPrev: "← 上一步",
   presentNext: "下一步 →",
   presentExit: "退出放映 (Esc)",
-
-  adLabel: "广告",
-  adHide: "暂时关闭",
-  removeAds: "去除广告",
-  "house.export.title": "把导图导出成高清图片",
-  "house.export.text": "Pro 版一键导出 PNG / SVG，直接放进笔记、文档和 PPT。",
-  "house.layouts.title": "试试组织结构图和时间轴",
-  "house.layouts.text": "Pro 版解锁 7 种结构和深色主题，同一份大纲换个视角看。",
-  "house.present.title": "用导图来讲解和汇报",
-  "house.present.text": "Pro 版演示模式逐个节点放映，复习和汇报都更清楚。",
-  "house.cta": "了解 Pro",
 };
 
 type Key = keyof typeof zh;
@@ -229,7 +223,12 @@ const en: Record<Key, string> = {
   pending: "Unsaved",
   saving: "Saving…",
   saveFailed: "Save failed",
+  loadFailed: "Could not read the document: {status}",
+  cardComingSoon: "International card checkout ($15) is coming soon.",
   conflict: "The file changed elsewhere and the latest version was loaded; your last edit was not written, please redo it.",
+  unsavedDiscarded: "Another file was opened before your last edit to the previous file was saved, so that edit was not written.",
+  chatContextFile: "Please use the mind map file `{file}` as context.",
+  chatContextLines: "From `{file}` (lines {start}–{end}):",
   selectNode: "Select a node first",
   newTopic: "New topic",
 
@@ -284,7 +283,6 @@ const en: Record<Key, string> = {
   proSubtitle: "Pay once, use forever, every future update included",
   "feature.markdown": "Edit Markdown in the mind map and sync changes to the source file",
   "feature.diagram": "Preview Mermaid flowcharts and state diagrams, then edit their source",
-  "feature.noAds": "No ads — a clean, focused workspace",
   "feature.browser": "Full-screen editing in Chrome, synced live with your editor",
   "feature.export": "Export watermark-free HD PNG, SVG vector, and interactive shareable HTML",
   "feature.layouts": "7 extra layouts: org chart, catalog, timelines, fishbone and more",
@@ -292,7 +290,6 @@ const en: Record<Key, string> = {
   "feature.replace": "Find and replace across the whole map",
   "feature.present": "Presentation mode: walk through nodes one by one",
   "feature.updates": "Lifetime: every Pro feature added later is included",
-  "featureName.noAds": "No ads",
   "featureName.browser": "Browser editing",
   "featureName.export": "Export",
   "featureName.layouts": "More layouts",
@@ -311,7 +308,8 @@ const en: Record<Key, string> = {
   sendPhoneCode: "Send code",
   resendPhoneCode: "Resend in {seconds}s",
   phoneCodeSent: "6-digit code sent (valid for 10 min)! Auto-verifies once entered.",
-  phoneCodeSentMagic: "Email sent! Click the button in the email for zero-code auto sign-in & checkout, or enter the 6-digit code.",
+  phoneCodeSentMagic: "Email sent! Pay from the email and Pro unlocks here automatically, no code needed. If this email already has Pro, enter the 6-digit code.",
+  phoneNotPro: "This email doesn't have Pro yet. Pay from the button in the email and Pro unlocks here automatically.",
   magicSignedIn: "✓ Email verified & signed in automatically",
   phoneInvalid: "Enter a valid email address.",
   phoneCodeInvalid: "The code is incorrect or expired. Check it and try again.",
@@ -330,10 +328,11 @@ const en: Record<Key, string> = {
   trialUntil: "Free trial ends {date}",
   trialExpired: "Your 7-day trial has ended. Buy Pro ($15 lifetime) to continue, or sign in if you already bought it.",
   trialExpiredSignedIn: "Your 7-day trial has ended. Buy Pro ($15) or switch to an account with Pro access.",
-  trialExpiredSignIn: "Your 7-day trial has ended. Sign in with your email to sync or activate Pro access.",
+  trialExpiredSignIn: "Your 7-day trial has ended. Get a code to receive the upgrade email: pay from that email and Pro unlocks here automatically, no code needed. If this email already has Pro, enter the code to sign in.",
   trialExpiredNoPro: "Your 7-day trial has ended. Use the one-click purchase link in your verification email, or switch accounts.",
   trialExpiredNoAccount: "Your 7-day trial has ended. Open Inkmap in a client that supports account sign-in.",
   accountHeading: "Signed in",
+  accountTitle: "Inkmap account",
   accountSignedOutSub: "One-time purchase · Synced across all platforms",
   accountSignedOutRestoreSub: "Verify email to sync or activate Pro",
   accountConnected: "Signed in",
@@ -379,27 +378,19 @@ const en: Record<Key, string> = {
   presentPrev: "← Prev",
   presentNext: "Next →",
   presentExit: "Exit (Esc)",
-
-  adLabel: "Ad",
-  adHide: "Hide for now",
-  removeAds: "Remove ads",
-  "house.export.title": "Export your map as an image",
-  "house.export.text": "Pro exports PNG and SVG in one click, ready for notes, docs and slides.",
-  "house.layouts.title": "Try org charts and timelines",
-  "house.layouts.text": "Pro unlocks 7 layouts and a dark theme — see the same outline from a new angle.",
-  "house.present.title": "Present with your map",
-  "house.present.text": "Pro's presentation mode reveals nodes one by one for talks and revision.",
-  "house.cta": "See Pro",
 };
 
-export function isDomesticSystem(hint?: string): boolean {
+const ZH_LOCALE = /^zh(?:[-_.]|$)/i;
+const EN_LOCALE = /^en(?:[-_.]|$)/i;
+
+function isDomesticSystem(hint?: string): boolean {
   if (typeof document !== "undefined") {
     const osAttr = document.documentElement.dataset.osLocale;
     if (osAttr === "zh") return true;
     if (osAttr === "en") return false;
   }
-  if (hint && /^zh\b/i.test(hint)) return true;
-  if (hint && /^en\b/i.test(hint)) return false;
+  if (hint && ZH_LOCALE.test(hint)) return true;
+  if (hint && EN_LOCALE.test(hint)) return false;
   try {
     const opts = Intl.DateTimeFormat().resolvedOptions();
     const tz = opts.timeZone || "";
@@ -408,8 +399,8 @@ export function isDomesticSystem(hint?: string): boolean {
       const langs = Array.isArray(navigator.languages) && navigator.languages.length
         ? navigator.languages
         : [navigator.language || ""];
-      if (langs.some(l => /^zh\b/i.test(l || ""))) return true;
-    } else if (/^zh\b/i.test(opts.locale || "")) {
+      if (langs.some(l => ZH_LOCALE.test(l || ""))) return true;
+    } else if (ZH_LOCALE.test(opts.locale || "")) {
       return true;
     }
   } catch {}
@@ -431,13 +422,15 @@ export function setLocale(locale: Locale) {
 export const locale = () => current;
 
 export function t(key: Key, vars: Record<string, string | number> = {}): string {
-  return tables[current][key].replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
+  const template = tables[current][key] ?? tables.en[key] ?? key;
+  return template.replace(/\{(\w+)\}/g, (_, k) => String(vars[k] ?? ""));
 }
 
-/** Fills `data-i18n` (text), `data-i18n-title` and `data-i18n-placeholder` attributes. */
+/** Fills `data-i18n` (text), `data-i18n-title`, `data-i18n-aria` and `data-i18n-placeholder` attributes. */
 export function applyI18n(root: ParentNode = document) {
   root.querySelectorAll<HTMLElement>("[data-i18n]").forEach(el => (el.textContent = t(el.dataset.i18n as Key)));
   root.querySelectorAll<HTMLElement>("[data-i18n-title]").forEach(el => (el.title = t(el.dataset.i18nTitle as Key)));
+  root.querySelectorAll<HTMLElement>("[data-i18n-aria]").forEach(el => el.setAttribute("aria-label", t(el.dataset.i18nAria as Key)));
   root.querySelectorAll<HTMLInputElement>("[data-i18n-placeholder]").forEach(el => (el.placeholder = t(el.dataset.i18nPlaceholder as Key)));
 }
 

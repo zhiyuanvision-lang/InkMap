@@ -34,6 +34,8 @@ class BuddyHost implements Host {
   readonly capabilities: HostCapabilities;
   private revision = 0;
   private writing = false;
+  private watching = false;
+  private changeListeners: ((doc: DocState) => void)[] = [];
   private doc: DocState;
 
   constructor(readonly filename: string, md: string, private access: ReturnType<typeof browserAccess>, private handle?: FileHandle) {
@@ -80,12 +82,18 @@ class BuddyHost implements Host {
   onExternalChange(listener: (doc: DocState) => void) {
     const handle = this.handle;
     if (!handle) return;
+    this.changeListeners.push(listener);
+    if (this.watching) return;
+    this.watching = true;
     const timer = window.setInterval(async () => {
       if (this.writing) return;
       const before = this.doc;
       try {
         const md = await fileText(await handle.getFile());
-        if (!this.writing && this.doc === before && md !== before.md) listener(this.update(md));
+        if (!this.writing && this.doc === before && md !== before.md) {
+          const updated = this.update(md);
+          this.changeListeners.forEach(fn => fn(updated));
+        }
       } catch { /* A save may replace the file temporarily. */ }
     }, 1500);
     window.addEventListener("pagehide", () => clearInterval(timer), { once: true });
@@ -97,8 +105,9 @@ class BuddyHost implements Host {
     if (!tab) throw new Error(sidebarText("请允许在浏览器中打开登录窗口。", "Allow the account sign-in window to open."));
     tab.opener = null;
     try {
-      const url = await this.access.restore();
-      tab.location.replace(url + (url.includes("?") ? "&" : "?") + "lang=" + this.locale);
+      const url = new URL(await this.access.restore());
+      url.searchParams.set("lang", this.locale);
+      tab.location.replace(url.toString());
     } catch (error) {
       tab.close();
       throw error;
@@ -107,7 +116,7 @@ class BuddyHost implements Host {
   signOut() { return this.access.signOut(); }
   onLicenseChange(listener: (state: Awaited<ReturnType<BuddyHost["license"]>>) => void) {
     if (this.capabilities.account === "none") return;
-    const update = () => void this.license().then(listener);
+    const update = () => void this.license().then(listener).catch(() => {});
     const timer = window.setInterval(update, 4000);
     window.addEventListener("focus", update);
     window.addEventListener("pagehide", () => {
@@ -115,7 +124,6 @@ class BuddyHost implements Host {
       window.removeEventListener("focus", update);
     }, { once: true });
   }
-  async ads() { return []; }
   saveFile = downloadFile;
 }
 

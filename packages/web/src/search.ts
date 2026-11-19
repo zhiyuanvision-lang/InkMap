@@ -1,19 +1,36 @@
 import { plainText } from "@inkmap/core";
 import { markdownOf, type MindNode } from "./convert";
+import { $ } from "./dom";
 import { t } from "./i18n";
 import type { Pro } from "./pro";
 
-const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
-
 const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-/** Replaces every case-insensitive occurrence of `find` in `text`; returns null when there is none. */
-export function replaceText(text: string, find: string, replacement: string): string | null {
-  const pattern = new RegExp(escapeRegExp(find), "gi");
-  return pattern.test(text) ? text.replace(pattern, () => replacement) : null;
+/**
+ * Replaces every case-insensitive occurrence of `find` in the node's Markdown; returns null when there is none.
+ * Matches that only exist in the rendered text (e.g. spanning `**bold**` or a link) are found by search but
+ * left alone here, because rewriting them would flatten the node's links, images and formatting.
+ */
+export function replaceText(text: string, find: string, replacement: string): { next: string; hits: number } | null {
+  let hits = 0;
+  const next = text.replace(new RegExp(escapeRegExp(find), "gi"), () => {
+    hits++;
+    return replacement;
+  });
+  return hits > 0 ? { next, hits } : null;
 }
 
-export interface SearchDeps {
+/**
+ * Where the cursor goes after "Replace" changed the match at `index`: to the next match when the node still
+ * matches (the replacement contains the query), else to whatever slid into the same position.
+ */
+export function nextIndexAfterReplaceOne(index: number, prevCount: number, newCount: number): number {
+  if (newCount === 0) return -1;
+  if (newCount >= prevCount) return (index + 1) % newCount;
+  return Math.min(Math.max(index, 0), newCount - 1);
+}
+
+interface SearchDeps {
   mindMap: any;
   pro: Pro;
   showToast(text: string): void;
@@ -91,9 +108,22 @@ export function createSearch({ mindMap, pro, showToast, rewrite, onReplace }: Se
     if (!find) return findInput.focus();
     const uid = all ? undefined : matches[index];
     if (!all && !uid) return;
-    const n = await rewrite(md => replaceText(md, find, replaceInput.value), uid);
-    if (n > 0) onReplace?.();
-    showToast(t("replaced", { n }));
+    const prevCount = matches.length;
+    let totalHits = 0;
+    const changedNodes = await rewrite(md => {
+      const r = replaceText(md, find, replaceInput.value);
+      if (!r) return null;
+      totalHits += r.hits;
+      return r.next;
+    }, uid);
+    if (changedNodes > 0) onReplace?.();
+    showToast(t("replaced", { n: totalHits || changedNodes }));
+    if (!all && changedNodes > 0) {
+      matches = collect(findInput.value);
+      index = nextIndexAfterReplaceOne(index, prevCount, matches.length);
+      focusMatch();
+      return;
+    }
     run(!all);
   }
 

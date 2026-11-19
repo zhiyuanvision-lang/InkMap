@@ -2,14 +2,29 @@ import type { App } from "@modelcontextprotocol/ext-apps";
 import type { LicenseState, PhoneSignInResult, ViewState } from "@inkmap/core";
 import { z } from "zod";
 import { browserLocale, type ChatTarget, type DocState, type Host, type HostCapabilities, type SaveResult } from "./host";
+import { t } from "./i18n";
 import { revealMarkdownLines } from "./md-lines";
-import { downloadFile, sidebarText } from "./sidebar-shell";
+import { downloadFile, parseExportDataUrl, sidebarText } from "./sidebar-shell";
+import {
+  buildProjectTree,
+  editorApi,
+  expandSelectedAncestors,
+  fitMapSoon,
+  MarkdownGutter,
+  paneText,
+  parseFileEntry,
+  resizeMap,
+  selectionLines,
+  treeIcons,
+  withDocumentEol,
+  type TreeFolder,
+  type WorkspaceFileEntry,
+} from "./workspace-tree";
 
-interface McpFileEntry {
-  path: string;
+const NAV_KEYS = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"]);
+
+interface McpFileEntry extends WorkspaceFileEntry {
   uri: string;
-  label: string;
-  group: "active" | "project";
 }
 
 export interface McpWorkspaceSnapshot {
@@ -33,6 +48,7 @@ function parseLicense(raw?: Record<string, unknown> | null): LicenseState {
     ...(typeof raw.trialUntil === "number" && { trialUntil: raw.trialUntil }),
     ...(raw.connected === true && { connected: true }),
     ...(typeof raw.account === "string" && { account: raw.account }),
+    ...(typeof raw.lastSignIn === "string" && { lastSignIn: raw.lastSignIn }),
   };
 }
 
@@ -53,11 +69,10 @@ export class McpAppHost implements Host {
   private targetSeq = 0;
   private saving = false;
   private polling = false;
-  private currentLicense?: LicenseState;
+  private pollTimer = 0;
   private licenseCheck?: Promise<LicenseState>;
-  private changeListener?: (doc: DocState) => void;
+  private changeListeners: ((doc: DocState) => void)[] = [];
 
-  private fileSelectEl: HTMLSelectElement | null = null;
   private fileTriggerBtn: HTMLButtonElement | null = null;
   private fileTriggerNameEl: HTMLElement | null = null;
   private fileTriggerDirEl: HTMLElement | null = null;
@@ -82,6 +97,7 @@ export class McpAppHost implements Host {
   private mdEditTimer = 0;
   private activeStartLine = 0;
   private activeEndLine = 0;
+  private gutter = new MarkdownGutter("ag-gutter-ln", sidebarText);
   private revealListeners: ((line: number) => void)[] = [];
 
   constructor(
@@ -89,143 +105,6 @@ export class McpAppHost implements Host {
     private initialInput?: { path?: string; workspace?: string },
     private initialSnapshot?: McpWorkspaceSnapshot,
   ) {}
-
-  private parseFileEntry(item: McpFileEntry) {
-    const label = typeof item.label === "string" ? item.label : "";
-    const sepIdx = label.indexOf(" / ");
-    if (sepIdx > 0) {
-      const project = label.slice(0, sepIdx).trim();
-      const rel = label.slice(sepIdx + 3).replace(/\\/g, "/");
-      return { project, rel, item };
-    }
-    const rel = (label || (item.path || "").split(/[\\/]/).pop() || "").replace(/\\/g, "/");
-    const normPath = (item.path || "").replace(/\\/g, "/");
-    const suffix = "/" + rel;
-    let project = sidebarText("当前项目", "Workspace");
-    if (normPath.endsWith(suffix)) {
-      const rootDir = normPath.slice(0, normPath.length - suffix.length);
-      project = rootDir.split("/").filter(Boolean).pop() || project;
-    }
-    return { project, rel, item };
-  }
-
-  private buildProjectTree(files: McpFileEntry[], filterText = "") {
-    interface TreeFileNode {
-      name: string;
-      path: string;
-      rel: string;
-      project: string;
-      isMarkmap: boolean;
-    }
-    interface TreeFolderNode {
-      name: string;
-      key: string;
-      folders: Map<string, TreeFolderNode>;
-      sortedFolders: TreeFolderNode[];
-      files: TreeFileNode[];
-      totalFiles: number;
-    }
-    interface TreeProjectNode {
-      name: string;
-      key: string;
-      active: boolean;
-      count: number;
-      root: TreeFolderNode;
-    }
-
-    const q = filterText.trim().toLowerCase();
-    const projectMap = new Map<string, TreeProjectNode>();
-
-    for (const raw of files) {
-      const { project, rel, item } = this.parseFileEntry(raw);
-      if (q && !project.toLowerCase().includes(q) && !rel.toLowerCase().includes(q)) continue;
-      let proj = projectMap.get(project);
-      if (!proj) {
-        proj = {
-          name: project,
-          key: `proj:${project}`,
-          active: item.group === "active",
-          count: 0,
-          root: { name: "", key: `proj:${project}`, folders: new Map(), sortedFolders: [], files: [], totalFiles: 0 },
-        };
-        projectMap.set(project, proj);
-      }
-      if (item.group === "active") proj.active = true;
-      proj.count++;
-
-      const parts = rel.split("/").filter(Boolean);
-      const fileName = parts.pop() || rel;
-      let curr = proj.root;
-      let pathAcc = `proj:${project}`;
-      for (const seg of parts) {
-        pathAcc += `/${seg}`;
-        let next = curr.folders.get(seg);
-        if (!next) {
-          next = { name: seg, key: pathAcc, folders: new Map(), sortedFolders: [], files: [], totalFiles: 0 };
-          curr.folders.set(seg, next);
-        }
-        curr = next;
-      }
-      curr.files.push({
-        name: fileName,
-        path: item.path,
-        rel,
-        project,
-        isMarkmap: /\.markmap\.md$/i.test(fileName),
-      });
-    }
-
-    const compactAndSort = (folder: TreeFolderNode) => {
-      const compacted: TreeFolderNode[] = [];
-      for (const child of folder.folders.values()) {
-        while (child.files.length === 0 && child.folders.size === 1) {
-          const onlySub = [...child.folders.values()][0]!;
-          child.name = `${child.name}/${onlySub.name}`;
-          child.key = onlySub.key;
-          child.folders = onlySub.folders;
-          child.files = onlySub.files;
-        }
-        compactAndSort(child);
-        compacted.push(child);
-      }
-      compacted.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" }));
-      folder.sortedFolders = compacted;
-      folder.files.sort((a, b) => {
-        if (a.isMarkmap !== b.isMarkmap) return a.isMarkmap ? -1 : 1;
-        return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
-      });
-      let total = folder.files.length;
-      for (const c of compacted) total += c.totalFiles || 0;
-      folder.totalFiles = total;
-    };
-
-    const projects = [...projectMap.values()];
-    for (const p of projects) compactAndSort(p.root);
-    projects.sort((a, b) => {
-      if (a.active !== b.active) return a.active ? -1 : 1;
-      return a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: "base" });
-    });
-    return projects;
-  }
-
-  private ensureSelectedAncestorsExpanded(projects: ReturnType<McpAppHost["buildProjectTree"]>, selectedPath: string | null) {
-    if (!selectedPath || this.initializedExpansionForFile === selectedPath) return;
-    this.initializedExpansionForFile = selectedPath;
-    for (const p of projects) {
-      if (p.active) this.expandedKeys.add(p.key);
-      const markFolder = (folder: typeof p.root): boolean => {
-        let hasSelected = folder.files.some(f => f.path === selectedPath);
-        for (const sub of folder.sortedFolders) {
-          if (markFolder(sub)) hasSelected = true;
-        }
-        if (hasSelected) this.expandedKeys.add(folder.key);
-        return hasSelected;
-      };
-      if (markFolder(p.root)) {
-        this.expandedKeys.add(p.key);
-      }
-    }
-  }
 
   private closeFilePopover() {
     if (!this.filePopoverEl || this.filePopoverEl.hidden) return;
@@ -254,8 +133,11 @@ export class McpAppHost implements Host {
     if (!this.fileTreeBodyEl) return;
     const filterText = this.fileSearchInputEl?.value ?? "";
     const isFiltering = Boolean(filterText.trim());
-    const projects = this.buildProjectTree(this.cachedFiles, filterText);
-    this.ensureSelectedAncestorsExpanded(projects, this.currentFile);
+    const projects = buildProjectTree(this.cachedFiles, filterText, sidebarText("当前项目", "Workspace"));
+    if (this.currentFile && this.initializedExpansionForFile !== this.currentFile) {
+      this.initializedExpansionForFile = this.currentFile;
+      expandSelectedAncestors(projects, this.currentFile, this.expandedKeys);
+    }
 
     this.fileTreeBodyEl.innerHTML = "";
     if (!projects.length) {
@@ -268,12 +150,9 @@ export class McpAppHost implements Host {
       return;
     }
 
-    const chevronSvg = `<svg class="ag-tree-chevron" viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4l4 4-4 4"/></svg>`;
-    const folderSvg = `<svg class="ag-tree-icon ag-icon-folder" viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M1.75 2.5A1.75 1.75 0 0 0 0 4.25v7.5C0 12.716.784 13.5 1.75 13.5h12.5A1.75 1.75 0 0 0 16 11.75v-5.5A1.75 1.75 0 0 0 14.25 4.5H7.82a.25.25 0 0 1-.177-.073L6.28 3.063A1.75 1.75 0 0 0 5.043 2.5H1.75Z"/></svg>`;
-    const mapFileSvg = `<svg class="ag-tree-icon ag-icon-map" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="3.5" cy="8" r="1.75"/><circle cx="12.5" cy="4" r="1.75"/><circle cx="12.5" cy="12" r="1.75"/><path d="M5.25 7.3L10.75 4.7M5.25 8.7l5.5 2.6"/></svg>`;
-    const mdFileSvg = `<svg class="ag-tree-icon ag-icon-md" viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 1.5H4A1.5 1.5 0 0 0 2.5 3v10A1.5 1.5 0 0 0 4 14.5h8a1.5 1.5 0 0 0 1.5-1.5V5.5L9.5 1.5Z"/><path d="M9.5 1.5v4h4"/></svg>`;
+    const { chevron: chevronSvg, folder: folderSvg, mapFile: mapFileSvg, mdFile: mdFileSvg } = treeIcons("ag-tree", "ag-icon");
 
-    const renderFolderContents = (folder: (typeof projects)[number]["root"], container: HTMLElement, depth: number) => {
+    const renderFolderContents = (folder: TreeFolder, container: HTMLElement, depth: number) => {
       for (const sub of folder.sortedFolders) {
         const isOpen = isFiltering || this.expandedKeys.has(sub.key);
         const folderWrap = document.createElement("div");
@@ -366,32 +245,13 @@ export class McpAppHost implements Host {
     return (result.structuredContent as Record<string, any>) ?? {};
   }
 
-  private renderMdGutterAndBand() {
-    if (!this.mdTextareaEl) return;
-    const totalLines = Math.max(1, this.mdTextareaEl.value.split("\n").length);
-    const sLine = Math.max(0, Math.min(this.activeStartLine, totalLines - 1));
-    const eLine = Math.max(sLine, Math.min(this.activeEndLine, totalLines - 1));
-    if (this.mdLineBadgeEl) {
-      const label = sLine === eLine ? `${sLine + 1}` : `${sLine + 1}–${eLine + 1}`;
-      this.mdLineBadgeEl.textContent = sidebarText(`行 ${label}`, `Ln ${label}`);
-    }
-    if (this.mdGutterEl) {
-      const nums: string[] = [];
-      for (let i = 0; i < totalLines; i++) {
-        const active = i >= sLine && i <= eLine;
-        nums.push(`<div class="ag-gutter-ln${active ? " is-active" : ""}">${i + 1}</div>`);
-      }
-      this.mdGutterEl.innerHTML = nums.join("");
-      this.mdGutterEl.scrollTop = this.mdTextareaEl.scrollTop;
-    }
-    if (this.mdBandEl) {
-      const lineHeight = 20.8;
-      const padTop = 12;
-      const top = padTop + sLine * lineHeight - this.mdTextareaEl.scrollTop;
-      const height = Math.max(1, eLine - sLine + 1) * lineHeight;
-      this.mdBandEl.style.transform = `translateY(${top}px)`;
-      this.mdBandEl.style.height = `${height}px`;
-    }
+  private renderMdGutterAndBand(scrollOnly = false) {
+    this.gutter.render(
+      { textarea: this.mdTextareaEl, gutter: this.mdGutterEl, band: this.mdBandEl, badge: this.mdLineBadgeEl },
+      this.activeStartLine,
+      this.activeEndLine,
+      scrollOnly,
+    );
   }
 
   private syncMdPaneContent(md = this.currentMd, force = false) {
@@ -402,7 +262,8 @@ export class McpAppHost implements Host {
     }
     if (!this.mdTextareaEl) return;
     if (force || document.activeElement !== this.mdTextareaEl) {
-      if (this.mdTextareaEl.value !== md) this.mdTextareaEl.value = md;
+      const text = paneText(md);
+      if (this.mdTextareaEl.value !== text) this.mdTextareaEl.value = text;
     }
     this.renderMdGutterAndBand();
   }
@@ -431,28 +292,11 @@ export class McpAppHost implements Host {
       this.fileSearchInputEl.placeholder = sidebarText("搜索项目 Markdown 文件…", "Filter Markdown files…");
     }
     if (this.splitOpen) this.syncMdPaneContent(this.currentMd, true);
-    requestAnimationFrame(() => {
-      try {
-        const api = (window as any).inkmap;
-        api?.mindMap?.resize();
-        if (fitAfter) api?.mindMap?.view?.fit();
-      } catch {}
-    });
+    resizeMap(fitAfter);
   }
 
   private renderFilePicker(files: McpFileEntry[] = [], selected = this.currentFile) {
     this.cachedFiles = Array.isArray(files) ? files : [];
-    if (this.fileSelectEl) {
-      this.fileSelectEl.innerHTML = "";
-      for (const item of this.cachedFiles) {
-        const opt = document.createElement("option");
-        opt.value = item.path;
-        opt.textContent = item.label;
-        if (item.path === selected) opt.selected = true;
-        this.fileSelectEl.appendChild(opt);
-      }
-      this.fileSelectEl.disabled = !this.cachedFiles.length;
-    }
     if (this.openRawBtn) this.openRawBtn.disabled = !selected;
     if (this.fileTriggerBtn) {
       this.fileTriggerBtn.disabled = !this.cachedFiles.length;
@@ -461,7 +305,7 @@ export class McpAppHost implements Host {
         if (this.fileTriggerNameEl) this.fileTriggerNameEl.textContent = sidebarText("未找到 Markdown 文件", "No Markdown files");
         if (this.fileTriggerDirEl) this.fileTriggerDirEl.hidden = true;
       } else {
-        const { project, rel } = this.parseFileEntry(found);
+        const { project, rel } = parseFileEntry(found, sidebarText("当前项目", "Workspace"));
         const parts = rel.split("/").filter(Boolean);
         const fileName = parts.pop() || rel;
         const dirHint = parts.length ? `${project}/${parts[parts.length - 1]}` : project;
@@ -480,7 +324,7 @@ export class McpAppHost implements Host {
 
   private mountToolbarControls() {
     const bar = document.getElementById("bar");
-    if (!bar || document.getElementById("ag-file-select")) return;
+    if (!bar || document.getElementById("ag-file-trigger")) return;
 
     const style = document.createElement("style");
     style.textContent = `
@@ -500,7 +344,6 @@ export class McpAppHost implements Host {
         width: calc(100vw - var(--ag-split-left, 42vw)) !important;
         height: calc(100vh - var(--banner-offset, 0px) - var(--toolbar-height, 44px)) !important;
       }
-      #ag-file-select { display: none !important; }
       .ag-file-picker-wrap { position: relative; display: inline-flex; align-items: center; }
       #ag-file-trigger {
         display: inline-flex; align-items: center; gap: 5px; max-width: 210px; height: 28px;
@@ -688,14 +531,6 @@ export class McpAppHost implements Host {
     `;
     document.head.appendChild(style);
 
-    this.fileSelectEl = document.createElement("select");
-    this.fileSelectEl.id = "ag-file-select";
-    this.fileSelectEl.hidden = true;
-    this.fileSelectEl.addEventListener("change", () => {
-      const next = this.fileSelectEl?.value;
-      if (next) void this.switchFile(next);
-    });
-
     const pickerWrap = document.createElement("div");
     pickerWrap.className = "ag-file-picker-wrap";
 
@@ -747,7 +582,7 @@ export class McpAppHost implements Host {
       }
     });
 
-    pickerWrap.append(this.fileSelectEl, this.fileTriggerBtn);
+    pickerWrap.append(this.fileTriggerBtn);
 
     this.splitMdBtn = document.createElement("button");
     this.splitMdBtn.id = "ag-split-md";
@@ -806,13 +641,7 @@ export class McpAppHost implements Host {
           void this.app.sendSizeChanged({ height: 560 }).catch(() => {});
         }
         syncFullscreenBtn();
-        window.setTimeout(() => {
-          try {
-            const api = (window as any).inkmap;
-            api?.mindMap?.resize();
-            api?.mindMap?.view?.fit();
-          } catch {}
-        }, 80);
+        window.setTimeout(() => resizeMap(true), 80);
       }).catch(() => {
         if (this.fullscreenBtn) this.fullscreenBtn.hidden = true;
       });
@@ -830,15 +659,7 @@ export class McpAppHost implements Host {
       const grewFromCompact = lastHeight < 300 && nextHeight >= 360;
       const modeShifted = Math.abs(nextHeight - lastHeight) > 160;
       lastHeight = nextHeight;
-      requestAnimationFrame(() => {
-        try {
-          const api = (window as any).inkmap;
-          api?.mindMap?.resize();
-          if (grewFromCompact || modeShifted) {
-            api?.mindMap?.view?.fit();
-          }
-        } catch {}
-      });
+      resizeMap(grewFromCompact || modeShifted);
     });
 
     this.mdPaneEl = document.createElement("aside");
@@ -875,41 +696,33 @@ export class McpAppHost implements Host {
     }
     if (this.mdTextareaEl) {
       this.mdTextareaEl.addEventListener("scroll", () => {
-        this.renderMdGutterAndBand();
+        this.renderMdGutterAndBand(true);
       });
+      const textarea = this.mdTextareaEl;
       const handleCursorMove = () => {
-        if (!this.mdTextareaEl) return;
-        const startPos = this.mdTextareaEl.selectionStart ?? 0;
-        const endPos = this.mdTextareaEl.selectionEnd ?? startPos;
-        const startLine = this.mdTextareaEl.value.slice(0, startPos).split("\n").length - 1;
-        const endLine = this.mdTextareaEl.value.slice(0, endPos).split("\n").length - 1;
-        this.activeStartLine = startLine;
-        this.activeEndLine = Math.max(startLine, endLine);
+        const { start, end } = selectionLines(textarea);
+        this.activeStartLine = start;
+        this.activeEndLine = end;
         this.renderMdGutterAndBand();
-        this.revealListeners.forEach(fn => fn(startLine));
+        this.revealListeners.forEach(fn => fn(start));
       };
-      this.mdTextareaEl.addEventListener("click", handleCursorMove);
-      this.mdTextareaEl.addEventListener("keyup", e => {
-        if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End", "PageUp", "PageDown"].includes(e.key)) {
-          handleCursorMove();
-        }
+      textarea.addEventListener("click", handleCursorMove);
+      textarea.addEventListener("keyup", e => {
+        if (NAV_KEYS.has(e.key)) handleCursorMove();
       });
-      this.mdTextareaEl.addEventListener("input", () => {
-        const nextMd = this.mdTextareaEl!.value;
+      textarea.addEventListener("input", () => {
+        const nextMd = withDocumentEol(textarea.value, this.currentMd);
         this.currentMd = nextMd;
-        const startPos = this.mdTextareaEl!.selectionStart ?? 0;
-        const startLine = nextMd.slice(0, startPos).split("\n").length - 1;
-        this.activeStartLine = startLine;
-        this.activeEndLine = startLine;
+        const { start } = selectionLines(textarea);
+        this.activeStartLine = start;
+        this.activeEndLine = start;
         this.renderMdGutterAndBand();
         window.clearTimeout(this.mdEditTimer);
         this.mdEditTimer = window.setTimeout(() => {
-          const api = (window as any).inkmap;
-          if (api?.load) {
-            void api.load(nextMd, true).then(() => {
-              this.revealListeners.forEach(fn => fn(startLine));
-            });
-          }
+          this.mdEditTimer = 0;
+          void editorApi()?.load(nextMd, true).then(() => {
+            this.revealListeners.forEach(fn => fn(start));
+          });
         }, 320);
       });
     }
@@ -927,7 +740,7 @@ export class McpAppHost implements Host {
           resizer.removeEventListener("pointermove", onMove);
           resizer.removeEventListener("pointerup", onUp);
           resizer.removeEventListener("pointercancel", onUp);
-          try { (window as any).inkmap?.mindMap?.view?.fit(); } catch {}
+          fitMapSoon(0);
         };
         resizer.addEventListener("pointermove", onMove);
         resizer.addEventListener("pointerup", onUp);
@@ -938,15 +751,17 @@ export class McpAppHost implements Host {
   }
 
   private applySnapshot(snapshot: McpWorkspaceSnapshot, doc: DocState) {
-    this.currentFile = snapshot.currentFile ?? null;
+    const nextFile = snapshot.currentFile ?? null;
+    if (nextFile !== this.currentFile) {
+      window.clearTimeout(this.mdEditTimer);
+      this.mdEditTimer = 0;
+    }
+    this.currentFile = nextFile;
     this.currentFileUri = snapshot.currentFileUri ?? null;
     this.currentVersion = doc.version;
     this.currentMd = doc.md;
     if (typeof snapshot.targetSeq === "number") {
       this.targetSeq = Math.max(this.targetSeq, snapshot.targetSeq);
-    }
-    if (snapshot.license) {
-      this.currentLicense = parseLicense(snapshot.license);
     }
     if (snapshot.files) {
       this.renderFilePicker(snapshot.files, this.currentFile);
@@ -958,30 +773,34 @@ export class McpAppHost implements Host {
     if (this.mdEditTimer) {
       window.clearTimeout(this.mdEditTimer);
       this.mdEditTimer = 0;
-      await (window as any).inkmap?.load?.(this.currentMd, true);
+      await editorApi()?.load(this.currentMd, true);
     }
   }
 
   async switchFile(filePath: string) {
     if (!filePath || filePath === this.currentFile) return;
     await this.flushPendingEdits();
-    await (window as any).inkmap?.flushSave?.();
+    await editorApi()?.flushSave();
     const data = await this.callTool("inkmap_doc_open", { path: filePath });
     if (!data.doc) return;
     this.applySnapshot(data, data.doc);
-    this.changeListener?.(data.doc);
-    window.setTimeout(() => {
-      try { (window as any).inkmap?.mindMap?.view?.fit(); } catch {}
-    }, 120);
+    this.changeListeners.forEach(fn => fn(data.doc));
+    fitMapSoon();
+  }
+
+  /** Saves edits to the current document before another document replaces it. */
+  private async flushBeforeSwitch(nextFile: string | null | undefined) {
+    if (!nextFile || nextFile === this.currentFile) return;
+    await this.flushPendingEdits();
+    await editorApi()?.flushSave().catch(() => {});
   }
 
   async handleHostToolUpdate(args?: { path?: string; workspace?: string }, snapshot?: McpWorkspaceSnapshot) {
+    await this.flushBeforeSwitch(snapshot?.currentFile ?? args?.path);
     if (snapshot?.doc) {
       this.applySnapshot(snapshot, snapshot.doc);
-      this.changeListener?.(snapshot.doc);
-      window.setTimeout(() => {
-        try { (window as any).inkmap?.mindMap?.view?.fit(); } catch {}
-      }, 120);
+      this.changeListeners.forEach(fn => fn(snapshot.doc!));
+      fitMapSoon();
       return;
     }
     const targetPath = snapshot?.currentFile || args?.path;
@@ -991,10 +810,8 @@ export class McpAppHost implements Host {
     });
     if (data.doc) {
       this.applySnapshot(data, data.doc);
-      this.changeListener?.(data.doc);
-      window.setTimeout(() => {
-        try { (window as any).inkmap?.mindMap?.view?.fit(); } catch {}
-      }, 120);
+      this.changeListeners.forEach(fn => fn(data.doc));
+      fitMapSoon();
     }
   }
 
@@ -1043,20 +860,26 @@ export class McpAppHost implements Host {
   }
 
   onExternalChange(listener: (doc: DocState) => void) {
-    this.changeListener = listener;
-    const timer = window.setInterval(async () => {
+    this.changeListeners.push(listener);
+    if (this.pollTimer) return;
+    this.pollTimer = window.setInterval(async () => {
       if (this.saving || this.polling) return;
       this.polling = true;
+      const polledFile = this.currentFile;
+      const polledVersion = this.currentVersion;
       try {
         const res = await this.callTool("inkmap_doc_poll", {
-          ...(this.currentFile && { file: this.currentFile }),
-          ...(this.currentVersion && { version: this.currentVersion }),
+          ...(polledFile && { file: polledFile }),
+          ...(polledVersion && { version: polledVersion }),
           targetSeq: this.targetSeq,
         });
         if (typeof res.targetSeq === "number") {
           this.targetSeq = Math.max(this.targetSeq, res.targetSeq);
         }
+        if (this.saving) return;
         if (res.switchedFile && res.doc) {
+          const doc = res.doc as DocState;
+          await this.flushBeforeSwitch(res.switchedFile);
           this.applySnapshot(
             {
               files: res.files,
@@ -1064,18 +887,17 @@ export class McpAppHost implements Host {
               currentFileUri: res.currentFileUri,
               targetSeq: res.targetSeq,
             },
-            res.doc as DocState,
+            doc,
           );
-          listener(res.doc as DocState);
-          window.setTimeout(() => {
-            try { (window as any).inkmap?.mindMap?.view?.fit(); } catch {}
-          }, 120);
-        } else if (res.changed && res.doc) {
+          this.changeListeners.forEach(fn => fn(doc));
+          fitMapSoon();
+        } else if (res.changed && res.doc && this.currentFile === polledFile && this.currentVersion === polledVersion) {
           const doc = res.doc as DocState;
+          if (doc.version === this.currentVersion) return;
           this.currentVersion = doc.version;
           this.currentMd = doc.md;
           this.syncMdPaneContent(doc.md, true);
-          listener(doc);
+          this.changeListeners.forEach(fn => fn(doc));
         }
       } catch {
         // Ignore transient poll errors while pane is backgrounded
@@ -1084,7 +906,10 @@ export class McpAppHost implements Host {
       }
     }, 1500);
 
-    window.addEventListener("pagehide", () => window.clearInterval(timer), { once: true });
+    window.addEventListener("pagehide", () => {
+      window.clearInterval(this.pollTimer);
+      this.pollTimer = 0;
+    }, { once: true });
   }
 
   saveView(state: ViewState) {
@@ -1109,11 +934,6 @@ export class McpAppHost implements Host {
     this.syncMdPaneContent(md, false);
   }
 
-  refreshLanguage() {
-    this.applySplitLayout(false);
-    this.renderFilePicker(this.cachedFiles, this.currentFile);
-  }
-
   async canAddToChat(): Promise<boolean> {
     const caps = this.app.getHostCapabilities();
     return Boolean(caps?.updateModelContext || caps?.message);
@@ -1121,11 +941,16 @@ export class McpAppHost implements Host {
 
   addToChat(target?: ChatTarget) {
     if (!this.currentFile) return;
-    const lines = this.currentMd.split("\n");
-    const s = Math.max(0, Math.min(target?.startLine ?? 0, Math.max(0, lines.length - 1)));
-    const e = Math.max(s, Math.min(target?.endLine ?? s, Math.max(0, lines.length - 1)));
-    const snippet = target?.text || lines.slice(s, e + 1).join("\n");
-    const formatted = `来自 \`${this.currentFile}\`（第 ${s + 1}–${e + 1} 行）：\n\`\`\`markdown\n${snippet}\n\`\`\``;
+    let formatted: string;
+    if (!target) {
+      formatted = t("chatContextFile", { file: this.currentFile });
+    } else {
+      const lines = this.currentMd.replace(/\r\n?/g, "\n").split("\n");
+      const s = Math.max(0, Math.min(target.startLine, Math.max(0, lines.length - 1)));
+      const e = Math.max(s, Math.min(target.endLine ?? s, Math.max(0, lines.length - 1)));
+      const snippet = target.text || lines.slice(s, e + 1).join("\n");
+      formatted = `${t("chatContextLines", { file: this.currentFile, start: s + 1, end: e + 1 })}\n\`\`\`markdown\n${snippet}\n\`\`\``;
+    }
     const caps = this.app.getHostCapabilities();
     if (caps?.updateModelContext) {
       void this.app.updateModelContext({
@@ -1141,11 +966,7 @@ export class McpAppHost implements Host {
 
   license(): Promise<LicenseState> {
     return this.licenseCheck ??= this.callTool("inkmap_access")
-      .then(raw => {
-        const parsed = parseLicense(raw);
-        this.currentLicense = parsed;
-        return parsed;
-      })
+      .then(raw => parseLicense(raw))
       .finally(() => {
         this.licenseCheck = undefined;
       });
@@ -1167,17 +988,13 @@ export class McpAppHost implements Host {
       return result as PhoneSignInResult;
     },
     verify: async (phone: string, code: string): Promise<PhoneSignInResult<LicenseState>> => {
-      const { result } = await this.callTool("inkmap_phone_verify", { phone, code });
-      if (result?.ok && result.value) {
-        this.currentLicense = result.value;
-      }
+      const { result } = await this.callTool("inkmap_phone_verify", { phone, code, locale: this.locale });
       return result as PhoneSignInResult<LicenseState>;
     },
   };
 
   async signOut() {
     await this.callTool("inkmap_disconnect_access");
-    this.currentLicense = { pro: false };
   }
 
   onLicenseChange(listener: (state: LicenseState) => void) {
@@ -1190,10 +1007,6 @@ export class McpAppHost implements Host {
     }, { once: true });
   }
 
-  async ads() {
-    return [];
-  }
-
   async openInBrowser() {
     await this.callTool("inkmap_open_browser", {
       ...(this.currentFile && { file: this.currentFile }),
@@ -1201,12 +1014,12 @@ export class McpAppHost implements Host {
   }
 
   async saveFile(name: string, dataUrl: string): Promise<boolean> {
-    const data = /^data:(image\/(?:png|svg\+xml));base64,([\s\S]+)$/.exec(dataUrl);
-    if (data && this.app.getHostCapabilities()?.downloadFile) {
+    const parsed = parseExportDataUrl(dataUrl);
+    if (parsed && this.app.getHostCapabilities()?.downloadFile) {
       const { isError } = await this.app.downloadFile({
         contents: [{
           type: "resource",
-          resource: { uri: "file:///" + encodeURIComponent(name), mimeType: data[1], blob: data[2] },
+          resource: { uri: "file:///" + encodeURIComponent(name), mimeType: parsed.mimeType, blob: parsed.blob },
         }],
       });
       if (!isError) return true;

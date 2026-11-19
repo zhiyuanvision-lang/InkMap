@@ -1,10 +1,8 @@
 import { build } from "esbuild";
-import { execFileSync } from "node:child_process";
-import { cp, copyFile, mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { copyTree, removeStaleArtifacts, ROOT as root, zipDirectory } from "./lib/bundle-utils.mjs";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
 const out = join(root, "dist", "sidebars");
 const source = join(root, "packages", "qoder");
 const manifest = JSON.parse(await readFile(join(source, ".qoder-plugin", "plugin.json"), "utf8"));
@@ -17,14 +15,14 @@ try {
   const runtime = join(plugin, "skills", "inkmap", "editor");
   await mkdir(plugin);
   await Promise.all([
-    cp(join(source, ".qoder-plugin"), join(plugin, ".qoder-plugin"), { recursive: true }),
+    copyTree(join(source, ".qoder-plugin"), join(plugin, ".qoder-plugin")),
     copyFile(join(source, ".qoder-plugin", "plugin.json"), join(plugin, "plugin.json")),
-    cp(join(source, "skills"), join(plugin, "skills"), { recursive: true }),
+    copyTree(join(source, "skills"), join(plugin, "skills")),
     copyFile(join(root, "packages", "vscode", "LICENSE.md"), join(plugin, "LICENSE.md")),
     copyFile(join(root, "packages", "vscode", "THIRD_PARTY_NOTICES.md"), join(plugin, "THIRD_PARTY_NOTICES.md")),
   ]);
   await Promise.all([
-    cp(join(root, "packages", "web", "dist"), join(runtime, "web"), { recursive: true }),
+    copyTree(join(root, "packages", "web", "dist"), join(runtime, "web")),
     build({
       entryPoints: [join(source, "editor.mjs")],
       bundle: true,
@@ -35,8 +33,9 @@ try {
     }),
   ]);
   const archive = join(staging, filename);
-  execFileSync("zip", ["-q", "-r", archive, ".", "-x", "*/.DS_Store"], { cwd: plugin });
+  zipDirectory(plugin, archive, ".");
   await rename(archive, join(out, filename));
+  await removeStaleArtifacts(out, /^inkmap-qoder-.+\.zip$/, filename);
   console.log(join(out, filename));
 } finally {
   await rm(staging, { recursive: true, force: true });

@@ -7,10 +7,10 @@ export const inject = ["slots", "sidebarRight", "sidebarRightTabs"];
 const zh = () => {
   const docLang = typeof document !== "undefined" ? document.documentElement?.lang || "" : "";
   const navLang = typeof navigator !== "undefined" ? navigator.language || "" : "";
-  if (/^zh\b/i.test(docLang || navLang)) return true;
+  if (/^zh(?:[-_.]|$)/i.test(docLang || navLang)) return true;
   try {
     const opts = Intl.DateTimeFormat().resolvedOptions();
-    if (/^zh\b/i.test(opts.locale || "")) return true;
+    if (/^zh(?:[-_.]|$)/i.test(opts.locale || "")) return true;
     if (/^(Asia\/(Shanghai|Chongqing|Chungking|Harbin|Urumqi|Beijing)|PRC)$/i.test(opts.timeZone || "")) return true;
   } catch {}
   return false;
@@ -18,6 +18,7 @@ const zh = () => {
 const label = () => zh() ? "用 Inkmap 打开" : "Open in Inkmap";
 const desktop = () => location.protocol === "dsh-app:" && location.hostname === "app";
 const actionClass = "inkmap-harness-open";
+const LEASE_RENEW_MS = 5 * 60_000;
 const request = (method, body) => fetch(route, {
   method, headers: { "content-type": "application/json" }, body: JSON.stringify(body),
   keepalive: method === "DELETE",
@@ -38,11 +39,17 @@ export function apply(ctx) {
       }
       return data;
     });
+    // Tells the host this tab is still open; a tab that stops renewing (a crashed renderer) is released for it.
+    const renewal = setInterval(() => {
+      void opened.then(({ lease }) => request("POST", { action: "renew", lease })).catch(() => {});
+    }, LEASE_RENEW_MS);
     void opened.catch(() => {
+      clearInterval(renewal);
       tab.signal.removeEventListener("abort", release);
       sessions.delete(tab.signal);
     });
     function release() {
+      clearInterval(renewal);
       tab.signal.removeEventListener("abort", release);
       sessions.delete(tab.signal);
       void opened.then(({ lease }) => request("DELETE", { lease })).catch(() => {});
@@ -97,7 +104,11 @@ export function apply(ctx) {
         try {
           const mode = data.mode === "buy" ? "buy" : "restore";
           const action = mode === "buy" ? "buy" : "sign-in";
-          const response = await request("POST", { lease: view.lease, action });
+          const response = await request("POST", {
+            lease: view.lease,
+            action,
+            ...(typeof data.locale === "string" && { locale: data.locale }),
+          });
           if (!response.ok) throw new Error("Inkmap sign-in is unavailable");
           const url = billingFlowUrl((await response.json()).url, YUNFAN_BILLING_ORIGIN, mode);
           if (!mounted || tab.signal.aborted) return;

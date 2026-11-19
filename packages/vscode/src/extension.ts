@@ -1,11 +1,10 @@
-import { hasAccess, PRODUCT } from "@inkmap/core";
+import { hasAccess } from "@inkmap/core";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, watch } from "node:fs";
-import { readFile, realpath, writeFile } from "node:fs/promises";
+import { lstat, readFile, realpath, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 import * as vscode from "vscode";
-import { adFeed } from "../../cli/src/license";
 import { BrowserServers } from "./browser";
 import { chatAvailable, targetUri } from "./documents";
 import { t } from "./i18n";
@@ -84,24 +83,9 @@ function startMcpTargetBridge(): vscode.Disposable {
   const inkmapDir = process.env.INKMAP_HOME || join(homedir(), ".inkmap");
   const targetPath = join(inkmapDir, "antigravity-target.json");
   const ackPath = join(inkmapDir, "antigravity-target-ack.json");
-  const statusPath = join(inkmapDir, "vscode-bridge-status.json");
   let lastSeq = Date.now() - 10_000;
   let debounceTimer: NodeJS.Timeout | undefined;
   let disposed = false;
-
-  const writeBridgeStatus = async () => {
-    try {
-      if (!existsSync(inkmapDir)) mkdirSync(inkmapDir, { recursive: true, mode: 0o700 });
-      await writeFile(statusPath, JSON.stringify({
-        pid: process.pid,
-        activatedAt: Date.now(),
-        appName: vscode.env.appName,
-        remoteName: vscode.env.remoteName,
-        focused: vscode.window.state.focused,
-        folders: (vscode.workspace.workspaceFolders ?? []).map(f => f.uri.toString()),
-      }, null, 2), { mode: 0o600 });
-    } catch {}
-  };
 
   const syncInitialSeq = async () => {
     try {
@@ -113,32 +97,56 @@ function startMcpTargetBridge(): vscode.Disposable {
     await checkTarget();
   };
 
+  const alreadyAcked = async (seq: number) => {
+    try {
+      const ack = JSON.parse(await readFile(ackPath, "utf8"));
+      return Boolean(ack && ack.ok === true && Number(ack.seq) >= seq);
+    } catch {
+      return false;
+    }
+  };
+
   const checkTarget = async () => {
     if (disposed) return;
+    let claimedSeq = 0;
     try {
       const raw = JSON.parse(await readFile(targetPath, "utf8"));
       if (!raw || raw.openInEditorPane !== true) return;
       const seq = Number(raw.seq) || 0;
-      if (seq <= lastSeq || typeof raw.file !== "string") return;
+      if (seq <= lastSeq || typeof raw.file !== "string" || !/\.md$/i.test(raw.file)) return;
+      if (await alreadyAcked(seq)) {
+        lastSeq = seq;
+        return;
+      }
 
+      const info = await lstat(raw.file).catch(() => null);
+      if (!info || info.isSymbolicLink() || !info.isFile() || info.size > 5 * 1024 * 1024) return;
       const realTarget = await realpath(raw.file).catch(() => raw.file as string);
+      if (!/\.md$/i.test(realTarget)) return;
+
       const folders = vscode.workspace.workspaceFolders ?? [];
-      let matchesWindow = false;
+      let matchesFolder = false;
       for (const folder of folders) {
         const folderPath = folder.uri.fsPath || folder.uri.path;
         if (!folderPath) continue;
         const realFolder = await realpath(folderPath).catch(() => folderPath);
         if (insideOrEqual(realFolder, realTarget)) {
-          matchesWindow = true;
+          matchesFolder = true;
           break;
         }
       }
-      if (!matchesWindow && vscode.window.state.focused) {
-        matchesWindow = true;
+      if (!matchesFolder) {
+        if (!vscode.window.state.focused) return;
+        // Let any sibling window whose workspace actually owns `realTarget` claim it first.
+        await new Promise(r => setTimeout(r, 70));
+        if (disposed || (await alreadyAcked(seq))) {
+          lastSeq = seq;
+          return;
+        }
       }
 
-      if (!matchesWindow) return;
       lastSeq = seq;
+      claimedSeq = seq;
       const editorUrl = localEditorUrl(raw.editorUrl);
       if (editorUrl) await openUrlInEditorPane(editorUrl);
       else await openFileInEditorPane(realTarget);
@@ -149,8 +157,10 @@ function startMcpTargetBridge(): vscode.Disposable {
         handledAt: Date.now(),
       }, null, 2), { mode: 0o600 }).catch(() => {});
     } catch (err) {
+      // No target file yet (or a half-written one) is normal; only report failures for a request this window took.
+      if (!claimedSeq) return;
       await writeFile(ackPath, JSON.stringify({
-        seq: lastSeq,
+        seq: claimedSeq,
         ok: false,
         error: String(err instanceof Error ? err.message : err),
         handledAt: Date.now(),
@@ -158,7 +168,6 @@ function startMcpTargetBridge(): vscode.Disposable {
     }
   };
 
-  void writeBridgeStatus();
   void syncInitialSeq();
   try {
     if (!existsSync(inkmapDir)) mkdirSync(inkmapDir, { recursive: true, mode: 0o700 });
@@ -169,6 +178,7 @@ function startMcpTargetBridge(): vscode.Disposable {
         void checkTarget();
       }, 60);
     });
+    watcher.on("error", () => {});
     const pollFallback = setInterval(() => {
       void checkTarget();
     }, 1200);
@@ -185,55 +195,141 @@ function startMcpTargetBridge(): vscode.Disposable {
   }
 }
 
-async function syncDeepSeekHarnessIfInstalled() {
+// ---- DeepSeek Harness -----------------------------------------------------
+// Inkmap can add its plugin to DeepSeek Harness's desktop profile, but only when the user agrees: once through a
+// one-time prompt the first time Harness is found without the plugin, or later with "Inkmap: Install in DeepSeek Harness".
+
+const HARNESS_INDEX_URL = "https://zhiyuanv.com/dsh-index.json";
+const HARNESS_MARKET_BUNDLE = "@deepseek-ai/dsh-experimental-plugin-market-bundle";
+const HARNESS_PROMPTED = "inkmap.deepseekHarnessPrompted";
+
+interface HarnessProfile {
+  dir: string;
+  patch: string;
+  pkg?: { dsh?: { profile?: { bundles?: string[] } }; dependencies?: Record<string, string> };
+  /** The profile has no plugin-market entry yet (one that someone else added is left alone). */
+  needsIndex: boolean;
+  needsBundle: boolean;
+  needsPlugin: boolean;
+}
+
+const harnessProfileDir = () => join(process.env.DSH_HOME || join(homedir(), ".dsh"), "profiles", "desktop");
+
+async function readHarnessProfile(dir: string): Promise<HarnessProfile> {
+  const patchPath = join(dir, "cordis.patch.yml");
+  const patch = existsSync(patchPath) ? await readFile(patchPath, "utf8").catch(() => "") : "";
+  let pkg: HarnessProfile["pkg"];
   try {
-    const dshHome = process.env.DSH_HOME || join(homedir(), ".dsh");
-    const profileDir = join(dshHome, "profiles", "desktop");
-    if (!existsSync(profileDir)) return;
+    pkg = JSON.parse(await readFile(join(dir, "package.json"), "utf8"));
+  } catch {}
+  const bundles = pkg?.dsh?.profile?.bundles;
+  return {
+    dir,
+    patch,
+    pkg,
+    needsIndex: !patch.includes(HARNESS_INDEX_URL) && !/^\s*-\s*id:\s*plugin-market\b/m.test(patch),
+    needsBundle: Array.isArray(bundles) && !bundles.includes(HARNESS_MARKET_BUNDLE),
+    needsPlugin: Boolean(pkg) && !pkg?.dependencies?.["dsh-inkmap"],
+  };
+}
 
-    const indexUrl = "https://zhiyuanv.com/dsh-index.json";
-    const patchPath = join(profileDir, "cordis.patch.yml");
-    const existingPatch = existsSync(patchPath) ? await readFile(patchPath, "utf8").catch(() => "") : "";
-    if (!existingPatch.includes(indexUrl)) {
-      const snippet = `\n- id: plugin-market\n  name: "@deepseek-ai/dsh-plugin-market"\n  config:\n    indexes:\n      - ${indexUrl}\n`;
-      await writeFile(patchPath, existingPatch.replace(/\n*$/, "") + snippet, "utf8").catch(() => {});
-    }
+const harnessSetUp = (profile: HarnessProfile) => !profile.needsIndex && !profile.needsBundle && !profile.needsPlugin;
 
-    const pkgPath = join(profileDir, "package.json");
-    if (!existsSync(pkgPath)) return;
-    const pkg = JSON.parse(await readFile(pkgPath, "utf8")) as {
-      dsh?: { profile?: { bundles?: string[] } };
-      dependencies?: Record<string, string>;
-    };
-    const bundles = pkg.dsh?.profile?.bundles;
-    if (Array.isArray(bundles) && !bundles.includes("@deepseek-ai/dsh-experimental-plugin-market-bundle")) {
-      bundles.push("@deepseek-ai/dsh-experimental-plugin-market-bundle");
-      await writeFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n", "utf8").catch(() => {});
-    }
-    if (pkg.dependencies?.["dsh-inkmap"]) return;
+function harnessCli(): string | undefined {
+  return [
+    process.platform === "darwin" ? "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" : "",
+    process.platform === "darwin" ? join(homedir(), "Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh") : "",
+    process.platform === "win32" ? join(process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "Programs", "DeepSeek Harness", "resources", "runtime", "cli", "bin", "dsh.cmd") : "",
+  ].find(candidate => candidate && existsSync(candidate));
+}
 
-    const stagedDsh = join(process.env.INKMAP_HOME || join(homedir(), ".inkmap"), "dsh-inkmap");
-    const spec = existsSync(join(stagedDsh, "package.json")) ? stagedDsh : "dsh-inkmap";
-    const candidates = [
-      process.platform === "darwin" ? "/Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh" : "",
-      process.platform === "darwin" ? join(homedir(), "Applications/DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh") : "",
-      process.platform === "win32" ? join(process.env.LOCALAPPDATA || join(homedir(), "AppData", "Local"), "Programs", "DeepSeek Harness", "resources", "runtime", "cli", "bin", "dsh.cmd") : "",
-    ].filter(Boolean);
-    const dshBin = candidates.find(c => existsSync(c));
-    if (dshBin) {
-      const child = spawn(dshBin, ["plugin", "--profile", "desktop", "add", spec], { stdio: "ignore", detached: true });
-      child.unref();
-    }
+function runHarnessCli(cli: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // `%` is escaped outside the quotes so cmd.exe cannot expand `%VAR%` in a path.
+    const q = (s: string) => `"${s.replace(/"/g, '""').replace(/%/g, '"^%"')}"`;
+    const child = process.platform === "win32" && !cli.toLowerCase().endsWith(".exe")
+      ? spawn("cmd.exe", ["/d", "/s", "/c", `"${[cli, ...args].map(q).join(" ")}"`], {
+          stdio: "ignore",
+          windowsVerbatimArguments: true,
+          windowsHide: true,
+        })
+      : spawn(cli, args, { stdio: "ignore" });
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error("dsh did not finish in time"));
+    }, 180_000);
+    child.on("error", err => {
+      clearTimeout(timer);
+      reject(err);
+    });
+    child.on("exit", code => {
+      clearTimeout(timer);
+      if (code === 0) resolve();
+      else reject(new Error(`dsh exited with code ${code}`));
+    });
+  });
+}
+
+/**
+ * Adds the Inkmap plugin index to the desktop profile and installs `dsh-inkmap` with the DeepSeek Harness CLI.
+ * Returns "configured" when the CLI was not found, so the user still has to install the plugin from Harness.
+ */
+async function installIntoHarness(profile: HarnessProfile): Promise<"installed" | "configured"> {
+  if (profile.needsIndex) {
+    const snippet = `- id: plugin-market\n  name: "@deepseek-ai/dsh-plugin-market"\n  config:\n    indexes:\n      - ${HARNESS_INDEX_URL}\n`;
+    const trimmed = profile.patch.trim();
+    // Append a new block instead of editing YAML by regex, which could corrupt another plugin's settings.
+    const next = !trimmed || trimmed === "[]" ? snippet : profile.patch.replace(/\n*$/, "\n\n") + snippet;
+    await writeFile(join(profile.dir, "cordis.patch.yml"), next, "utf8");
+  }
+  if (profile.needsBundle && profile.pkg?.dsh?.profile?.bundles) {
+    profile.pkg.dsh.profile.bundles.push(HARNESS_MARKET_BUNDLE);
+    await writeFile(join(profile.dir, "package.json"), JSON.stringify(profile.pkg, null, 2) + "\n", "utf8");
+  }
+  if (!profile.needsPlugin) return "installed";
+  const cli = harnessCli();
+  if (!cli) return "configured";
+  const staged = join(process.env.INKMAP_HOME || join(homedir(), ".inkmap"), "dsh-inkmap");
+  await runHarnessCli(cli, ["plugin", "--profile", "desktop", "add", existsSync(join(staged, "package.json")) ? staged : "dsh-inkmap"]);
+  return "installed";
+}
+
+/** Installs Inkmap into DeepSeek Harness with progress and a result message (the command and the prompt use it). */
+async function installInDeepSeekHarness() {
+  const dir = harnessProfileDir();
+  if (!existsSync(dir)) return void vscode.window.showWarningMessage(t("harnessNotFound"));
+  try {
+    const profile = await readHarnessProfile(dir);
+    if (harnessSetUp(profile)) return void vscode.window.showInformationMessage(t("harnessAlready"));
+    const result = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: t("harnessInstalling") },
+      () => installIntoHarness(profile),
+    );
+    void vscode.window.showInformationMessage(t(result === "installed" ? "harnessInstalled" : "harnessConfigured"));
+  } catch (err) {
+    void vscode.window.showErrorMessage(t("harnessFailed", { error: err instanceof Error ? err.message : String(err) }));
+  }
+}
+
+/** Asks once, the first time DeepSeek Harness is found without the Inkmap plugin; never changes Harness unasked. */
+async function offerDeepSeekHarnessSetup(context: vscode.ExtensionContext) {
+  try {
+    if (context.globalState.get<boolean>(HARNESS_PROMPTED)) return;
+    const dir = harnessProfileDir();
+    if (!existsSync(dir) || harnessSetUp(await readHarnessProfile(dir))) return;
+    await context.globalState.update(HARNESS_PROMPTED, true);
+    const install = t("harnessInstall");
+    const pick = await vscode.window.showInformationMessage(t("harnessOffer"), install, t("harnessNoThanks"));
+    if (pick === install) await installInDeepSeekHarness();
   } catch {}
 }
 
 export function activate(context: vscode.ExtensionContext) {
-  void syncDeepSeekHarnessIfInstalled();
+  void offerDeepSeekHarnessSetup(context);
   const log = vscode.window.createOutputChannel("Inkmap");
   const license = extensionLicense(context);
   license.track?.("plugin_activate");
-  const ads = adFeed(PRODUCT.adFeedUrl);
-  const browsers = new BrowserServers(context, vscode.Uri.joinPath(context.extensionUri, "dist", "web").fsPath, log, license, ads);
+  const browsers = new BrowserServers(context, vscode.Uri.joinPath(context.extensionUri, "dist", "web").fsPath, log, license);
 
   const withUri = (run: (uri: vscode.Uri) => unknown) => (arg?: unknown) => {
     const uri = targetUri(arg);
@@ -262,7 +358,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
   };
 
-  const editors = new MindmapEditorProvider(context, license, ads);
+  const editors = new MindmapEditorProvider(context, license);
   chatAvailable().then(available => vscode.commands.executeCommand("setContext", "inkmap.chatAvailable", available));
   maybeOfferOnboarding(vscode.window.activeTextEditor);
 
@@ -273,10 +369,13 @@ export function activate(context: vscode.ExtensionContext) {
     startMcpTargetBridge(),
     vscode.window.onDidChangeActiveTextEditor(maybeOfferOnboarding),
     vscode.window.registerUriHandler({
-      handleUri(uri) {
+      async handleUri(uri) {
         if (uri.path === "/open") {
-          const target = new URLSearchParams(uri.query).get("path");
-          if (target) void openFileInEditorPane(target);
+          const target = new URLSearchParams(uri.query).get("path")?.trim();
+          if (!target || !isAbsolute(target) || !/\.md$/i.test(target)) return;
+          const info = await lstat(target).catch(() => null);
+          if (!info || info.isSymbolicLink() || !info.isFile() || info.size > 5 * 1024 * 1024) return;
+          void openFileInEditorPane(target);
         }
       },
     }),
@@ -295,7 +394,7 @@ export function activate(context: vscode.ExtensionContext) {
       withUri(async uri => {
         if (!hasAccess(await license.state())) {
           await openToSide(uri);
-          setTimeout(() => editors.openAccount(), 250);
+          editors.openAccount(uri);
           return;
         }
         try {
@@ -308,12 +407,13 @@ export function activate(context: vscode.ExtensionContext) {
         }
       }),
     ),
+    vscode.commands.registerCommand("inkmap.installDeepSeekHarness", installInDeepSeekHarness),
     vscode.commands.registerCommand("inkmap.upgrade", async (arg?: unknown) => {
       if (editors.openAccount()) return;
       const uri = targetUri(arg);
       if (!uri) return vscode.window.showWarningMessage(t("openMarkdownFirst"));
       await openToSide(uri);
-      setTimeout(() => editors.openAccount(), 280);
+      editors.openAccount(uri);
     }),
   );
 }

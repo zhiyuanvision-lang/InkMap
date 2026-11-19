@@ -27,10 +27,14 @@ From the user & billing perspective, there are **only two categories**:
 
 1. **Category 1 (`capabilities.account === "purchase"` — In-Plugin Direct Checkout)**:
    - Applies to: **VS Code, Cursor, DeepSeek Harness, Qoder, Standalone Browser IDE**.
-   - Flow: User clicks `Buy Pro` -> verifies email inline (auto-submits at 6 digits; Category 1 email shows **only the 6-digit code + Pro perks**, never a purchase jump button) -> displays payment **directly inside the plugin** (WeChat Pay QR `¥29.9` for Domestic, Card Checkout `$15` for Overseas). Do **not** add redundant "Open in Browser" or external website payment links.
+   - Flow: User clicks `Buy Pro` -> verifies email inline (email prefilled with the last address used; auto-submits at 6 digits; Category 1 email shows **only the 6-digit code + Pro perks**, never a purchase jump button) -> displays payment **directly inside the plugin** (WeChat Pay QR `¥29.9` for Domestic, Card Checkout `$15` for Overseas). Do **not** add redundant "Open in Browser" or external website payment links.
 2. **Category 2 (`capabilities.account === "restore"` — Device-Bound Magic Link Email)**:
    - Applies to: **OpenAI Codex, Claude Desktop, Claude Code, Google Antigravity** inline MCP App panels.
-   - Flow: User clicks `Sign in with Email` -> receives email containing a **Device-Bound Magic Link** + 6-digit backup code. Clicking the email button automatically signs in the open plugin window via `X-Inkmap-Pending-Token` polling (no manual code entry required) and opens a 1-step payment card on the web; once paid, Pro unlocks automatically in the plugin.
+   - Flow: the email holds a **Device-Bound Magic Link** (one button: sign in + pay on the web) + a 6-digit backup code. Minimize steps:
+     - When the trial has ended, the paywall shows the email form itself (no close button), prefilled with the last address used on this computer (`LicenseState.lastSignIn`), focus on `Send code` — one click sends the email.
+     - After the trial, an account **without Pro is never kept signed in** (`licenseService` → `mustPayFirst` / `parkUnpaidSession`): a typed code returns `{ ok: false, reason: "notPro" }`, and an already signed-in unpaid account is signed out. Their tokens stay in the license service's **waiting list** instead.
+     - The waiting list (persisted, polled every 2.5 s for 30 min, then every 30 s for up to 3 days) holds every email's pending token (`X-Inkmap-Pending-Token`, bound by the server when the email button is clicked) and every verified-but-unpaid token. Pro belongs to the account, so the first token that turns `active` after payment — by any route — signs in automatically, **no code needed**.
+     - During the trial, clicking the email button (or typing the code) signs in right away, as before.
 
 ### Domestic (`¥29.9`) vs. Overseas (`$15`) Rule
 - Determined **strictly by the computer's OS timezone (`Asia/Shanghai`, etc.) OR the computer's OS system language (`zh*`)** via `detectOsLocale()` in `packages/cli/src/license.ts` (injected as `<html data-os-locale="zh|en">`).

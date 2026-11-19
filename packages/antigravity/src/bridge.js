@@ -1,9 +1,12 @@
 (function () {
-  const isZh = () => /^zh\b/i.test(localStorage.getItem("inkmap.language") || navigator.language || "zh");
+  // The sidecar injects `data-os-locale` from the computer's OS timezone/language; UI language never decides it.
+  const osLocale = () => document.documentElement?.dataset?.osLocale || "";
+  const isZh = () => osLocale() ? osLocale() === "zh" : /^zh(?:[-_.]|$)/i.test(navigator.language || "");
   const text = (zh, en) => (isZh() ? zh : en);
 
-  window.INKMAP_ASSET_BASE = "/api/doc-asset?path=";
-  window.INKMAP_LOCALE = navigator.language;
+  // Each panel names itself, so the sidecar resolves this panel's images against the document it shows.
+  const panelId = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).slice(2);
+  window.INKMAP_ASSET_BASE = "/api/doc-asset?panel=" + encodeURIComponent(panelId) + "&path=";
   window.INKMAP_ACCOUNT_MODE = "restore";
 
   const params = new URLSearchParams(window.location.search);
@@ -20,8 +23,15 @@
   const apiFetch = async (path, options = {}) => {
     const fn = window.sidecar?.fetch ? window.sidecar.fetch.bind(window.sidecar) : window.fetch.bind(window);
     const method = (options.method || "GET").toUpperCase();
+    let body = options.body;
+    if (method !== "GET" && typeof body === "string") {
+      try {
+        body = JSON.stringify({ ...JSON.parse(body), panel: panelId });
+      } catch {}
+    }
     const res = await fn(path, {
       ...options,
+      body,
       method,
       headers: {
         "Content-Type": "application/json",
@@ -32,26 +42,6 @@
     if (!res.ok) throw new Error(data.error || `${path}: ${res.status}`);
     return data;
   };
-
-  const debugLog = (event, detail = {}) => {
-    void apiFetch("/api/debug", {
-      method: "POST",
-      body: JSON.stringify({ event, ...detail, href: window.location.href, ts: Date.now() }),
-    }).catch(() => {});
-  };
-
-  window.addEventListener("error", e => {
-    debugLog("window.error", { message: e.message, filename: e.filename, lineno: e.lineno });
-  });
-  window.addEventListener("unhandledrejection", e => {
-    debugLog("unhandledrejection", { reason: String(e.reason?.stack || e.reason) });
-  });
-  window.addEventListener("message", e => {
-    if (e.data && typeof e.data === "object" && e.data.type === "__inkmap_debug") {
-      debugLog(e.data.event || "client.debug", e.data);
-    }
-  });
-  debugLog("bridge.loaded");
 
   const emitToEditor = msg => {
     window.postMessage(msg, "*");
@@ -69,7 +59,6 @@
     return workspaceUris;
   }
 
-  let fileSelectEl = null;
   let fileTriggerBtn = null;
   let fileTriggerNameEl = null;
   let fileTriggerDirEl = null;
@@ -93,6 +82,7 @@
   let mdEditTimer = 0;
   let activeStartLine = 0;
   let activeEndLine = 0;
+  let lastGutterKey = "";
 
   function parseFileEntry(item) {
     const label = typeof item.label === "string" ? item.label : "";
@@ -338,22 +328,30 @@
     }
   }
 
-  function renderMdGutterAndBand() {
+  function renderMdGutterAndBand(scrollOnly = false) {
     if (!mdTextareaEl) return;
     const totalLines = Math.max(1, mdTextareaEl.value.split("\n").length);
     const sLine = Math.max(0, Math.min(activeStartLine, totalLines - 1));
     const eLine = Math.max(sLine, Math.min(activeEndLine, totalLines - 1));
-    if (mdLineBadgeEl) {
-      const label = sLine === eLine ? `${sLine + 1}` : `${sLine + 1}–${eLine + 1}`;
-      mdLineBadgeEl.textContent = text(`行 ${label}`, `Ln ${label}`);
+    if (!scrollOnly) {
+      if (mdLineBadgeEl) {
+        const label = sLine === eLine ? `${sLine + 1}` : `${sLine + 1}–${eLine + 1}`;
+        mdLineBadgeEl.textContent = text(`行 ${label}`, `Ln ${label}`);
+      }
+      if (mdGutterEl) {
+        const key = `${totalLines}:${sLine}:${eLine}`;
+        if (key !== lastGutterKey) {
+          lastGutterKey = key;
+          const nums = [];
+          for (let i = 0; i < totalLines; i++) {
+            const active = i >= sLine && i <= eLine;
+            nums.push(`<div class="ag-gutter-ln${active ? " is-active" : ""}">${i + 1}</div>`);
+          }
+          mdGutterEl.innerHTML = nums.join("");
+        }
+      }
     }
     if (mdGutterEl) {
-      const nums = [];
-      for (let i = 0; i < totalLines; i++) {
-        const active = i >= sLine && i <= eLine;
-        nums.push(`<div class="ag-gutter-ln${active ? " is-active" : ""}">${i + 1}</div>`);
-      }
-      mdGutterEl.innerHTML = nums.join("");
       mdGutterEl.scrollTop = mdTextareaEl.scrollTop;
     }
     if (mdBandEl) {
@@ -374,7 +372,8 @@
     }
     if (!mdTextareaEl) return;
     if (force || document.activeElement !== mdTextareaEl) {
-      if (mdTextareaEl.value !== md) mdTextareaEl.value = md;
+      const normalized = String(md || "").replace(/\r\n?/g, "\n");
+      if (mdTextareaEl.value !== normalized) mdTextareaEl.value = normalized;
     }
     renderMdGutterAndBand();
   }
@@ -411,17 +410,6 @@
 
   function renderFilePicker(files = [], selected = currentFile) {
     cachedFiles = Array.isArray(files) ? files : [];
-    if (fileSelectEl) {
-      fileSelectEl.innerHTML = "";
-      for (const item of cachedFiles) {
-        const opt = document.createElement("option");
-        opt.value = item.path;
-        opt.textContent = item.label;
-        if (item.path === selected) opt.selected = true;
-        fileSelectEl.appendChild(opt);
-      }
-      fileSelectEl.disabled = !cachedFiles.length;
-    }
     if (openRawBtn) openRawBtn.disabled = !selected;
     if (fileTriggerBtn) {
       fileTriggerBtn.disabled = !cachedFiles.length;
@@ -447,9 +435,19 @@
     }
   }
 
+  async function flushPendingEdits() {
+    if (mdEditTimer) {
+      clearTimeout(mdEditTimer);
+      mdEditTimer = 0;
+      await window.inkmap?.load?.(currentMd, true);
+    }
+    await window.inkmap?.flushSave?.();
+  }
+
   async function switchFile(filePath) {
     if (!filePath || filePath === currentFile) return;
     try {
+      await flushPendingEdits();
       const data = await apiFetch("/api/open", {
         method: "POST",
         body: JSON.stringify({ workspaceUris, file: filePath }),
@@ -471,7 +469,7 @@
 
   function mountToolbarControls() {
     const bar = document.getElementById("bar");
-    if (!bar || document.getElementById("ag-file-select")) return;
+    if (!bar || document.getElementById("ag-file-trigger")) return;
 
     const style = document.createElement("style");
     style.textContent = `
@@ -491,7 +489,6 @@
         width: calc(100vw - var(--ag-split-left, 42vw)) !important;
         height: calc(100vh - var(--toolbar-height, 44px)) !important;
       }
-      #ag-file-select { display: none !important; }
       .ag-file-picker-wrap { position: relative; display: inline-flex; align-items: center; }
       #ag-file-trigger {
         display: inline-flex; align-items: center; gap: 5px; max-width: 210px; height: 28px;
@@ -680,13 +677,6 @@
     `;
     document.head.appendChild(style);
 
-    fileSelectEl = document.createElement("select");
-    fileSelectEl.id = "ag-file-select";
-    fileSelectEl.hidden = true;
-    fileSelectEl.addEventListener("change", () => {
-      if (fileSelectEl.value) void switchFile(fileSelectEl.value);
-    });
-
     const pickerWrap = document.createElement("div");
     pickerWrap.className = "ag-file-picker-wrap";
 
@@ -737,7 +727,7 @@
       }
     });
 
-    pickerWrap.append(fileSelectEl, fileTriggerBtn);
+    pickerWrap.append(fileTriggerBtn);
 
     splitMdBtn = document.createElement("button");
     splitMdBtn.id = "ag-split-md";
@@ -812,7 +802,7 @@
     }
     if (mdTextareaEl) {
       mdTextareaEl.addEventListener("scroll", () => {
-        renderMdGutterAndBand();
+        renderMdGutterAndBand(true);
       });
       const handleCursorMove = () => {
         if (!mdTextareaEl) return;
@@ -841,6 +831,8 @@
         renderMdGutterAndBand();
         clearTimeout(mdEditTimer);
         mdEditTimer = window.setTimeout(() => {
+          // The edit is being applied now; Cmd+S must not treat it as still pending.
+          mdEditTimer = 0;
           if (window.inkmap?.load) {
             void window.inkmap.load(nextMd, true).then(() => {
               emitToEditor({ type: "reveal", line: startLine });
@@ -849,14 +841,6 @@
         }, 320);
       });
     }
-    document.querySelectorAll(".language-select").forEach(sel => {
-      sel.addEventListener("change", () => {
-        setTimeout(() => {
-          applySplitLayout(false);
-          renderFilePicker(cachedFiles, currentFile);
-        }, 10);
-      });
-    });
     const resizer = document.getElementById("ag-md-resizer");
     if (resizer) {
       resizer.addEventListener("pointerdown", e => {
@@ -890,6 +874,45 @@
   let readyReceived = false;
   let initialDocSent = false;
   let lastLicense = { pro: false };
+  let magicPollInterval = 0;
+  let magicPollStop = 0;
+
+  async function refreshLicenseState() {
+    const state = await apiFetch("/api/license", { method: "GET" }).catch(() => null);
+    if (state) {
+      lastLicense = state;
+      emitToEditor({ type: "license", state });
+    }
+    return state;
+  }
+
+  function stopTemporaryLicensePoll() {
+    clearInterval(magicPollInterval);
+    clearTimeout(magicPollStop);
+    magicPollInterval = 0;
+    magicPollStop = 0;
+  }
+
+  /**
+   * Polls the license while the user finishes signing in or paying from the email. It runs until Pro is active, for
+   * as long as the sidecar checks the email's tokens quickly (30 minutes); a slower check covers later payments.
+   */
+  function startTemporaryLicensePoll(durationMs = 30 * 60_000) {
+    stopTemporaryLicensePoll();
+    magicPollInterval = window.setInterval(async () => {
+      const state = await refreshLicenseState();
+      if (state?.pro) stopTemporaryLicensePoll();
+    }, 2500);
+    magicPollStop = window.setTimeout(stopTemporaryLicensePoll, durationMs);
+  }
+
+  window.addEventListener("focus", () => {
+    if (initialDocSent) void refreshLicenseState();
+  });
+  // A payment made after the quick-poll window still unlocks the open panel.
+  setInterval(() => {
+    if (initialDocSent && !lastLicense?.pro && !magicPollInterval) void refreshLicenseState();
+  }, 20_000);
 
   function pushDocToEditor(doc, license = lastLicense) {
     if (!doc) return;
@@ -898,38 +921,13 @@
     if (!initialDocSent) {
       if (!readyReceived) return;
       initialDocSent = true;
-      debugLog("emit.doc", { name: doc.name, mdLen: doc.md?.length });
       emitToEditor({
         type: "doc",
         doc,
         license: lastLicense || { pro: false },
-        ads: [],
         chat: true,
       });
-      setTimeout(() => {
-        const mapEl = document.getElementById("map");
-        debugLog("map.check.500ms", {
-          hasInkmap: Boolean(window.inkmap),
-          mapChildren: mapEl ? mapEl.children.length : -1,
-          mapRect: mapEl ? mapEl.getBoundingClientRect() : null,
-          innerW: window.innerWidth,
-          innerH: window.innerHeight,
-          bodyText: document.body?.innerText?.slice(0, 120),
-        });
-      }, 500);
-      setTimeout(() => {
-        const mapEl = document.getElementById("map");
-        debugLog("map.check.2500ms", {
-          hasInkmap: Boolean(window.inkmap),
-          mapChildren: mapEl ? mapEl.children.length : -1,
-          mapRect: mapEl ? mapEl.getBoundingClientRect() : null,
-          innerW: window.innerWidth,
-          innerH: window.innerHeight,
-          bodyText: document.body?.innerText?.slice(0, 120),
-        });
-      }, 2500);
     } else {
-      debugLog("emit.change", { name: doc.name, mdLen: doc.md?.length });
       emitToEditor({ type: "change", doc });
     }
   }
@@ -937,7 +935,6 @@
   if (window.sidecar?.onWorkspaceChange) {
     window.sidecar.onWorkspaceChange(async nextUris => {
       workspaceUris = Array.isArray(nextUris) ? nextUris : [];
-      debugLog("workspace.change", { workspaceUris });
       try {
         const data = await apiFetch("/api/init", {
           method: "POST",
@@ -953,26 +950,32 @@
           currentMd = data.doc.md;
           pushDocToEditor(data.doc, data.license);
         }
-      } catch (err) {
-        debugLog("workspace.change.err", { error: String(err) });
-      }
+      } catch {}
     });
   }
 
-  // Poll for external file edits or AI skill file switches (`select.mjs`).
+  // Poll for external file edits or AI tool file switches.
+  let polling = false;
   setInterval(async () => {
-    if (!initialDocSent || saving) return;
+    if (!initialDocSent || saving || polling) return;
+    polling = true;
+    const polledFile = currentFile;
+    const polledVersion = currentVersion;
     try {
       const res = await apiFetch("/api/poll", {
         method: "POST",
         body: JSON.stringify({
-          ...(currentFile && { file: currentFile }),
-          ...(currentVersion && { version: currentVersion }),
+          ...(polledFile && { file: polledFile }),
+          ...(polledVersion && { version: polledVersion }),
           targetSeq: String(targetSeq),
+          workspaceUris,
         }),
       });
       if (res.targetSeq) targetSeq = res.targetSeq;
+      if (saving) return;
       if (res.switchedFile && res.doc) {
+        clearTimeout(mdEditTimer);
+        mdEditTimer = 0;
         currentFile = res.switchedFile;
         currentFileUri = res.currentFileUri;
         currentVersion = res.doc.version;
@@ -986,26 +989,28 @@
         setTimeout(() => {
           try { window.inkmap?.mindMap?.view?.fit(); } catch {}
         }, 120);
-      } else if (res.changed && res.doc) {
+      } else if (res.changed && res.doc && currentFile === polledFile && currentVersion === polledVersion) {
+        if (res.doc.version === currentVersion) return;
         currentVersion = res.doc.version;
         currentMd = res.doc.md;
         pushDocToEditor(res.doc);
       }
-    } catch {}
+    } catch {} finally {
+      polling = false;
+    }
   }, 1200);
 
   function sliceLines(md, startLine, endLine, subText) {
     if (subText) return subText;
-    const lines = String(md || "").split("\n");
-    const s = Math.max(0, Math.min(startLine ?? 0, lines.length - 1));
-    const e = Math.max(s, Math.min(endLine ?? s, lines.length - 1));
+    const lines = String(md || "").replace(/\r\n?/g, "\n").split("\n");
+    const s = Math.max(0, Math.min(startLine ?? 0, Math.max(0, lines.length - 1)));
+    const e = Math.max(s, Math.min(endLine ?? s, Math.max(0, lines.length - 1)));
     return lines.slice(s, e + 1).join("\n");
   }
 
   window.acquireVsCodeApi = () => ({
     async postMessage(msg) {
       if (!msg || typeof msg !== "object") return;
-      debugLog("postMessage", { type: msg.type });
       try {
         switch (msg.type) {
           case "ready": {
@@ -1117,59 +1122,67 @@
           }
           case "addToChat": {
             if (!currentFile) return;
-            const snippet = sliceLines(currentMd, msg.startLine, msg.endLine, msg.text);
+            const hasRange = msg.startLine !== undefined;
+            const sOne = (msg.startLine ?? 0) + 1;
+            const eOne = (msg.endLine ?? msg.startLine ?? 0) + 1;
+            const snippet = hasRange ? sliceLines(currentMd, msg.startLine, msg.endLine, msg.text) : "";
             if (window.sidecar?.ui?.addArtifactComment && currentFileUri) {
               window.sidecar.ui.addArtifactComment({
                 uri: currentFileUri,
-                comment: snippet,
-                selection: {
-                  startLine: (msg.startLine ?? 0) + 1,
-                  endLine: (msg.endLine ?? msg.startLine ?? 0) + 1,
-                },
+                comment: hasRange ? snippet : text(`请结合 ${currentFile} 进行分析`, `Analyze ${currentFile}`),
+                ...(hasRange && {
+                  selection: {
+                    startLine: sOne,
+                    endLine: eOne,
+                  },
+                }),
                 pageTitle: currentFile.split(/[\\/]/).pop() || "Inkmap",
               });
             } else if (window.sidecar?.agent?.sendMessage && window.sidecar.conversationId) {
-              await window.sidecar.agent.sendMessage(
-                `来自 \`${currentFile}\`（第 ${(msg.startLine ?? 0) + 1}–${(msg.endLine ?? 0) + 1} 行）：\n\`\`\`markdown\n${snippet}\n\`\`\``,
-                window.sidecar.conversationId,
-              );
+              const prompt = hasRange
+                ? text(`来自 \`${currentFile}\`（第 ${sOne}–${eOne} 行）：`, `From \`${currentFile}\` (lines ${sOne}–${eOne}):`) +
+                  `\n\`\`\`markdown\n${snippet}\n\`\`\``
+                : text(`请结合思维导图文件 \`${currentFile}\` 进行分析。`, `Please use the mind map file \`${currentFile}\` as context.`);
+              await window.sidecar.agent.sendMessage(prompt, window.sidecar.conversationId);
             }
             return;
           }
           case "checkout": {
+            const locale = osLocale() || undefined;
             const res = await apiFetch("/api/checkout", {
               method: "POST",
-              body: JSON.stringify({ mode: "restore" }),
+              body: JSON.stringify({ mode: "restore", locale }),
             });
             emitToEditor({ type: "checkout", id: msg.id });
-            // Poll license state after restore sign-in link opens
-            const checkTimer = setInterval(async () => {
-              const state = await apiFetch("/api/license", { method: "GET" }).catch(() => null);
-              if (state) emitToEditor({ type: "license", state });
-              if (state?.pro || state?.connected) clearInterval(checkTimer);
-            }, 3000);
-            setTimeout(() => clearInterval(checkTimer), 120_000);
+            startTemporaryLicensePoll();
             if (res.url && !window.sidecar) window.open(res.url, "_blank", "noopener,noreferrer");
             return;
           }
           case "sendPhoneCode": {
+            const locale = osLocale() || undefined;
             const { result } = await apiFetch("/api/phone-send", {
               method: "POST",
-              body: JSON.stringify({ phone: msg.phone }),
+              body: JSON.stringify({ phone: msg.phone, locale }),
             });
             emitToEditor({ type: "phoneCodeSent", id: msg.id, result });
+            if (result?.ok) startTemporaryLicensePoll();
             return;
           }
           case "signInByPhone": {
+            const locale = osLocale() || undefined;
             const { result } = await apiFetch("/api/phone-verify", {
               method: "POST",
-              body: JSON.stringify({ phone: msg.phone, code: msg.code }),
+              body: JSON.stringify({ phone: msg.phone, code: msg.code, locale }),
             });
+            if (result?.ok && result.value) lastLicense = result.value;
             emitToEditor({ type: "phoneSignIn", id: msg.id, result });
+            // A verified email without Pro waits for payment in the sidecar; watch for it here too.
+            if (!result?.value?.pro) startTemporaryLicensePoll();
             return;
           }
           case "signOut": {
             const { state } = await apiFetch("/api/signout", { method: "POST", body: "{}" });
+            if (state) lastLicense = state;
             emitToEditor({ type: "signedOut", id: msg.id });
             if (state) emitToEditor({ type: "license", state });
             return;
@@ -1191,7 +1204,6 @@
           }
         }
       } catch (err) {
-        debugLog("postMessage.error", { type: msg.type, error: String(err?.stack || err) });
         if ("id" in msg) {
           emitToEditor({
             type: "error",
@@ -1203,8 +1215,15 @@
     },
   });
 
-  // Restore keyboard undo/redo since VsCodeHost removes simple-mind-map's default Control+z / Control+y
+  // Restore keyboard undo/redo and flush split-pane edits on Cmd+S
   window.addEventListener("keydown", e => {
+    if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "s") {
+      if (mdEditTimer) {
+        e.preventDefault();
+        void flushPendingEdits();
+        return;
+      }
+    }
     if (e.defaultPrevented || e.isComposing) return;
     const tag = (e.target?.tagName || "").toUpperCase();
     if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || e.target?.isContentEditable) return;

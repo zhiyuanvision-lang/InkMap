@@ -3,13 +3,14 @@ import { execFileSync, spawn } from "node:child_process";
 import { once } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { createInterface } from "node:readline";
 import { test } from "node:test";
+import { SIDEBARS } from "./lib/test-env.mjs";
 
 test("the standalone sidebar archive serves a Markdown file outside the repository", { timeout: 10_000 }, async t => {
   const directory = await mkdtemp(join(tmpdir(), "inkmap-local-package-"));
-  const archive = resolve("dist/sidebars/inkmap-local-editor.zip");
+  const archive = join(SIDEBARS, "inkmap-local-editor.zip");
   const markdown = join(directory, "sample map.md");
   const original = "# Sample\n\n- Before\n";
   let child;

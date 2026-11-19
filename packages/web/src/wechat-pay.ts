@@ -1,7 +1,7 @@
 import type { LicenseState, WechatOrderResult } from "@inkmap/core";
 import { applyI18n, locale, t } from "./i18n";
 
-export type PaymentData =
+type PaymentData =
   | { mode?: "qr"; qr: string; amountFen: number; expiresAt?: string }
   | { mode: "card"; url: string; amountCents?: number };
 
@@ -189,6 +189,5 @@ export function createWechatPay(
     },
     close,
     isOpen: () => view.isConnected,
-    refreshLanguage,
   };
 }

@@ -4,7 +4,7 @@
 
 告别传统 **Markmap**「只能看、不能改」的痛点！**Inkmap** 让你像操作飞书脑图 / XMind 一样在画布上直接增删、拖拽节点与内嵌 **Mermaid 流程图**，每一处修改都**逐字节实时写回原 `.md` 文件**，未改动段落 100% 原样保留，Git diff 干净利落。
 
-![Inkmap 双向实时同步与行号联动演示](images/demo-sync-zh.gif)
+![Inkmap 双向实时同步与行号联动演示](https://www.zhiyuanv.com/gifs/demo-sync-zh.gif)
 
 ---
 
@@ -24,12 +24,12 @@
 ### 1. 脑图节点内嵌 Mermaid 流程图、LaTeX 公式与表格
 在列表项或标题下缩进编写 ` ```mermaid ` 代码块，Inkmap 会在节点内直接高清渲染**流程图、时序图、状态图**，同时完整支持 **LaTeX 数学公式**（`$...$` / `$$...$$`）与 **Markdown 表格**。点击图下方的 **「编辑流程图源码」**（或按 `⌘E` / `Ctrl+E`）即可边改边看，点击 **「单独打开」** 可全屏无损缩放检视复杂架构图：
 
-![Inkmap 内嵌 Mermaid 流程图实时编辑与大图预览](images/demo-mermaid-zh.gif)
+![Inkmap 内嵌 Mermaid 流程图实时编辑与大图预览](https://www.zhiyuanv.com/gifs/demo-mermaid-zh.gif)
 
 ### 2. 9 种专业结构切换 · 夜色护眼深色模式 · 一键当 PPT 演示放映
 内置 **逻辑结构图、左右思维导图、组织结构图、目录组织图、时间轴（横向/交错/竖向）、鱼骨图** 及 **夜色深色主题**。点击顶部 **「演示」** 按钮即可进入逐节点聚光灯放映模式，方案评审与组会汇报无需重做 PPT；支持一键导出**高清 PNG、矢量 SVG 与单文件离线交互 HTML**：
 
-![Inkmap 9种专业布局、深色护眼主题与演示模式](images/demo-layouts-zh.gif)
+![Inkmap 9种专业布局、深色护眼主题与演示模式](https://www.zhiyuanv.com/gifs/demo-layouts-zh.gif)
 
 ### 3. 全套顺手快捷键（零学习成本）
 
@@ -61,7 +61,7 @@
 
 **Inkmap** is the two-way editable **Mindmap / Markmap** & **Mermaid** flowchart workspace for plain local Markdown (`.md`, `.markmap.md`). Edit, reorder, or drag nodes directly on the canvas — every change writes straight back to your Markdown file while keeping untouched lines **byte-for-byte identical** for clean Git diffs.
 
-![Inkmap Two-Way Live Sync Demo](images/demo-sync-en.gif)
+![Inkmap Two-Way Live Sync Demo](https://www.zhiyuanv.com/gifs/demo-sync-en.gif)
 
 ### How to Use in 3 Seconds
 
@@ -73,13 +73,13 @@
 
 Place fenced ` ```mermaid ` blocks, `$...$` / `$$...$$` LaTeX formulas, or Markdown tables inside any bullet or heading — click **Edit diagram source** (`⌘E` / `Ctrl+E`) to edit live or pop out complex diagrams in a lossless zoom modal:
 
-![Inkmap Inline Mermaid & Math Demo](images/demo-mermaid-en.gif)
+![Inkmap Inline Mermaid & Math Demo](https://www.zhiyuanv.com/gifs/demo-mermaid-en.gif)
 
 ### 9 Layouts, Dusk Dark Theme, Presentation Mode & Lossless Export
 
 Switch between **Logic Chart, Mind Map, Org Chart, Catalog, Timelines, and Fishbone**, toggle **Dusk dark mode**, walk through branches step-by-step in **Presentation Mode**, and export crisp **PNG, vector SVG, or standalone interactive HTML**:
 
-![Inkmap Layouts, Dark Mode & Presentation Demo](images/demo-layouts-en.gif)
+![Inkmap Layouts, Dark Mode & Presentation Demo](https://www.zhiyuanv.com/gifs/demo-layouts-en.gif)
 
 ### 7-Day Free Trial & Lifetime Pro License
 

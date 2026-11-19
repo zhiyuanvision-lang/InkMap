@@ -1,7 +1,7 @@
-import { hasAccess, sanitizeViewState, type Ad } from "@inkmap/core";
+import { hasAccess, sanitizeViewState } from "@inkmap/core";
 import { openCheckout } from "./license";
 import { randomBytes } from "node:crypto";
-import { readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import * as vscode from "vscode";
 import { detectOsLocale, type LicenseService } from "../../cli/src/license";
 import { addLinesToChat, chatAvailable, openChat, docDir, docName, replaceText, type DocState } from "./documents";
@@ -13,6 +13,7 @@ const VIEW_STATE_PREFIX = "inkmap.viewState:";
 type FromWebview =
   | { type: "ready" }
   | { type: "save"; id: number; md: string; baseVersion: string }
+  | { type: "mapMarkdownChange"; md: string }
   | { type: "select"; line: number; endLine?: number }
   | { type: "viewState"; state: unknown }
   | { type: "addToChat"; startLine?: number; endLine?: number; text?: string }
@@ -22,7 +23,7 @@ type FromWebview =
   | { type: "orderPro"; id: number; locale?: string }
   | { type: "openExternal"; url: string }
   | { type: "sendPhoneCode"; id: number; phone: string; locale?: string }
-  | { type: "signInByPhone"; id: number; phone: string; code: string }
+  | { type: "signInByPhone"; id: number; phone: string; code: string; locale?: string }
   | { type: "signOut"; id: number }
   | { type: "saveFile"; id: number; name: string; dataUrl: string }
   | { type: "openInBrowser" }
@@ -34,6 +35,10 @@ const REVEAL_DELAY = 150;
 export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
   static readonly viewType = "inkmap.mindmap";
   private readonly panels = new Set<vscode.WebviewPanel>();
+  private readonly readyPanels = new WeakSet<vscode.WebviewPanel>();
+  private readonly panelDocuments = new WeakMap<vscode.WebviewPanel, string>();
+  /** An account dialog requested for a document whose editor is still opening; expires so it never pops up later. */
+  private pendingAccount: { uri: string; until: number } | undefined;
 
   /** The chat shortcut was pressed: the focused mind map says what is selected. Anywhere else it just opens the chat. */
   requestChat(): void | Thenable<unknown> {
@@ -41,23 +46,35 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
     return panel ? panel.webview.postMessage({ type: "requestChat" }) : openChat();
   }
 
-  /** Opens the inline Category 1 account & payment panel directly inside the active Inkmap editor tab. */
-  openAccount(): boolean {
-    const panel = [...this.panels].find(p => p.active) ?? [...this.panels].find(p => p.visible);
-    if (!panel) return false;
-    void panel.webview.postMessage({ type: "openAccount" });
+  /**
+   * Opens the inline Category 1 account & payment panel: in the editor for `document` when given (waiting for it to
+   * finish loading), otherwise in the active or visible Inkmap editor tab.
+   */
+  openAccount(document?: vscode.Uri): boolean {
+    const panels = [...this.panels];
+    const target = document?.toString();
+    const panel = target
+      ? panels.find(p => this.panelDocuments.get(p) === target)
+      : panels.find(p => p.active) ?? panels.find(p => p.visible);
+    if (panel && this.readyPanels.has(panel)) {
+      void panel.webview.postMessage({ type: "openAccount" });
+      return true;
+    }
+    const uri = target ?? (panel && this.panelDocuments.get(panel));
+    if (!uri) return false;
+    this.pendingAccount = { uri, until: Date.now() + 10_000 };
     return true;
   }
 
   constructor(
     private readonly context: vscode.ExtensionContext,
     private readonly license: LicenseService,
-    private readonly ads: () => Promise<Ad[]>,
   ) {}
 
   async resolveCustomTextEditor(document: vscode.TextDocument, panel: vscode.WebviewPanel): Promise<void> {
     const webview = panel.webview;
     this.panels.add(panel);
+    this.panelDocuments.set(panel, document.uri.toString());
     const webRoot = vscode.Uri.joinPath(this.context.extensionUri, "dist", "web");
     const assets = docDir(document.uri);
     webview.options = {
@@ -113,6 +130,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
         revealTimer = setTimeout(() => post({ type: "reveal", line: e.selections[0].active.line }), REVEAL_DELAY);
       }),
       webview.onDidReceiveMessage(async (msg: FromWebview) => {
+        if (msg.type === "mapMarkdownChange") return;
         const accountAction = msg.type === "checkout" || msg.type === "orderPro" || msg.type === "openExternal" || msg.type === "signOut" || msg.type === "sendPhoneCode" || msg.type === "signInByPhone" || msg.type === "openInBrowser" || msg.type === "telemetry";
         if (!accountAction && msg.type !== "ready" && msg.type !== "viewState" && msg.type !== "select" && !hasAccess(await this.license.state())) {
           if ("id" in msg) return post({ type: "error", id: msg.id, message: t("trialExpired") });
@@ -120,10 +138,17 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
         }
         switch (msg.type) {
           case "ready": {
+            this.readyPanels.add(panel);
             void this.context.globalState?.update("inkmap.hasOpenedMap", true);
             this.license.track?.("doc_open");
-            const [license, ads] = await Promise.all([this.license.state(), this.ads()]);
-            return post({ type: "doc", doc: state(), license, ads, chat: await chatAvailable() });
+            const [license, chat] = await Promise.all([this.license.state(), chatAvailable()]);
+            await post({ type: "doc", doc: state(), license, chat });
+            const pending = this.pendingAccount;
+            if (pending?.uri === document.uri.toString()) {
+              this.pendingAccount = undefined;
+              if (Date.now() < pending.until) await post({ type: "openAccount" });
+            }
+            return;
           }
           case "openInBrowser":
             return vscode.commands.executeCommand("inkmap.openInBrowser", document.uri);
@@ -207,7 +232,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
           case "sendPhoneCode":
             return post({ type: "phoneCodeSent", id: msg.id, result: await this.license.sendPhoneCode(msg.phone, msg.locale) });
           case "signInByPhone":
-            return post({ type: "phoneSignIn", id: msg.id, result: await this.license.signInByPhone(msg.phone, msg.code) });
+            return post({ type: "phoneSignIn", id: msg.id, result: await this.license.signInByPhone(msg.phone, msg.code, msg.locale) });
           case "saveFile":
             return post({ type: "fileSaved", id: msg.id, saved: await saveDataUrl(msg.name, msg.dataUrl, assets) });
         }
@@ -234,7 +259,7 @@ async function saveDataUrl(name: string, dataUrl: string, dir: vscode.Uri | unde
   });
   if (!target) return false;
   const body = match[2] ? Buffer.from(match[3], "base64") : Buffer.from(decodeURIComponent(match[3]), "utf8");
-  await writeFile(target.fsPath, body);
+  await vscode.workspace.fs.writeFile(target, body);
   return true;
 }
 

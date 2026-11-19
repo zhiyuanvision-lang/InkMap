@@ -2,22 +2,63 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { delimiter, dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { deflateRawSync } from "node:zlib";
 import { detectOsLocale } from "./license.js";
 
-export type InstallTarget = "claude" | "claude-code" | "cursor" | "vscode" | "antigravity" | "codex" | "deepseek";
+type InstallTarget = "claude" | "claude-code" | "cursor" | "vscode" | "antigravity" | "codex" | "deepseek";
 
-export interface InstallOptions {
+interface InstallOptions {
   targets?: InstallTarget[];
   workspaces?: string[];
   uninstall?: boolean;
   log?: (msg: string) => void;
 }
 
-export interface InstallResult {
+interface InstallResult {
   installed: Array<{ target: InstallTarget; location: string; note?: string }>;
   removed: Array<{ target: InstallTarget; location: string }>;
+}
+
+/** Quotes one argument for `cmd.exe /s /c "..."`; `%` is escaped outside the quotes so `%VAR%` is not expanded. */
+function quoteWinArg(arg: string): string {
+  return `"${arg.replace(/"/g, '""').replace(/%/g, '"^%"')}"`;
+}
+
+function probeCliCommand(cmd: string, args = ["--version"]): boolean {
+  try {
+    if (process.platform === "win32" && !cmd.toLowerCase().endsWith(".exe")) {
+      const commandLine = `"${[cmd, ...args].map(quoteWinArg).join(" ")}"`;
+      const res = spawnSync("cmd.exe", ["/d", "/s", "/c", commandLine], {
+        stdio: "ignore",
+        windowsVerbatimArguments: true,
+        windowsHide: true,
+      });
+      return res.status === 0;
+    }
+    return spawnSync(cmd, args, { stdio: "ignore" }).status === 0;
+  } catch {
+    return false;
+  }
+}
+
+function execCliSync(cmd: string, args: string[], options: { encoding?: "utf8"; stdio?: "pipe" | "ignore" } = {}): string {
+  if (process.platform === "win32" && !cmd.toLowerCase().endsWith(".exe")) {
+    const commandLine = `"${[cmd, ...args].map(quoteWinArg).join(" ")}"`;
+    const res = spawnSync("cmd.exe", ["/d", "/s", "/c", commandLine], {
+      ...options,
+      encoding: options.encoding ?? "utf8",
+      stdio: options.stdio ?? "pipe",
+      windowsVerbatimArguments: true,
+      windowsHide: true,
+    });
+    if (res.error) throw res.error;
+    if (res.status !== 0) {
+      throw new Error(String(res.stderr || res.stdout || `${cmd} exited with code ${res.status}`).trim());
+    }
+    return String(res.stdout ?? "");
+  }
+  return (execFileSync(cmd, args, options) ?? "") as string;
 }
 
 const DIST_DIR = dirname(fileURLToPath(import.meta.url));
@@ -168,7 +209,7 @@ function getAntigravityConfigDir(): string {
 
 function findCursorCommand(): string | null {
   if (process.env.INKMAP_ISOLATED_DETECT) return null;
-  if (spawnSync("cursor", ["--version"], { stdio: "ignore" }).status === 0) return "cursor";
+  if (probeCliCommand("cursor")) return "cursor";
   if (process.platform === "darwin") {
     for (const dir of ["/Applications", join(homedir(), "Applications")]) {
       const cmd = join(dir, "Cursor.app/Contents/Resources/app/bin/cursor");
@@ -184,7 +225,7 @@ function findCursorCommand(): string | null {
 
 function findVscodeCommand(): string | null {
   if (process.env.INKMAP_ISOLATED_DETECT) return null;
-  if (spawnSync("code", ["--version"], { stdio: "ignore" }).status === 0) return "code";
+  if (probeCliCommand("code")) return "code";
   if (process.platform === "darwin") {
     for (const dir of ["/Applications", join(homedir(), "Applications")]) {
       const cmd = join(dir, "Visual Studio Code.app/Contents/Resources/app/bin/code");
@@ -202,7 +243,7 @@ function findCodexCommand(): string | null {
   if (process.env.INKMAP_CODEX_BIN) {
     return existsSync(process.env.INKMAP_CODEX_BIN) ? process.env.INKMAP_CODEX_BIN : null;
   }
-  if (spawnSync("codex", ["--version"], { stdio: "ignore" }).status === 0) return "codex";
+  if (probeCliCommand("codex")) return "codex";
   if (process.platform === "darwin") {
     for (const dir of ["/Applications", join(homedir(), "Applications")]) {
       const cmd = join(dir, "ChatGPT.app/Contents/Resources/codex-cli/bin/codex");
@@ -221,7 +262,7 @@ function findDshCommand(): string | null {
     return existsSync(process.env.INKMAP_DSH_BIN) ? process.env.INKMAP_DSH_BIN : null;
   }
   if (process.env.INKMAP_ISOLATED_DETECT) return null;
-  if (spawnSync("dsh", ["--version"], { stdio: "ignore" }).status === 0) return "dsh";
+  if (probeCliCommand("dsh")) return "dsh";
   if (process.platform === "darwin") {
     for (const dir of ["/Applications", join(homedir(), "Applications")]) {
       const cmd = join(dir, "DeepSeek Harness.app/Contents/Resources/runtime/cli/bin/dsh");
@@ -245,7 +286,7 @@ function detectInstalledTargets(): InstallTarget[] {
     found.push("claude");
   }
   const claudeCodeCfg = getClaudeCodeConfigPath();
-  if (existsSync(claudeCodeCfg) || (!process.env.INKMAP_ISOLATED_DETECT && spawnSync("claude", ["--version"], { stdio: "ignore" }).status === 0)) {
+  if (existsSync(claudeCodeCfg) || (!process.env.INKMAP_ISOLATED_DETECT && probeCliCommand("claude"))) {
     found.push("claude-code");
   }
   if (existsSync(getCursorDir()) || Boolean(findCursorCommand())) {
@@ -347,7 +388,7 @@ function installIdeExtension(editorDir: string, cliCmd: string | null): string |
   }
 
   const extPkg = JSON.parse(readFileSync(join(vscodeBundle, "package.json"), "utf8")) as { version: string };
-  const version = extPkg.version || "0.3.6";
+  const version = extPkg.version;
   const staging = mkdtempSync(join(tmpdir(), "inkmap-vsix-"));
 
   try {
@@ -382,7 +423,7 @@ function installIdeExtension(editorDir: string, cliCmd: string | null): string |
       const vsixPath = join(staging, `inkmap-${version}.vsix`);
       writeFileSync(vsixPath, buildZipBuffer(entries));
       try {
-        execFileSync(cliCmd, ["--install-extension", vsixPath, "--force"], { stdio: "pipe" });
+        execCliSync(cliCmd, ["--install-extension", vsixPath, "--force"], { stdio: "pipe" });
         return join(editorDir, "extensions", `inkmap.inkmap-vscode-${version}`);
       } catch {
         // Fall through to direct directory unpack if CLI IPC fails
@@ -396,8 +437,50 @@ function installIdeExtension(editorDir: string, cliCmd: string | null): string |
         rmSync(join(extRoot, old), { recursive: true, force: true });
       }
     }
-    const dest = join(extRoot, `inkmap.inkmap-vscode-${version}`);
+    const folderName = `inkmap.inkmap-vscode-${version}`;
+    const dest = join(extRoot, folderName);
     cpSync(extStaging, dest, { recursive: true });
+    try {
+      const obsoletePath = join(extRoot, ".obsolete");
+      if (existsSync(obsoletePath)) {
+        const obs = JSON.parse(readFileSync(obsoletePath, "utf8")) as Record<string, boolean>;
+        let changedObs = false;
+        for (const key of Object.keys(obs)) {
+          if (key.toLowerCase().startsWith("inkmap.inkmap-vscode")) {
+            delete obs[key];
+            changedObs = true;
+          }
+        }
+        if (changedObs) writeJsonAtomic(obsoletePath, obs);
+      }
+      const registryPath = join(extRoot, "extensions.json");
+      const existingList = existsSync(registryPath) ? JSON.parse(readFileSync(registryPath, "utf8")) : [];
+      if (Array.isArray(existingList)) {
+        const filtered = existingList.filter(
+          (item: any) => String(item?.identifier?.id ?? "").toLowerCase() !== "inkmap.inkmap-vscode",
+        );
+        const destUrl = pathToFileURL(dest);
+        filtered.push({
+          identifier: { id: "inkmap.inkmap-vscode" },
+          version,
+          location: {
+            $mid: 1,
+            fsPath: dest,
+            external: destUrl.href,
+            path: destUrl.pathname,
+            scheme: "file",
+          },
+          relativeLocation: folderName,
+          metadata: {
+            installedTimestamp: Date.now(),
+            source: "vsix",
+          },
+        });
+        const tmp = `${registryPath}.${process.pid}.${Date.now()}.tmp`;
+        writeFileSync(tmp, JSON.stringify(filtered), "utf8");
+        renameSync(tmp, registryPath);
+      }
+    } catch {}
     return dest;
   } finally {
     rmSync(staging, { recursive: true, force: true });
@@ -408,7 +491,7 @@ function uninstallIdeExtension(editorDir: string, cliCmd: string | null): boolea
   let removed = false;
   if (cliCmd) {
     try {
-      execFileSync(cliCmd, ["--uninstall-extension", "inkmap.inkmap-vscode"], { stdio: "pipe" });
+      execCliSync(cliCmd, ["--uninstall-extension", "inkmap.inkmap-vscode"], { stdio: "pipe" });
       removed = true;
     } catch {}
   }
@@ -420,6 +503,22 @@ function uninstallIdeExtension(editorDir: string, cliCmd: string | null): boolea
         removed = true;
       }
     }
+    try {
+      const registryPath = join(extRoot, "extensions.json");
+      if (existsSync(registryPath)) {
+        const existingList = JSON.parse(readFileSync(registryPath, "utf8"));
+        if (Array.isArray(existingList)) {
+          const filtered = existingList.filter(
+            (item: any) => String(item?.identifier?.id ?? "").toLowerCase() !== "inkmap.inkmap-vscode",
+          );
+          if (filtered.length !== existingList.length) {
+            const tmp = `${registryPath}.${process.pid}.${Date.now()}.tmp`;
+            writeFileSync(tmp, JSON.stringify(filtered), "utf8");
+            renameSync(tmp, registryPath);
+          }
+        }
+      }
+    } catch {}
   }
   return removed;
 }
@@ -490,7 +589,7 @@ async function refreshAntigravityMcp() {
   } catch {}
 }
 
-async function installAntigravityPlugin(): Promise<string> {
+async function installAntigravityPlugin(workspaces: string[] = []): Promise<string> {
   const pluginsDir = join(getAntigravityConfigDir(), "plugins");
   const destination = join(pluginsDir, "inkmap");
   const bundledAgy = join(DIST_DIR, "bundles", "antigravity");
@@ -520,11 +619,34 @@ async function installAntigravityPlugin(): Promise<string> {
     throw new Error("未找到 Antigravity 插件资源 / Antigravity plugin bundle not found.");
   }
 
+  if (workspaces.length > 0) {
+    try {
+      const mcpCfgPath = join(destination, "mcp_config.json");
+      if (existsSync(mcpCfgPath)) {
+        const cfg = readJsonObject(mcpCfgPath);
+        const servers = (cfg.mcpServers && typeof cfg.mcpServers === "object" && !Array.isArray(cfg.mcpServers))
+          ? { ...(cfg.mcpServers as Record<string, any>) }
+          : {};
+        if (servers.inkmap && typeof servers.inkmap === "object") {
+          servers.inkmap = {
+            ...servers.inkmap,
+            env: {
+              ...(servers.inkmap.env && typeof servers.inkmap.env === "object" ? servers.inkmap.env : {}),
+              INKMAP_WORKSPACES: workspaces.map(w => resolve(w)).join(delimiter),
+            },
+          };
+          cfg.mcpServers = servers;
+          writeJsonAtomic(mcpCfgPath, cfg);
+        }
+      }
+    } catch {}
+  }
+
   await refreshAntigravityMcp();
   return destination;
 }
 
-function installCodexPlugin(): { location: string; note?: string } {
+function installCodexPlugin(zh: boolean): { location: string; note?: string } {
   const codex = findCodexCommand();
   if (!codex) {
     throw new Error("未检测到 codex 命令，请先安装 ChatGPT Desktop 或 Codex CLI / Codex CLI not found.");
@@ -537,8 +659,14 @@ function installCodexPlugin(): { location: string; note?: string } {
   const destination = join(getInkmapHome(), "codex-marketplace");
   mkdirSync(destination, { recursive: true });
   const marketplaceRoot = realpathSync(destination);
+  const fromNpmBundle = existsSync(join(bundledCodex, ".agents")) && existsSync(bundledCli) && existsSync(bundledHtml);
+  const fromMonorepo = existsSync(join(monorepoCodexRoot, "inkmap-codex")) && existsSync(join(monorepoCodexRoot, ".agents"));
+  // Check for a replacement before removing the installed plugin, so a failed install leaves Codex working.
+  if (!fromNpmBundle && !fromMonorepo) throw new Error("未找到 Codex 插件资源 / Codex plugin bundle not found.");
+  rmSync(join(marketplaceRoot, ".agents"), { recursive: true, force: true });
+  rmSync(join(marketplaceRoot, "inkmap-codex"), { recursive: true, force: true });
 
-  if (existsSync(join(bundledCodex, ".agents")) && existsSync(bundledCli) && existsSync(bundledHtml)) {
+  if (fromNpmBundle) {
     cpSync(bundledCodex, marketplaceRoot, { recursive: true });
     const pluginDir = join(marketplaceRoot, "inkmap-codex");
     cpSync(bundledCli, join(pluginDir, "cli.cjs"));
@@ -548,24 +676,24 @@ function installCodexPlugin(): { location: string; note?: string } {
       const src = join(PKG_ROOT, doc);
       if (existsSync(src)) cpSync(src, join(pluginDir, doc));
     }
-  } else if (existsSync(join(monorepoCodexRoot, "inkmap-codex")) && existsSync(join(monorepoCodexRoot, ".agents"))) {
+  } else {
     cpSync(join(monorepoCodexRoot, ".agents"), join(marketplaceRoot, ".agents"), { recursive: true });
     cpSync(join(monorepoCodexRoot, "inkmap-codex"), join(marketplaceRoot, "inkmap-codex"), { recursive: true });
-  } else {
-    throw new Error("未找到 Codex 插件资源 / Codex plugin bundle not found.");
   }
 
   const marketplaceName = "inkmap-local";
-  const rawList = execFileSync(codex, ["plugin", "marketplace", "list", "--json"], { encoding: "utf8" });
+  const rawList = execCliSync(codex, ["plugin", "marketplace", "list", "--json"], { encoding: "utf8" });
   const { marketplaces = [] } = JSON.parse(rawList) as { marketplaces?: Array<{ name: string; root: string }> };
   const existing = marketplaces.find(entry => entry.name === marketplaceName);
   if (!existing) {
-    execFileSync(codex, ["plugin", "marketplace", "add", marketplaceRoot], { stdio: "pipe" });
+    execCliSync(codex, ["plugin", "marketplace", "add", marketplaceRoot], { stdio: "pipe" });
   }
-  execFileSync(codex, ["plugin", "add", `inkmap-codex@${marketplaceName}`], { stdio: "pipe" });
+  execCliSync(codex, ["plugin", "add", `inkmap-codex@${marketplaceName}`], { stdio: "pipe" });
   return {
     location: marketplaceRoot,
-    note: "重启 ChatGPT Desktop 后，在 Codex 模式点击 .md 文件打开菜单选择 Inkmap Mind Map",
+    note: zh
+      ? "重启 ChatGPT Desktop 后，在 Codex 模式点击 .md 文件打开菜单选择 Inkmap Mind Map"
+      : "Restart ChatGPT Desktop, then open any .md file in Codex mode with Inkmap Mind Map",
   };
 }
 
@@ -597,13 +725,19 @@ function configureDshMarketIndex(profileDir: string): void {
   try {
     const existing = existsSync(patchPath) ? readFileSync(patchPath, "utf8") : "";
     if (!existing.includes(indexUrl)) {
-      const snippet = `\n- id: plugin-market\n  name: "@deepseek-ai/dsh-plugin-market"\n  config:\n    indexes:\n      - ${indexUrl}\n`;
-      writeFileSync(patchPath, existing.replace(/\n*$/, "") + snippet, "utf8");
+      const snippet = `- id: plugin-market\n  name: "@deepseek-ai/dsh-plugin-market"\n  config:\n    indexes:\n      - ${indexUrl}\n`;
+      const trimmed = existing.trim();
+      if (!trimmed || trimmed === "[]") {
+        writeFileSync(patchPath, snippet, "utf8");
+      } else if (!/^\s*-\s*id:\s*plugin-market\b/m.test(existing)) {
+        // Append our block; an existing plugin-market block belongs to the user and is left untouched.
+        writeFileSync(patchPath, existing.replace(/\n*$/, "\n\n") + snippet, "utf8");
+      }
     }
   } catch {}
 }
 
-function installDeepSeekHarnessPlugin(): { location: string; note?: string } {
+function installDeepSeekHarnessPlugin(zh: boolean): { location: string; note?: string } {
   const bundledHarness = join(DIST_DIR, "bundles", "harness");
   const bundledWeb = join(DIST_DIR, "web");
   const monorepoHarness = resolve(PKG_ROOT, "..", "..", "dist", "sidebars", "dsh-inkmap");
@@ -630,7 +764,7 @@ function installDeepSeekHarnessPlugin(): { location: string; note?: string } {
   const profileDir = join(getDshHome(), "profiles", "desktop");
 
   if (dshCmd) {
-    execFileSync(dshCmd, ["plugin", "--profile", "desktop", "add", realStaged], { stdio: "pipe" });
+    execCliSync(dshCmd, ["plugin", "--profile", "desktop", "add", realStaged], { stdio: "pipe" });
   } else if (existsSync(profileDir)) {
     const nodeModulesTarget = join(profileDir, "node_modules", "dsh-inkmap");
     rmSync(nodeModulesTarget, { recursive: true, force: true });
@@ -646,11 +780,13 @@ function installDeepSeekHarnessPlugin(): { location: string; note?: string } {
 
   return {
     location: existsSync(profileDir) ? profileDir : realStaged,
-    note: "已在 DeepSeek Harness「插件」页启用 Inkmap 思维导图与插件索引（预览 .md 文件点击右上角 Inkmap 即可打开）",
+    note: zh
+      ? "已在 DeepSeek Harness「插件」页启用 Inkmap 思维导图与插件索引（预览 .md 文件点击右上角 Inkmap 即可打开）"
+      : "Enabled Inkmap mind map in DeepSeek Harness (open any .md preview and click Inkmap in the top-right)",
   };
 }
 
-export async function runInstall(options: InstallOptions = {}): Promise<InstallResult> {
+async function runInstall(options: InstallOptions = {}): Promise<InstallResult> {
   const log = options.log ?? (msg => console.log(msg));
   const workspaces = options.workspaces ?? [];
   const explicitTargets = options.targets && options.targets.length > 0 ? options.targets : null;
@@ -684,6 +820,11 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
           result.removed.push({ target, location: dir });
         }
       } else if (target === "codex") {
+        const codexCmd = findCodexCommand();
+        if (codexCmd) {
+          try { execCliSync(codexCmd, ["plugin", "remove", "inkmap-codex@inkmap-local"], { stdio: "pipe" }); } catch {}
+          try { execCliSync(codexCmd, ["plugin", "marketplace", "remove", "inkmap-local"], { stdio: "pipe" }); } catch {}
+        }
         const dir = join(getInkmapHome(), "codex-marketplace");
         if (existsSync(dir)) {
           rmSync(dir, { recursive: true, force: true });
@@ -694,7 +835,7 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
         const profileDir = join(getDshHome(), "profiles", "desktop");
         if (dshCmd && existsSync(profileDir)) {
           try {
-            execFileSync(dshCmd, ["plugin", "--profile", "desktop", "remove", "dsh-inkmap"], { stdio: "pipe" });
+            execCliSync(dshCmd, ["plugin", "--profile", "desktop", "remove", "dsh-inkmap"], { stdio: "pipe" });
           } catch {}
         }
         const dir = join(getInkmapHome(), "dsh-inkmap");
@@ -720,6 +861,7 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
   // Always stage ~/.inkmap/mcp-app so standalone MCP binary is ready on disk
   const { serverScript, appDir } = stageStandaloneMcpApp();
 
+  const zhLocale = isChineseTerminalLocale();
   if (targets.length === 0) {
     log(`[inkmap] 已将 MCP App 核心文件就绪到: ${appDir}`);
     log("[inkmap] 未在默认目录检测到已安装的 AI 客户端，可指定客户端名称强制生成配置：");
@@ -729,6 +871,7 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
     log("  npx -y inkmap-mcp@latest install vscode        # VS Code (原生编辑器扩展)");
     log("  npx -y inkmap-mcp@latest install antigravity   # Google Antigravity");
     log("  npx -y inkmap-mcp@latest install codex         # OpenAI Codex Desktop");
+    log("  npx -y inkmap-mcp@latest install deepseek      # DeepSeek Harness");
     return result;
   }
 
@@ -739,7 +882,9 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
       result.installed.push({
         target,
         location: cfg,
-        note: "完全退出并重启 Claude Desktop 后，对 Claude 说“用 Inkmap 打开 xxx.md”即可",
+        note: zhLocale
+          ? "完全退出并重启 Claude Desktop 后，对 Claude 说“用 Inkmap 打开 xxx.md”即可"
+          : "Quit and restart Claude Desktop, then ask Claude to open any .md file with Inkmap",
       });
     } else if (target === "claude-code") {
       const cfg = getClaudeCodeConfigPath();
@@ -747,7 +892,9 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
       result.installed.push({
         target,
         location: cfg,
-        note: "在 Claude Code 中已注册全局 inkmap MCP 服务",
+        note: zhLocale
+          ? "在 Claude Code 中已注册全局 inkmap MCP 服务"
+          : "Registered global inkmap MCP server in Claude Code",
       });
     } else if (target === "cursor") {
       const cfg = join(getCursorDir(), "mcp.json");
@@ -762,7 +909,9 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
       result.installed.push({
         target,
         location: extLoc ? `${cfg} + ${extLoc}` : cfg,
-        note: "已同时安装 MCP 服务与右侧主编辑区导图扩展（Reload Window 后对话可直接打开右侧导图标签）",
+        note: zhLocale
+          ? "已同时安装 MCP 服务与右侧主编辑区导图扩展（Reload Window 后对话可直接打开右侧导图标签）"
+          : "Installed both MCP server and native right-pane mind map extension (Reload Window to activate)",
       });
     } else if (target === "vscode") {
       const extLoc = installIdeExtension(getVscodeDir(), findVscodeCommand());
@@ -770,19 +919,23 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
         result.installed.push({
           target,
           location: extLoc,
-          note: "已在 VS Code 安装原生 Inkmap 思维导图编辑器扩展",
+          note: zhLocale
+            ? "已在 VS Code 安装原生 Inkmap 思维导图编辑器扩展"
+            : "Installed native Inkmap mind map editor extension in VS Code",
         });
       }
     } else if (target === "antigravity") {
-      const loc = await installAntigravityPlugin();
+      const loc = await installAntigravityPlugin(workspaces);
       result.installed.push({
         target,
         location: loc,
-        note: "在 Antigravity 对话中让 AI 用 Inkmap 打开 .md 文件，或点击右侧面板 + 选择 Inkmap",
+        note: zhLocale
+          ? "在 Antigravity 对话中让 AI 用 Inkmap 打开 .md 文件，或点击右侧面板 + 选择 Inkmap"
+          : "Ask AI in Antigravity chat to open a .md file with Inkmap, or open Inkmap from the right-hand pane + button",
       });
     } else if (target === "codex") {
       try {
-        const installedCodex = installCodexPlugin();
+        const installedCodex = installCodexPlugin(zhLocale);
         result.installed.push({
           target,
           location: installedCodex.location,
@@ -794,7 +947,7 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
       }
     } else if (target === "deepseek") {
       try {
-        const installedDsh = installDeepSeekHarnessPlugin();
+        const installedDsh = installDeepSeekHarnessPlugin(zhLocale);
         result.installed.push({
           target,
           location: installedDsh.location,
@@ -807,7 +960,6 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
     }
   }
 
-  const zhLocale = isChineseTerminalLocale();
   if (zhLocale) {
     log(`[inkmap] 安装完成（Node: ${process.execPath}）：`);
     for (const item of result.installed) {
@@ -828,6 +980,7 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
     log(`[inkmap] Installation complete (Node: ${process.execPath}):`);
     for (const item of result.installed) {
       log(`  ✓ ${item.target.padEnd(12)} -> ${item.location}`);
+      if (item.note) log(`    ${item.note}`);
     }
     log("");
     log("──────────────────────────────────────────────────────────────────────");
@@ -892,7 +1045,7 @@ export async function runInstallCli(argv: string[], uninstall = false) {
     }
     const normalized = normalizeTarget(arg);
     if (!normalized) {
-      throw new Error(`未知客户端目标: ${arg}（支持: claude, claude-code, cursor, vscode, antigravity, codex, all）`);
+      throw new Error(`未知客户端目标: ${arg}（支持: claude, claude-code, cursor, vscode, antigravity, codex, deepseek, all）`);
     }
     if (normalized === "all") {
       explicitAll = true;

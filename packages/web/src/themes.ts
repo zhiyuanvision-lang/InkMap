@@ -2,7 +2,7 @@ import type { I18nKey } from "./i18n";
 
 export const FONT = '-apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", sans-serif';
 
-export interface LayoutOption {
+interface LayoutOption {
   id: string;
   pro: boolean;
 }

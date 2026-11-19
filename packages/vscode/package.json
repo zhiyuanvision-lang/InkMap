@@ -2,7 +2,7 @@
   "name": "inkmap-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.10",
+  "version": "0.3.11",
   "publisher": "inkmap",
   "homepage": "https://zhiyuanv.com/software.html",
   "repository": {
@@ -123,6 +123,11 @@
         "command": "inkmap.upgrade",
         "title": "%command.upgrade%",
         "category": "Inkmap"
+      },
+      {
+        "command": "inkmap.installDeepSeekHarness",
+        "title": "%command.installDeepSeekHarness%",
+        "category": "Inkmap"
       }
     ],
     "keybindings": [
@@ -236,7 +241,7 @@
     }
   },
   "scripts": {
-    "build": "node scripts/build.mjs",
+    "build": "tsc -p . && node scripts/build.mjs",
     "test": "node --test test/",
     "package": "npm run build && vsce package --no-dependencies --allow-star-activation --allow-missing-repository --no-rewrite-relative-links -o dist/inkmap.vsix",
     "package:release": "npm run build && vsce package --no-dependencies --allow-star-activation --allow-missing-repository --baseImagesUrl \"$INKMAP_IMAGES_URL\" --baseContentUrl \"$INKMAP_CONTENT_URL\" -o dist/inkmap.vsix",

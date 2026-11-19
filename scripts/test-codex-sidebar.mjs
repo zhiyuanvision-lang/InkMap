@@ -8,11 +8,12 @@ import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import puppeteer from "puppeteer-core";
+import { CHROME, NEEDS_CHROME, SIDEBARS } from "./lib/test-env.mjs";
 
-test("packaged Codex app opens the host file, edits Mermaid Markdown, and handles a stale ETag", async t => {
+test("packaged Codex app opens the host file, edits Mermaid Markdown, and handles a stale ETag", NEEDS_CHROME, async t => {
   const dir = await mkdtemp(join(tmpdir(), "inkmap-codex-"));
   t.after(() => rm(dir, { recursive: true, force: true }));
-  execFileSync("unzip", ["-q", "dist/sidebars/inkmap-codex-desktop.zip", "-d", dir]);
+  execFileSync("unzip", ["-q", join(SIDEBARS, "inkmap-codex-desktop.zip"), "-d", dir]);
   const file = join(dir, "notes.markmap.md");
   const initial = "# Notes\n\n- Before\n- Diagram\n\n  ```mermaid\n  graph TD\n    A[Start] --> B[End]\n  ```\n";
   await writeFile(file, initial);
@@ -37,7 +38,7 @@ test("packaged Codex app opens the host file, edits Mermaid Markdown, and handle
   await new Promise(ok => host.listen(0, "127.0.0.1", ok));
   t.after(() => new Promise(ok => host.close(ok)));
   const browser = await puppeteer.launch({
-    executablePath: process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    executablePath: CHROME,
     headless: true,
     args: ["--no-first-run", "--lang=en-US"],
   });

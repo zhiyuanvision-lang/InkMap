@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.11
+
+- **DeepSeek Harness Setup Now Asks First**: The extension no longer edits DeepSeek Harness's desktop profile or runs `dsh plugin add` on its own at startup. The first time it finds DeepSeek Harness without the Inkmap plugin, it asks once (Install / No thanks) and remembers the answer; the new **Inkmap: Install in DeepSeek Harness** command installs it at any time.
+- **Fewer Steps to Sign In & Pay**: The email field is prefilled with the last address used on this computer. On Claude, Codex and Antigravity panels, the end-of-trial screen opens the email form directly, and paying from the email unlocks Pro automatically without typing the code — even when the email is opened late, an earlier email is used, or the code was entered before paying.
+- **Markdown Round-Trip Fixes**: Front matter with non-ASCII or spaced keys (such as `标题:` or `Last Modified:`) is recognized; quoted titles round-trip; a lone `-` or `2024.` line no longer splits a paragraph; a code fence left open in a node no longer swallows the nodes after it; UTF-8 BOM and CRLF files are written back unchanged.
+- **Mermaid & Editing Fixes**: "Edit diagram" selects the right Mermaid block even when other code blocks contain Mermaid samples; an invalid diagram is no longer re-rendered on every keystroke; braces inside quoted flowchart labels are kept; switching files with an unsaved edit now says that the edit was not written.
+- **Browser Editor Hardening**: "Open in Browser" only answers its own loopback or VS Code port-forwarded address and same-origin writes (blocking DNS rebinding), opens symlinked files as the same document, and also serves `.avif`, `.bmp` and `.ico` images.
+
 ## 0.3.10
 
 - **Studio Animated GIF Walkthroughs & Upgraded Visual Usage Guide**: Replaced static Marketplace & repository screenshots with three annotated animated GIF demos (real-time Markdown ⇄ Mindmap line sync & `Tab` write-back, inline Mermaid flowchart & KaTeX `⌘E` live source editing, and 9 layouts + Dusk dark theme + fullscreen spotlight presentation) alongside a streamlined 3-second quick-start and shortcut cheat sheet.

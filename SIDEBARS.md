@@ -16,11 +16,13 @@ npm run test:sidebars
 | --- | --- |
 | VS Code 兼容扩展 | `packages/vscode/dist/inkmap.vsix` |
 | 本机浏览器侧栏 | `dist/sidebars/inkmap-local-editor.zip` |
-| DeepSeek Harness 原生入口 | `dist/sidebars/dsh-inkmap-0.1.1.tgz` |
+| DeepSeek Harness 原生入口 | `dist/sidebars/dsh-inkmap-<版本号>.tgz` |
 | Codex 桌面文件查看器 | `dist/sidebars/inkmap-codex-desktop.zip` |
 | WorkBuddy 自定义菜单 | `dist/sidebars/inkmap-workbuddy.zip` |
 | Qoder 桌面端对话插件 | `dist/sidebars/inkmap-qoder-0.1.0.zip` |
 | Antigravity 2.0 MCP App 插件 | `dist/sidebars/inkmap-antigravity-0.2.0.zip` |
+
+`<版本号>` 与 `packages/cli/package.json` 的 `version` 相同；Qoder 与 Antigravity 的 ZIP 文件名取自各自 `plugin.json` 中的版本号。
 
 ## Google Antigravity 2.0
 
@@ -66,12 +68,12 @@ codex plugin add inkmap-codex@inkmap-local
 
 ## DeepSeek Harness 插件
 
-在 DeepSeek Harness Desktop **0.2.2-rc.2** 的「插件 → 添加插件」中，输入构建后 `dsh-inkmap-0.1.1.tgz` 的绝对路径并安装。打开本机工作区内的 Markdown 文件预览，点击工具栏中的「Inkmap」。空间足够时，Markdown 在左、导图在右。拖动分隔线可调整宽度，关闭左边的 Markdown 标签可单独查看导图。导图修改写回原文件，同一会话中重复打开同一文件会定位到已有导图标签。
+在 DeepSeek Harness Desktop **0.2.2-rc.2** 的「插件 → 添加插件」中，输入构建后 `dsh-inkmap-<版本号>.tgz` 的绝对路径并安装。打开本机工作区内的 Markdown 文件预览，点击工具栏中的「Inkmap」。空间足够时，Markdown 在左、导图在右。拖动分隔线可调整宽度，关闭左边的 Markdown 标签可单独查看导图。导图修改写回原文件，同一会话中重复打开同一文件会定位到已有导图标签。
 
 支持本机工作区内 5 MiB 以内的 Markdown。点击导图工具栏的「登录」可在浏览器连接账号，已有 Pro 权益会自动同步。关闭导图标签或停用插件会释放对应的本机编辑会话。以下命令也可将包安装到已有的本机 Web profile 中，重启该 profile 后使用。
 
 ```sh
-dsh plugin --profile web add "/绝对路径/dsh-inkmap-0.1.1.tgz"
+dsh plugin --profile web add "/绝对路径/dsh-inkmap-<版本号>.tgz"
 ```
 
 ## 本机浏览器侧栏（DeepSeek Harness 和 ZCode）

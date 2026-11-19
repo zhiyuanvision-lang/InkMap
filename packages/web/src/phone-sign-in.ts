@@ -73,7 +73,7 @@ export function createPhoneSignIn(
     if (reason === "rateLimited") retryAt = Date.now() + 60_000;
     message = {
       key: reason === "rateLimited" ? "phoneRateLimited" : reason === "unavailable" ? "phoneSignInUnavailable"
-        : isVerify ? "phoneCodeInvalid" : "phoneInvalid",
+        : reason === "notPro" ? "phoneNotPro" : isVerify ? "phoneCodeInvalid" : "phoneInvalid",
       error: true,
     };
   }
@@ -184,18 +184,27 @@ export function createPhoneSignIn(
   cancel.addEventListener("click", () => close(true));
 
   return {
-    open(slot: HTMLElement, button: HTMLButtonElement, options?: { forPurchase?: boolean; onVerified?: (state: LicenseState) => void }) {
+    /** Shows the form in `slot`; `prefill` is the address last used on this computer, ready to send a code to. */
+    open(slot: HTMLElement, button: HTMLButtonElement, options?: {
+      forPurchase?: boolean;
+      onVerified?: (state: LicenseState) => void;
+      prefill?: string;
+      /** False where the form is the only way forward (a login-only paywall), so it has no close button. */
+      closable?: boolean;
+    }) {
       close();
       trigger = button;
+      cancel.hidden = options?.closable === false;
       forPurchase = Boolean(options?.forPurchase);
       onVerified = options?.onVerified;
+      if (options?.prefill) phone.value = options.prefill;
       slot.append(form);
       refreshLanguage();
-      phone.focus();
+      // With the address filled in, sending the code is the one remaining step.
+      (options?.prefill && !send.disabled ? send : phone).focus();
     },
     close,
     isOpen: () => form.isConnected,
     isVerifying: () => verifying,
-    refreshLanguage,
   };
 }

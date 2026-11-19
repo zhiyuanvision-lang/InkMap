@@ -1,11 +1,13 @@
 import { spawn } from "node:child_process";
 import { delimiter, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { PRODUCT, YUNFAN_BILLING_ORIGIN } from "@inkmap/core";
-import { adFeed, fileSessionStorage, licenseService } from "./license.js";
+import { YUNFAN_BILLING_ORIGIN } from "@inkmap/core";
+import { fileSessionStorage, licenseService } from "./license.js";
 import { fileSource, serve } from "./server.js";
 
-export const INKMAP_VERSION = "0.3.10";
+import { INKMAP_VERSION } from "./version.js";
+
+export { INKMAP_VERSION };
 const WEB_ROOT = fileURLToPath(new URL("./web/", import.meta.url));
 
 const USAGE = `Inkmap v${INKMAP_VERSION} — Markdown 交互思维导图编辑器 & MCP App
@@ -23,7 +25,9 @@ const USAGE = `Inkmap v${INKMAP_VERSION} — Markdown 交互思维导图编辑�
 function openBrowser(url: string) {
   const [cmd, args] =
     process.platform === "darwin" ? ["open", [url]] : process.platform === "win32" ? ["cmd", ["/c", "start", "", url]] : ["xdg-open", [url]];
-  spawn(cmd, args, { stdio: "ignore", detached: true }).unref();
+  const child = spawn(cmd, args, { stdio: "ignore", detached: true });
+  child.on("error", () => {});
+  child.unref();
 }
 
 function appendEnvWorkspaces(dirs: string[]) {
@@ -100,7 +104,6 @@ export async function main(argv: string[]) {
     port: port ?? (sidebar ? 0 : undefined),
     log,
     license,
-    ads: adFeed(PRODUCT.adFeedUrl),
     sidebar,
     sidebarPurchase,
   });

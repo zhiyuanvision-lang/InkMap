@@ -3,6 +3,9 @@
 .ink-node { max-width: 520px; padding: 6px 12px; font-size: 14px; line-height: 1.6; color: var(--ink-text, #1f2329); white-space: normal; word-break: break-word;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Noto Sans SC", sans-serif; box-sizing: content-box; }
 .ink-node.depth-0 { font-size: 18px; font-weight: 600; color: #fff; }
+.ink-node.depth-0 h1, .ink-node.depth-0 h2, .ink-node.depth-0 h3, .ink-node.depth-0 h4, .ink-node.depth-0 h5, .ink-node.depth-0 h6 { color: inherit; }
+.ink-node a { color: var(--ink-accent, #2563eb); text-decoration: underline; text-underline-offset: 2px; }
+.ink-node.depth-0 a { color: #dbeafe; }
 .ink-node.depth-1 { font-size: 15px; font-weight: 600; }
 .ink-node:has(table), .ink-node:has(img), .ink-node:has(.katex-display) { max-width: none; }
 .ink-node .katex { font-size: 1.08em; }
@@ -26,7 +29,7 @@
 .ink-node .ink-embedded-md > * + * { margin-top: 6px; }
 .ink-node img { display: block; border-radius: 6px; border: 1px solid var(--ink-border, #eff0f1); }
 .ink-node table { border-collapse: separate; border-spacing: 0; border: 1px solid var(--ink-border, #dee0e3); border-radius: 6px; overflow: hidden; font-size: 13px; line-height: 20px;
-  background: var(--ink-card, #fff); }
+  color: var(--ink-text, #1f2329); background: var(--ink-card, #fff); }
 .ink-node th, .ink-node td { border-bottom: 1px solid var(--ink-border, #eff0f1); padding: 5px 10px; text-align: left; vertical-align: top; max-width: 360px; }
 .ink-node th + th, .ink-node td + td { border-left: 1px solid var(--ink-border, #eff0f1); }
 .ink-node thead th { background: color-mix(in srgb, var(--ink-accent, #5b7fd4) 14%, var(--ink-card, #fff)); font-weight: 600; white-space: nowrap; }

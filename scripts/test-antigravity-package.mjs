@@ -8,17 +8,26 @@ import { test } from "node:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import puppeteer from "puppeteer-core";
+import { CHROME, manifestVersion, NEEDS_CHROME, SIDEBARS } from "./lib/test-env.mjs";
 
-test("packaged Antigravity MCP App opens workspace Markdown, writes edits back, switches files on AI tool calls, and attaches chat context", async t => {
+test("packaged Antigravity MCP App opens workspace Markdown, writes edits back, switches files on AI tool calls, and attaches chat context", NEEDS_CHROME, async t => {
   const dir = await realpath(await mkdtemp(join(tmpdir(), "inkmap-antigravity-mcp-")));
   t.after(() => rm(dir, { recursive: true, force: true }));
+  const savedEnv = { INKMAP_NO_OPEN: process.env.INKMAP_NO_OPEN, INKMAP_HOME: process.env.INKMAP_HOME };
+  t.after(() => {
+    for (const [key, value] of Object.entries(savedEnv)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
 
-  execFileSync("unzip", ["-q", "dist/sidebars/inkmap-antigravity-0.2.0.zip", "-d", dir]);
-  const pluginRoot = join(dir, "inkmap-antigravity-0.2.0", "inkmap");
+  const version = manifestVersion("packages/antigravity/plugin.json");
+  execFileSync("unzip", ["-q", join(SIDEBARS, `inkmap-antigravity-${version}.zip`), "-d", dir]);
+  const pluginRoot = join(dir, `inkmap-antigravity-${version}`, "inkmap");
 
   const pluginManifest = JSON.parse(await readFile(join(pluginRoot, "plugin.json"), "utf8"));
   assert.equal(pluginManifest.name, "inkmap");
-  assert.equal(pluginManifest.version, "0.2.0");
+  assert.equal(pluginManifest.version, version);
   assert.equal(pluginManifest.logo, "assets/logo.svg");
 
   const mcpConfig = JSON.parse(await readFile(join(pluginRoot, "mcp_config.json"), "utf8"));
@@ -92,7 +101,7 @@ test("packaged Antigravity MCP App opens workspace Markdown, writes edits back, 
   t.after(() => new Promise(ok => hostServer.close(ok)));
 
   const browser = await puppeteer.launch({
-    executablePath: process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    executablePath: CHROME,
     headless: true,
     args: ["--no-first-run"],
   });
@@ -162,7 +171,7 @@ test("packaged Antigravity MCP App opens workspace Markdown, writes edits back, 
 
   const frame = await (await page.waitForSelector("iframe")).contentFrame();
   await frame.waitForFunction(() => window.inkmap?.mindMap?.renderer?.root);
-  await frame.waitForSelector("#ag-file-select");
+  await frame.waitForSelector("#ag-file-trigger");
   await frame.waitForSelector("#ag-split-md");
   await frame.waitForSelector("#open-browser:not([hidden])");
   await frame.waitForSelector(".ink-diagram-image");
@@ -186,16 +195,14 @@ test("packaged Antigravity MCP App opens workspace Markdown, writes edits back, 
   });
   assert.match(await readFile(firstFile, "utf8"), /Updated Engine/);
 
-  // Select a node and click "Add to chat" to verify updateModelContext
-  await frame.evaluate(() => {
-    const { mindMap } = window.inkmap;
-    mindMap.renderer.root.children[0].active();
-  });
-  const chatBtn = await frame.waitForSelector("#node-chat:not([hidden])", { timeout: 3000 }).catch(() => null);
-  if (chatBtn) {
-    await chatBtn.click();
-    await frame.waitForFunction(() => true);
-  }
+  // Select a node the way a user does, then press "Add to chat" and check the model context it sends.
+  const nodeEl = await frame.evaluateHandle(() => window.inkmap.mindMap.renderer.root.children[0].group.node);
+  await nodeEl.click();
+  const chatBtn = await frame.waitForSelector("#chat-add:not([hidden])");
+  await chatBtn.click();
+  for (let i = 0; i < 100 && !contextUpdates.length; i++) await new Promise(ok => setTimeout(ok, 50));
+  assert.ok(contextUpdates.length > 0, "Add to chat did not send ui/update-model-context");
+  assert.match(JSON.stringify(contextUpdates.at(-1)), /Updated Engine/);
 
   // Simulate AI calling `inkmap_open` again for a second file while pane is open
   const secondResult = await client.callTool({ name: "inkmap_open", arguments: { path: secondFile, workspace } });

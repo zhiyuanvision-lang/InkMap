@@ -9,20 +9,26 @@ import "katex/dist/katex.min.css";
 import katexCss from "katex/dist/katex.min.css?inline";
 import {
   documentSetting,
+  frontMatterTitle,
   isRich,
   parse,
   serialize,
   serializeWithLines,
   withDocumentSetting,
+  withFrontMatterTitle,
   type OutlineDoc,
   type OutlineNode,
 } from "@inkmap/core";
 import { collectBranchFolds, collectExpand, markdownOf, nodeData, toMind, toOutlineDoc, type MindNode, type MindNodeData } from "./convert";
 import type { DocState, Host } from "./host";
-import { applyI18n, detectDefaultLocale, locale, setLocale, t } from "./i18n";
+import { applyI18n, detectDefaultLocale, setLocale, t } from "./i18n";
 import nodesCss from "./nodes.css?inline";
 import { createPro } from "./pro";
 import { createRenderer } from "./render";
+import { $ } from "./dom";
+import { createDiagramModal } from "./diagram-modal";
+import { interactiveExportHtml } from "./export-html";
+import { MD_LINE_HEIGHT, mermaidSourceRanges } from "./md-lines";
 import { createSearch } from "./search";
 import { applyThemeCss, FONT, LAYOUTS, layoutName, themeConfig, themeName, THEMES, type ThemeOption } from "./themes";
 import "./style.css";
@@ -35,13 +41,12 @@ const INITIAL_LEVELS = 3;
 const SAVE_DELAY = 400;
 const EXPORT_PADDING = 40;
 
-const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
 const nodeStyle = document.createElement("style");
 nodeStyle.textContent = nodesCss;
 document.head.append(nodeStyle);
 
-export async function start(host: Host) {
+async function start(host: Host) {
   setLocale(detectDefaultLocale(host.locale));
   applyI18n();
   const status = $("#status");
@@ -49,136 +54,7 @@ export async function start(host: Host) {
   const source = $("#source");
   const sourceText = $<HTMLTextAreaElement>("#source-text");
   const inlineEdit = $<HTMLTextAreaElement>("#node-inline-edit");
-  const diagramModal = $("#diagram-modal");
-  const diagramStage = $<HTMLDivElement>("#diagram-modal-stage");
-  const diagramWorld = $<HTMLDivElement>("#diagram-modal-world");
-  const diagramModalImg = $<HTMLImageElement>("#diagram-modal-img");
-  const diagramZoomLevel = $("#diagram-zoom-level");
-  let diagramBaseWidth = 0;
-  let diagramBaseHeight = 0;
-  let diagramScale = 1;
-  let diagramTx = 0;
-  let diagramTy = 0;
-  let diagramPanning: { pointerId: number; x: number; y: number; tx: number; ty: number } | null = null;
-
-  function clampDiagramScale(next: number) {
-    return Math.max(0.15, Math.min(8, next));
-  }
-  function applyDiagramView() {
-    // tx/ty are the offset of the image center from the stage center.
-    const ox = diagramTx - (diagramBaseWidth * diagramScale) / 2;
-    const oy = diagramTy - (diagramBaseHeight * diagramScale) / 2;
-    diagramWorld.style.transform = `translate(${ox}px, ${oy}px) scale(${diagramScale})`;
-    diagramZoomLevel.textContent = `${Math.round(diagramScale * 100)}%`;
-  }
-  function stagePoint(clientX: number, clientY: number) {
-    const rect = diagramStage.getBoundingClientRect();
-    return { x: clientX - rect.left - rect.width / 2, y: clientY - rect.top - rect.height / 2 };
-  }
-  function zoomDiagramAt(clientX: number, clientY: number, nextScale: number) {
-    const { x, y } = stagePoint(clientX, clientY);
-    const scale = clampDiagramScale(nextScale);
-    const k = scale / diagramScale;
-    diagramTx = x - (x - diagramTx) * k;
-    diagramTy = y - (y - diagramTy) * k;
-    diagramScale = scale;
-    applyDiagramView();
-  }
-  function zoomDiagramBy(factor: number, clientX?: number, clientY?: number) {
-    const rect = diagramStage.getBoundingClientRect();
-    zoomDiagramAt(
-      clientX ?? rect.left + rect.width / 2,
-      clientY ?? rect.top + rect.height / 2,
-      diagramScale * factor,
-    );
-  }
-  function fitDiagramModal() {
-    const rect = diagramStage.getBoundingClientRect();
-    const pad = 48;
-    const stageW = Math.max(120, rect.width - pad);
-    const stageH = Math.max(120, rect.height - pad);
-    diagramScale = clampDiagramScale(Math.min(1, stageW / diagramBaseWidth, stageH / diagramBaseHeight));
-    diagramTx = 0;
-    diagramTy = 0;
-    applyDiagramView();
-  }
-  function resetDiagramModal() {
-    diagramScale = 1;
-    diagramTx = 0;
-    diagramTy = 0;
-    applyDiagramView();
-  }
-  function openDiagramModal(img: HTMLImageElement) {
-    diagramBaseWidth = Number(img.dataset.naturalWidth) || img.naturalWidth || img.width || 600;
-    diagramBaseHeight = Number(img.dataset.naturalHeight) || img.naturalHeight || img.height || 400;
-    diagramModalImg.src = img.src;
-    diagramModalImg.style.width = `${diagramBaseWidth}px`;
-    diagramModalImg.style.height = `${diagramBaseHeight}px`;
-    diagramModal.hidden = false;
-    diagramStage.focus({ preventScroll: true });
-    requestAnimationFrame(fitDiagramModal);
-  }
-  const closeDiagramModal = () => {
-    diagramPanning = null;
-    diagramStage.classList.remove("is-panning");
-    diagramModal.hidden = true;
-    try { document.body.focus({ preventScroll: true }); } catch {}
-  };
-  $("#diagram-zoom-in").addEventListener("click", () => zoomDiagramBy(1.25));
-  $("#diagram-zoom-out").addEventListener("click", () => zoomDiagramBy(1 / 1.25));
-  $("#diagram-zoom-fit").addEventListener("click", fitDiagramModal);
-  $("#diagram-zoom-reset").addEventListener("click", resetDiagramModal);
-  $("#diagram-modal-close").addEventListener("click", closeDiagramModal);
-  diagramStage.addEventListener("wheel", e => {
-    if (diagramModal.hidden) return;
-    e.preventDefault();
-    // Trackpad pinch / ctrl+wheel → zoom toward cursor; two-finger scroll → pan
-    if (e.ctrlKey || e.metaKey) {
-      const factor = Math.exp(-e.deltaY * 0.01);
-      zoomDiagramAt(e.clientX, e.clientY, diagramScale * factor);
-      return;
-    }
-    const line = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? diagramStage.clientHeight : 1;
-    diagramTx -= e.deltaX * line;
-    diagramTy -= e.deltaY * line;
-    applyDiagramView();
-  }, { passive: false });
-  diagramStage.addEventListener("pointerdown", e => {
-    if (e.button !== 0 && e.button !== 1) return;
-    diagramPanning = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, tx: diagramTx, ty: diagramTy };
-    diagramStage.classList.add("is-panning");
-    diagramStage.setPointerCapture(e.pointerId);
-  });
-  diagramStage.addEventListener("pointermove", e => {
-    if (!diagramPanning || e.pointerId !== diagramPanning.pointerId) return;
-    diagramTx = diagramPanning.tx + (e.clientX - diagramPanning.x);
-    diagramTy = diagramPanning.ty + (e.clientY - diagramPanning.y);
-    applyDiagramView();
-  });
-  const endDiagramPan = (e: PointerEvent) => {
-    if (!diagramPanning || e.pointerId !== diagramPanning.pointerId) return;
-    diagramPanning = null;
-    diagramStage.classList.remove("is-panning");
-  };
-  diagramStage.addEventListener("pointerup", endDiagramPan);
-  diagramStage.addEventListener("pointercancel", endDiagramPan);
-  diagramStage.addEventListener("dblclick", e => {
-    if ((e.target as HTMLElement).closest(".diagram-modal-bar")) return;
-    zoomDiagramBy(diagramScale >= 2.5 ? 1 / diagramScale : 1.6, e.clientX, e.clientY);
-  });
-  window.addEventListener("keydown", e => {
-    if (diagramModal.hidden) return;
-    const pan = (dx: number, dy: number) => { diagramTx += dx; diagramTy += dy; applyDiagramView(); };
-    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); closeDiagramModal(); return; }
-    if (e.key === "+" || e.key === "=") { e.preventDefault(); e.stopPropagation(); zoomDiagramBy(1.25); }
-    else if (e.key === "-" || e.key === "_") { e.preventDefault(); e.stopPropagation(); zoomDiagramBy(1 / 1.25); }
-    else if (e.key === "0") { e.preventDefault(); e.stopPropagation(); resetDiagramModal(); }
-    else if (e.key === "1" || e.key === "f" || e.key === "F") { e.preventDefault(); e.stopPropagation(); fitDiagramModal(); }
-    else if (e.key === "ArrowLeft") { e.preventDefault(); e.stopPropagation(); pan(48, 0); }
-    else if (e.key === "ArrowRight") { e.preventDefault(); e.stopPropagation(); pan(-48, 0); }
-    else if (e.key === "ArrowUp") { e.preventDefault(); e.stopPropagation(); pan(0, 48); }
-    else if (e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); pan(0, -48); }
-  }, true);
+  const diagramModal = createDiagramModal();
 
   let doc: DocState = await host.load();
   const { saveTarget, compact, restrictAssets } = host.capabilities;
@@ -205,21 +81,30 @@ export async function start(host: Host) {
   };
 
   const pro = await createPro(host, showToast);
+  pro.onChange(() => {
+    if (!pro.isPro() && diagramModal.isOpen()) diagramModal.close();
+  });
 
-  async function buildData(md: string, expandOf: (path: string[], depth: number) => boolean): Promise<MindNode> {
+  let syntheticRootTitle = "";
+  /** Parses `md` and preloads its diagrams/images; the caller commits `meta` once it knows the result is current. */
+  async function buildData(md: string, expandOf: (path: string[], depth: number) => boolean) {
     const outline = parse(md, doc.name);
     const { root, ...rest } = outline;
-    meta = rest;
     const mds: string[] = [];
     const walk = (n: typeof root) => (mds.push(n.md), n.children.forEach(walk));
     walk(root);
     await renderer.preload(mds);
-    return toMind(root, expandOf);
+    return { data: toMind(root, expandOf), meta: rest, syntheticTitle: outline.syntheticRoot ? root.md : "" };
   }
 
   // ---- per-document look: layout and theme live in the front matter ------
 
-  const frontMatterOf = (md: string) => (md.startsWith("---\n") ? (md.match(/^---\n[\s\S]*?\n---\n/)?.[0] ?? "") : "");
+  // Same front matter detection as the parser, cached because layout, theme and title each read it.
+  let frontMatterCache = { md: "", fm: "" };
+  const frontMatterOf = (md: string) => {
+    if (frontMatterCache.md !== md) frontMatterCache = { md, fm: parse(md).frontMatter };
+    return frontMatterCache.fm;
+  };
   function layoutOf(md: string) {
     const fm = frontMatterOf(md);
     const chosen = LAYOUTS.find(l => l.id === documentSetting(fm, "layout"));
@@ -231,7 +116,7 @@ export async function start(host: Host) {
     return chosen && (!chosen.pro || pro.isPro()) ? chosen : THEMES[0];
   }
 
-  const titleOf = (md: string) => md.match(/^---\n[\s\S]*?^title:\s*["']?(.+?)["']?\s*$/m)?.[1] ?? doc.name;
+  const titleOf = (md: string) => frontMatterTitle(frontMatterOf(md)) ?? doc.name;
   let title = titleOf(doc.md);
   document.title = `${title} · Inkmap`;
 
@@ -243,7 +128,23 @@ export async function start(host: Host) {
   let pendingExternalDoc: DocState | undefined;
   let mindMapReady = false;
   host.onExternalChange(next => {
-    if (!mindMapReady) pendingExternalDoc = next;
+    if (!mindMapReady) {
+      pendingExternalDoc = next;
+      return;
+    }
+    const switchedDoc = next.name !== doc.name;
+    if (switchedDoc) {
+      clearTimeout(saveTimer);
+      saveTimer = 0;
+    }
+    saving = saving.then(async () => {
+      const unsaved = currentMarkdown() !== savedMap;
+      const localChanges = !switchedDoc && unsaved && next.md !== lastMd;
+      await applyExternal(next);
+      // The host already moved to the other file, so edits still waiting for their save cannot be written any more.
+      if (localChanges) showToast(t("conflict"));
+      else if (switchedDoc && (unsaved || next.discardedEdits) && !readOnly()) showToast(t("unsavedDiscarded"));
+    }).catch(err => showToast(String(err instanceof Error ? err.message : err)));
   });
 
   const mapEl = $("#map");
@@ -262,9 +163,12 @@ export async function start(host: Host) {
     return new DOMRect(0, 0, w, h);
   };
 
-  const initialData = await buildData(doc.md, (path, depth) =>
+  const initialBuild = await buildData(doc.md, (path, depth) =>
     depth === 0 ? true : (initialFolds?.[path.join("\u0000")] ?? depth < INITIAL_LEVELS),
   );
+  meta = initialBuild.meta;
+  syntheticRootTitle = initialBuild.syntheticTitle;
+  const initialData = initialBuild.data;
   {
     const r = origGetMapRect();
     if (r.width >= 160 && r.height >= 160) hadRealMapRect = true;
@@ -298,7 +202,7 @@ export async function start(host: Host) {
     enableShortcutOnlyWhenMouseInSvg: false,
     enableAutoEnterTextEditWhenKeydown: true,
     customCheckEnableShortcut: (e: KeyboardEvent) => {
-      if (!diagramModal.hidden || document.documentElement.classList.contains("presenting")) return false;
+      if (diagramModal.isOpen() || document.documentElement.classList.contains("presenting")) return false;
       const upgradeEl = document.getElementById("upgrade");
       if (upgradeEl && !upgradeEl.hidden) return false;
       const accountPanel = document.getElementById("account-panel");
@@ -341,7 +245,7 @@ export async function start(host: Host) {
         img.addEventListener("pointerdown", event => event.stopPropagation());
         img.addEventListener("click", event => {
           event.stopPropagation();
-          openDiagramModal(img);
+          diagramModal.open(img);
         });
       });
       el.querySelectorAll<HTMLButtonElement>(".ink-diagram-zoom").forEach(button => {
@@ -350,7 +254,7 @@ export async function start(host: Host) {
         button.addEventListener("click", event => {
           event.stopPropagation();
           const img = button.closest(".ink-diagram")?.querySelector<HTMLImageElement>(".ink-diagram-image");
-          if (img) openDiagramModal(img);
+          if (img) diagramModal.open(img);
         });
       });
       el.querySelectorAll<HTMLButtonElement>(".ink-diagram-edit").forEach((button, index) => {
@@ -367,13 +271,12 @@ export async function start(host: Host) {
         button.addEventListener("click", event => {
           event.stopPropagation();
           openSource(node);
-          const fences = [...sourceText.value.matchAll(/^ {0,3}(`{3,}|~{3,})[ 	]*mermaid[ 	]*$/gim)];
-          const fence = fences[index];
-          if (fence?.index !== undefined) {
-            const start = fence.index + fence[0].length + 1;
-            const close = new RegExp("^ {0,3}" + fence[1][0] + "{" + fence[1].length + ",}[ \t]*$", "m");
-            const end = close.exec(sourceText.value.slice(start))?.index;
-            sourceText.setSelectionRange(start, end === undefined ? sourceText.value.length : start + end);
+          // Buttons follow the order of the diagrams the renderer drew, which skips fences inside other code blocks.
+          const range = mermaidSourceRanges(sourceText.value)[index];
+          if (range) {
+            sourceText.setSelectionRange(range.start, range.end);
+            const linesBefore = sourceText.value.slice(0, range.start).split("\n").length - 1;
+            sourceText.scrollTop = Math.max(0, (linesBefore - 2) * MD_LINE_HEIGHT);
           }
         });
       });
@@ -403,12 +306,28 @@ export async function start(host: Host) {
       }
       return svg;
     },
-    demonstrateConfig: { boxShadowColor: "rgba(0, 0, 0, 0.75)", borderColor: theme.palette.line, padding: 24, margin: 60 },
+    demonstrateConfig: { boxShadowColor: "rgba(0, 0, 0, 0.75)", padding: 24, margin: 60, zIndex: 42 },
   });
 
   // ---- write back -------------------------------------------------------
 
-  const currentMarkdown = () => serialize(toOutlineDoc(meta, mindMap.getData(false)));
+  function currentOutline(tree: MindNode = mindMap.getData(false), uids?: Map<OutlineNode, string>): OutlineDoc {
+    let effectiveMeta = meta;
+    const rootMd = markdownOf(tree.data);
+    if (meta.syntheticRoot && rootMd !== syntheticRootTitle && rootMd.trim()) {
+      const hasTitleKey = /^title:/m.test(meta.frontMatter);
+      const hasTopH1 = (tree.children ?? []).some(c => c.data.kind === "heading" && (c.data.level ?? 1) === 1);
+      if (!hasTitleKey && !hasTopH1) {
+        effectiveMeta = { ...meta, syntheticRoot: false };
+      } else {
+        // Keep the title in the front matter: promoting the root to an H1 would demote the existing H1s.
+        effectiveMeta = { ...meta, frontMatter: withFrontMatterTitle(meta.frontMatter, rootMd, meta.eol) };
+      }
+    }
+    return toOutlineDoc(effectiveMeta, tree, uids);
+  }
+
+  const currentMarkdown = () => serialize(currentOutline());
   let savedMap = currentMarkdown();
   // In an editor the map edits the open document; saving to disk stays with the editor.
   const synced = () => {
@@ -421,10 +340,11 @@ export async function start(host: Host) {
   };
   setStatus("saved", synced());
 
-  function scheduleSave() {
+  /** Saves after a short pause; pass `md` when the caller already serialized the map. */
+  function scheduleSave(md = currentMarkdown()) {
     clearTimeout(saveTimer);
     if (readOnly()) return;
-    if (currentMarkdown() === savedMap) return;
+    if (md === savedMap) return;
     setStatus("pending", t("pending"));
     saveTimer = window.setTimeout(() => (saving = saving.then(save)), SAVE_DELAY);
   }
@@ -458,33 +378,59 @@ export async function start(host: Host) {
     await (saving = saving.then(save));
   }
 
+  /** Line positions computed by nodeLines(); load() and every map change invalidate them. */
+  let nodeLinesCache: Map<string, number> | undefined;
+
   /** Replaces the map with `md`, keeping folds; `local` edits are then saved like any other edit. */
-  async function load(md: string, local: boolean) {
+  let loadGeneration = 0;
+  async function load(md: string, local: boolean, resetHistory = false) {
+    const generation = ++loadGeneration;
     finishInlineEdit(false);
+    cancelSourceEdit();
+    const folds = resetHistory ? new Map<string, boolean>() : collectExpand(mindMap.getData(false));
+    const built = await buildData(md, (path, depth) => folds.get(path.join("\u0000")) ?? depth < INITIAL_LEVELS);
+    // A newer load started while this one was preloading images or diagrams; its result wins.
+    if (generation !== loadGeneration) return;
+    const data = built.data;
+    meta = built.meta;
+    nodeLinesCache = undefined;
+    syntheticRootTitle = built.syntheticTitle;
     title = titleOf(md);
     document.title = `${title} · Inkmap`;
-    const folds = collectExpand(mindMap.getData(false));
-    const data = await buildData(md, (path, depth) => folds.get(path.join("\u0000")) ?? depth < INITIAL_LEVELS);
     closeSource();
-    mindMap.updateData(data);
+    mindMap.execCommand("CLEAR_ACTIVE_NODE");
+    if (resetHistory) {
+      mindMap.setData(data);
+      requestAnimationFrame(() => {
+        try {
+          mindMap.resize();
+          mindMap.view.fit();
+        } catch {}
+      });
+    } else {
+      mindMap.updateData(data);
+    }
     applyLook(md);
     if (local) {
-      host.onMapMarkdownChange?.(currentMarkdown());
-      scheduleSave();
+      const current = currentMarkdown();
+      host.onMapMarkdownChange?.(current);
+      scheduleSave(current);
     }
   }
 
   async function applyExternal(next: DocState) {
-    if (next.name === doc.name && next.md === lastMd && next.writable === doc.writable) {
+    const switchedDoc = next.name !== doc.name;
+    if (!switchedDoc && next.md === lastMd && next.writable === doc.writable) {
       doc = next;
       return;
     }
     doc = next;
     lastMd = next.md;
     mindMap.setMode(readOnly() ? "readonly" : "edit");
-    await load(next.md, false);
+    await load(next.md, false, switchedDoc);
     savedMap = currentMarkdown();
     clearTimeout(saveTimer);
+    saveTimer = 0;
     setStatus("saved", synced());
   }
 
@@ -492,25 +438,19 @@ export async function start(host: Host) {
   if (pendingExternalDoc) {
     const next = pendingExternalDoc;
     pendingExternalDoc = undefined;
-    saving = saving.then(() => applyExternal(next)).catch(() => {});
+    saving = saving.then(() => applyExternal(next)).catch(err => showToast(String(err instanceof Error ? err.message : err)));
   }
   mindMap.on("data_change", () => {
-    host.onMapMarkdownChange?.(currentMarkdown());
-    scheduleSave();
-  });
-  host.onExternalChange(next => {
-    const switchedDoc = next.name !== doc.name;
-    if (switchedDoc) clearTimeout(saveTimer);
-    saving = saving.then(async () => {
-      const localChanges = !switchedDoc && currentMarkdown() !== savedMap && next.md !== lastMd;
-      await applyExternal(next);
-      if (localChanges) showToast(t("conflict"));
-    }).catch(err => showToast(String(err instanceof Error ? err.message : err)));
+    const md = currentMarkdown();
+    host.onMapMarkdownChange?.(md);
+    scheduleSave(md);
   });
 
   // ---- editing ----------------------------------------------------------
 
   const revisions = new WeakMap<object, object>();
+  let pendingNodeEdit: Promise<void> = Promise.resolve();
+  let beforeCanvasEditText: string | undefined;
   async function setMarkdown(node: any, md: string) {
     const revision = {};
     revisions.set(node, revision);
@@ -519,14 +459,21 @@ export async function start(host: Host) {
     mindMap.renderer.setNodeDataRender(node, nodeData(md));
   }
 
+  mindMap.on("before_show_text_edit", () => {
+    const active = mindMap.renderer?.activeNodeList?.[0];
+    beforeCanvasEditText = active ? String(active.getData("text") ?? "") : undefined;
+  });
+
   // Text typed on the canvas becomes rendered Markdown once it uses Markdown syntax.
   mindMap.on("hide_text_edit", (_el: unknown, _list: unknown, node: any) => {
+    beforeCanvasEditText = undefined;
     const text = String(node?.getData("text") ?? "");
-    if (node && isRich(text)) setMarkdown(node, text);
+    if (node && isRich(text)) pendingNodeEdit = setMarkdown(node, text);
     blurExternalInput();
   });
 
   function openSource(node: any, focus = true) {
+    if (sourceNode !== node) flushSourceEdit();
     sourceNode = node;
     source.hidden = false;
     sourceText.value = markdownOf(node.getData());
@@ -534,20 +481,39 @@ export async function start(host: Host) {
     if (focus) sourceText.focus();
   }
   function closeSource() {
+    flushSourceEdit();
     sourceNode = null;
     source.hidden = true;
     sourceText.blur();
     blurExternalInput();
   }
 
-  const sourceTimers = new WeakMap<object, number>();
+  // At most one debounced source-panel edit is pending; it targets the node that was open when typed.
+  let sourceTimer = 0;
+  let pendingSourceEdit: (() => void) | null = null;
+  function flushSourceEdit() {
+    clearTimeout(sourceTimer);
+    sourceTimer = 0;
+    const run = pendingSourceEdit;
+    pendingSourceEdit = null;
+    run?.();
+  }
+  function cancelSourceEdit() {
+    clearTimeout(sourceTimer);
+    sourceTimer = 0;
+    pendingSourceEdit = null;
+  }
   sourceText.addEventListener("input", () => {
     const node = sourceNode;
     if (!node) return;
-    clearTimeout(sourceTimers.get(node));
+    cancelSourceEdit();
     revisions.delete(node);
     const markdown = sourceText.value.replace(/\n+$/, "");
-    sourceTimers.set(node, window.setTimeout(() => void setMarkdown(node, markdown), 250));
+    pendingSourceEdit = () => {
+      if (node.group?.node?.isConnected === false) return;
+      pendingNodeEdit = setMarkdown(node, markdown);
+    };
+    sourceTimer = window.setTimeout(flushSourceEdit, 250);
   });
   sourceText.addEventListener("keydown", e => {
     if (e.key === "Escape") closeSource();
@@ -604,8 +570,8 @@ export async function start(host: Host) {
     const value = inlineEdit.value.replace(/\n+$/, "");
     const markdown = inlineNumberedLabel ? value.replace(/^(\d+)([.)])(?=\s)/, "$1\\$2") : value;
     if (commit && !readOnly() && markdown !== inlineOriginal) {
-      clearTimeout(sourceTimers.get(node));
-      void setMarkdown(node, markdown);
+      cancelSourceEdit();
+      pendingNodeEdit = setMarkdown(node, markdown);
     }
     blurExternalInput();
   }
@@ -631,10 +597,14 @@ export async function start(host: Host) {
     if (!node.getData("rich") || readOnly()) return;
     openInlineEdit(node);
   });
-  mindMap.on("node_active", (node: any, list: any[]) => {
+  mindMap.on("node_active", (_node: any, list: any[]) => {
     if (source.hidden) return;
-    if (list.length === 1) openSource(list[0], false);
-    else sourceText.value = "";
+    if (list.length === 1) return openSource(list[0], false);
+    // No single node is selected: detach the panel so typing cannot overwrite the previously open node.
+    flushSourceEdit();
+    sourceNode = null;
+    sourceText.value = "";
+    sourceText.readOnly = true;
   });
 
   /** Rewrites node Markdown in place (every node, or the one with `uid`) and saves the result. */
@@ -653,22 +623,24 @@ export async function start(host: Host) {
       (node.children ?? []).forEach(walk);
     };
     walk(tree);
-    if (n) await load(serialize(toOutlineDoc(meta, tree)), true);
+    if (n) await load(serialize(currentOutline(tree)), true);
     return n;
   }
 
   // ---- link with the text editor ------------------------------------------
 
-  /** Start line of every node in the current document, keyed by node uid. */
+  /** Start line of every node in the current document, keyed by node uid; cached until the map changes. */
+  mindMap.on("data_change", () => (nodeLinesCache = undefined));
   function nodeLines(): Map<string, number> {
+    if (nodeLinesCache) return nodeLinesCache;
     const uids = new Map<OutlineNode, string>();
-    const { lines } = serializeWithLines(toOutlineDoc(meta, mindMap.getData(false), uids));
+    const { lines } = serializeWithLines(currentOutline(mindMap.getData(false), uids));
     const out = new Map<string, number>();
     for (const [node, line] of lines) {
       const uid = uids.get(node);
       if (uid) out.set(uid, line);
     }
-    return out;
+    return (nodeLinesCache = out);
   }
 
   let revealing = false;
@@ -697,18 +669,15 @@ export async function start(host: Host) {
     mindMap.on("node_click", (node: any) => {
       blurExternalInput();
       if (revealing) return;
-      const line = nodeLines().get(node.getData("uid"));
-      if (line !== undefined) {
-        const range = chatRange([node]);
-        host.select!(line, range?.endLine ?? line);
-      }
+      const range = chatRange([node]);
+      if (range) host.select!(range.startLine, range.endLine);
     });
   }
   host.onReveal?.(line => {
     let best: string | undefined;
     let bestLine = -1;
     for (const [uid, start] of nodeLines()) {
-      if (start <= line && start > bestLine) [best, bestLine] = [uid, start];
+      if (start <= line && start >= bestLine) [best, bestLine] = [uid, start];
     }
     if (!best) return;
     const uid = best;
@@ -759,17 +728,7 @@ export async function start(host: Host) {
       e.preventDefault();
       e.stopImmediatePropagation();
       void (async () => {
-        if (!inlineEdit.hidden) {
-          finishInlineEdit(true);
-        }
-        if (mindMap.renderer?.textEdit?.isShowTextEdit?.()) {
-          mindMap.renderer.textEdit.hideEditTextBox();
-        }
-        if (!source.hidden && sourceNode && sourceTimers.has(sourceNode)) {
-          clearTimeout(sourceTimers.get(sourceNode));
-          sourceTimers.delete(sourceNode);
-          await setMarkdown(sourceNode, sourceText.value.replace(/\n+$/, ""));
-        }
+        await flushLocalEdits();
         await host.flushPendingEdits?.();
         await flushSave();
         showToast(doc.name ? `${synced()} · ${doc.name}` : synced());
@@ -792,6 +751,8 @@ export async function start(host: Host) {
     if (mindMap.renderer?.textEdit?.isShowTextEdit?.() && e.key === "Escape") {
       e.preventDefault();
       e.stopImmediatePropagation();
+      const wrap = document.querySelector<HTMLElement>(".smm-node-edit-wrap");
+      if (wrap && beforeCanvasEditText !== undefined) wrap.textContent = beforeCanvasEditText;
       mindMap.renderer.textEdit.hideEditTextBox();
       blurExternalInput();
       return;
@@ -808,6 +769,14 @@ export async function start(host: Host) {
   };
   window.addEventListener("keydown", onCaptureKeydown, true);
   mindMap.on("beforeDestroy", () => window.removeEventListener("keydown", onCaptureKeydown, true));
+
+  /** Commits the inline editor, the canvas text box and the source panel so the map holds every typed character. */
+  async function flushLocalEdits() {
+    if (!inlineEdit.hidden) finishInlineEdit(true);
+    if (mindMap.renderer?.textEdit?.isShowTextEdit?.()) mindMap.renderer.textEdit.hideEditTextBox();
+    flushSourceEdit();
+    await pendingNodeEdit;
+  }
 
   // ---- menus ------------------------------------------------------------
 
@@ -854,16 +823,17 @@ export async function start(host: Host) {
   function chatRange(nodes: any[]): { startLine: number; endLine: number } | null {
     const wanted = new Set(nodes.map(n => n.getData("uid")));
     const uids = new Map<OutlineNode, string>();
-    const { md, lines } = serializeWithLines(toOutlineDoc(meta, mindMap.getData(false), uids));
-    const last = md.replace(/\n$/, "").split("\n").length - 1;
+    const outlineDoc = currentOutline(mindMap.getData(false), uids);
+    const { md, lines } = serializeWithLines(outlineDoc);
+    const last = md.replace(/\r\n?/g, "\n").replace(/\n$/, "").split("\n").length - 1;
     let startLine = Infinity;
     let endLine = -1;
     for (const [node, line] of lines) {
       if (!wanted.has(uids.get(node))) continue;
       // A map built from several top-level blocks gets a made-up root, which stands for the whole document.
-      const whole = meta.syntheticRoot && node === lines.keys().next().value;
+      const whole = outlineDoc.syntheticRoot && node === lines.keys().next().value;
       startLine = Math.min(startLine, whole ? 0 : line);
-      endLine = Math.max(endLine, whole ? last : line + node.md.split("\n").length - 1);
+      endLine = Math.max(endLine, whole ? last : line + node.md.replace(/\r\n?/g, "\n").split("\n").length - 1);
     }
     return endLine < 0 ? null : { startLine, endLine: Math.min(endLine, last) };
   }
@@ -925,9 +895,14 @@ export async function start(host: Host) {
     nodes ??= part ? [part.node] : [...mindMap.renderer.activeNodeList];
     if (!nodes.length) return host.addToChat!();
     // The editor reads the lines from the document, so pending edits have to land there first.
-    clearTimeout(saveTimer);
-    await (saving = saving.then(save));
-    if (status.dataset.state !== "saved") return;
+    if (!part) await flushLocalEdits();
+    else {
+      // Text selected in the source panel may still be waiting for its debounced write to the node.
+      if (part.inHeader) flushSourceEdit();
+      await pendingNodeEdit;
+    }
+    await flushSave();
+    if (status.dataset.state !== "saved") return showToast(t("saveFailed"));
     const range = chatRange(nodes);
     if (range) host.addToChat!({ ...range, ...(part && { text: part.text }) });
   }
@@ -1029,7 +1004,9 @@ export async function start(host: Host) {
       placeBest({ left, right, top, bottom }, right, (top + bottom) / 2, new Set(active));
     });
   }
+  mindMap.keyCommand.removeShortcut("Control+l");
   if (chatEnabled) {
+    mindMap.keyCommand.addShortcut("Control+l", () => void addToChat());
     chatMenuItem.hidden = false;
     for (const event of ["node_active", "node_tree_render_end", "scale", "translate", "expand_btn_click", "node_dragend", "exit_demonstrate", "before_show_text_edit", "hide_text_edit"]) mindMap.on(event, placeChatButton);
     mindMap.on("node_dragging", () => (chatAdd.hidden = true));
@@ -1110,86 +1087,6 @@ export async function start(host: Host) {
     return `${exportKatexCss}\n${resolved}`;
   }
 
-  function buildInteractiveExportHtml(docTitle: string, svgDataUrl: string, mdSource: string): string {
-    const safeTitle = docTitle.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c));
-    const safeMd = mdSource.replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c));
-    const badgeHtml = pro.isPaidPro()
-      ? ""
-      : `<a class="ink-viral-badge" href="https://zhiyuanv.com/software.html" target="_blank" rel="noopener noreferrer">✨ Made with <strong>Inkmap</strong> — Editable Markdown Mind Map &amp; Mermaid Editor for VS Code / Cursor / MCP ↗</a>`;
-    return `<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>${safeTitle} · Inkmap</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { background: ${theme.palette.background}; color: ${theme.palette.text}; font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif; height: 100vh; overflow: hidden; display: flex; flex-direction: column; }
-    header { height: 46px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(128,128,128,0.18); background: ${theme.palette.card}; z-index: 10; }
-    .brand { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 600; }
-    .actions { display: flex; align-items: center; gap: 8px; }
-    button, .cta { padding: 5px 11px; border-radius: 7px; border: 1px solid rgba(128,128,128,0.28); background: transparent; color: inherit; font-size: 12px; cursor: pointer; text-decoration: none; }
-    .cta { background: #2563eb; color: #fff; border-color: #2563eb; font-weight: 600; }
-    #stage { flex: 1; position: relative; overflow: hidden; cursor: grab; display: flex; align-items: center; justify-content: center; }
-    #stage:active { cursor: grabbing; }
-    #map-img { max-width: 92vw; max-height: 84vh; transform-origin: center center; transition: transform 0.05s linear; user-select: none; -webkit-user-drag: none; }
-    #md-drawer { position: fixed; right: 16px; top: 58px; bottom: 58px; width: min(440px, 90vw); background: ${theme.palette.card}; border: 1px solid rgba(128,128,128,0.25); border-radius: 12px; padding: 14px; display: none; flex-direction: column; gap: 10px; box-shadow: 0 16px 40px rgba(0,0,0,0.22); z-index: 20; }
-    #md-drawer.open { display: flex; }
-    pre { flex: 1; overflow: auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; padding: 10px; border-radius: 8px; background: rgba(128,128,128,0.08); }
-    .ink-viral-badge { position: fixed; right: 16px; bottom: 14px; padding: 7px 13px; border-radius: 999px; background: rgba(15, 23, 42, 0.86); color: #f8fafc; font-size: 12px; text-decoration: none; box-shadow: 0 6px 20px rgba(0,0,0,0.22); z-index: 30; backdrop-filter: blur(8px); }
-    .ink-viral-badge strong { color: #60a5fa; }
-  </style>
-</head>
-<body>
-  <header>
-    <div class="brand"><span>${safeTitle}</span></div>
-    <div class="actions">
-      <button type="button" id="zoom-out">−</button>
-      <button type="button" id="zoom-reset">100%</button>
-      <button type="button" id="zoom-in">+</button>
-      <button type="button" id="toggle-md">Markdown</button>
-      <a class="cta" href="https://marketplace.visualstudio.com/items?itemName=inkmap.inkmap-vscode" target="_blank" rel="noopener noreferrer">Edit in VS Code / Cursor ↗</a>
-    </div>
-  </header>
-  <div id="stage"><img id="map-img" src="${svgDataUrl}" alt="${safeTitle}"></div>
-  <aside id="md-drawer">
-    <div style="display:flex;justify-content:space-between;align-items:center">
-      <strong style="font-size:13px">Markdown Source</strong>
-      <button type="button" id="copy-md">Copy Markdown</button>
-    </div>
-    <pre id="md-raw">${safeMd}</pre>
-  </aside>
-  ${badgeHtml}
-  <script>
-    (() => {
-      const stage = document.getElementById("stage");
-      const img = document.getElementById("map-img");
-      const drawer = document.getElementById("md-drawer");
-      let scale = 1, tx = 0, ty = 0, dragging = false, sx = 0, sy = 0;
-      const apply = () => { img.style.transform = \`translate(\${tx}px, \${ty}px) scale(\${scale})\`; };
-      stage.addEventListener("wheel", e => {
-        e.preventDefault();
-        scale = Math.min(5, Math.max(0.25, scale * (e.deltaY < 0 ? 1.1 : 0.9)));
-        apply();
-      }, { passive: false });
-      stage.addEventListener("pointerdown", e => { dragging = true; sx = e.clientX - tx; sy = e.clientY - ty; stage.setPointerCapture(e.pointerId); });
-      stage.addEventListener("pointermove", e => { if (!dragging) return; tx = e.clientX - sx; ty = e.clientY - sy; apply(); });
-      stage.addEventListener("pointerup", () => { dragging = false; });
-      document.getElementById("zoom-in").onclick = () => { scale = Math.min(5, scale * 1.2); apply(); };
-      document.getElementById("zoom-out").onclick = () => { scale = Math.max(0.25, scale / 1.2); apply(); };
-      document.getElementById("zoom-reset").onclick = () => { scale = 1; tx = 0; ty = 0; apply(); };
-      document.getElementById("toggle-md").onclick = () => drawer.classList.toggle("open");
-      document.getElementById("copy-md").onclick = e => {
-        navigator.clipboard.writeText(document.getElementById("md-raw").textContent || "");
-        e.target.textContent = "Copied!";
-        setTimeout(() => { e.target.textContent = "Copy Markdown"; }, 1500);
-      };
-    })();
-  </script>
-</body>
-</html>`;
-  }
-
   async function exportAs(type: "png" | "svg" | "html") {
     hideMenus();
     if (!pro.allow("export")) return;
@@ -1199,7 +1096,13 @@ export async function start(host: Host) {
       mindMap.execCommand("CLEAR_ACTIVE_NODE");
       if (type === "html") {
         const svgData: string = await mindMap.export("svg", false, name);
-        const htmlDoc = buildInteractiveExportHtml(title, svgData, currentMarkdown());
+        const htmlDoc = interactiveExportHtml({
+          title,
+          svgDataUrl: svgData,
+          markdown: currentMarkdown(),
+          palette: theme.palette,
+          showBadge: !pro.isPaidPro(),
+        });
         const dataUrl = `data:text/html;charset=utf-8,${encodeURIComponent(htmlDoc)}`;
         const file = `${name}.html`;
         if (await host.saveFile(file, dataUrl)) showToast(t("exported", { name: file }));
@@ -1222,6 +1125,7 @@ export async function start(host: Host) {
   const presentExit = $<HTMLButtonElement>("#present-exit");
 
   async function present() {
+    if (mindMap.demonstrate?.isInDemonstrate) return;
     if (!pro.allow("present")) return;
     host.track?.("feature_present");
     hideMenus();
@@ -1230,7 +1134,7 @@ export async function start(host: Host) {
     document.documentElement.classList.add("presenting");
     if (presentBar) presentBar.hidden = false;
     try {
-      await mindMap.el.requestFullscreen();
+      await document.documentElement.requestFullscreen();
     } catch {
       // Editor webviews may not allow fullscreen; present inside the panel instead.
       mindMap.demonstrate._enter();
@@ -1247,17 +1151,18 @@ export async function start(host: Host) {
   // The plugin listens for a vendor-prefixed event that current Chromium no longer fires.
   document.addEventListener("fullscreenchange", () => {
     const demo = mindMap.demonstrate;
-    if (document.fullscreenElement === mindMap.el && !demo.isInDemonstrate) demo._enter();
+    if (document.fullscreenElement === document.documentElement && !demo.isInDemonstrate) demo._enter();
     else if (!document.fullscreenElement && demo.isInDemonstrate) demo.exit();
   });
   mindMap.on("exit_demonstrate", () => {
     document.documentElement.classList.remove("presenting");
     if (presentBar) presentBar.hidden = true;
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
   });
 
   // The map sizes its SVG only on creation; editor panels change size whenever splits are dragged or closed.
   let resizeFrame = 0;
-    const syncViewportResize = () => {
+  const syncViewportResize = () => {
     cancelAnimationFrame(resizeFrame);
     resizeFrame = requestAnimationFrame(() => {
       const { width, height } = origGetMapRect();
@@ -1299,16 +1204,23 @@ export async function start(host: Host) {
       fn();
       (e.currentTarget as HTMLElement).blur();
     });
+  const runHostHistory = (fn: () => void) => {
+    if (saveTimer || currentMarkdown() !== savedMap) {
+      void flushSave().then(fn);
+    } else {
+      fn();
+    }
+  };
   if (host.history) {
     mindMap.keyCommand.removeShortcut("Control+z");
     mindMap.keyCommand.removeShortcut("Control+y");
-    mindMap.keyCommand.addShortcut("Control+z", () => host.history!.undo());
-    mindMap.keyCommand.addShortcut("Control+y|Control+Shift+z", () => host.history!.redo());
+    mindMap.keyCommand.addShortcut("Control+z", () => runHostHistory(() => host.history!.undo()));
+    mindMap.keyCommand.addShortcut("Control+y|Control+Shift+z", () => runHostHistory(() => host.history!.redo()));
   } else {
     mindMap.keyCommand.addShortcut("Control+Shift+z", () => mindMap.execCommand("FORWARD"));
   }
-  click("#undo", () => (host.history ? host.history.undo() : mindMap.execCommand("BACK")));
-  click("#redo", () => (host.history ? host.history.redo() : mindMap.execCommand("FORWARD")));
+  click("#undo", () => (host.history ? runHostHistory(() => host.history!.undo()) : mindMap.execCommand("BACK")));
+  click("#redo", () => (host.history ? runHostHistory(() => host.history!.redo()) : mindMap.execCommand("FORWARD")));
   click("#fit", () => {
     mindMap.resize();
     mindMap.view.fit();
@@ -1329,12 +1241,14 @@ export async function start(host: Host) {
     if (nodes.length) mindMap.execCommand("INSERT_PARENT_NODE", true, nodes);
   });
   click("#menu-move-up", () => {
+    const node = menuNodes[0];
     hideMenus();
-    mindMap.execCommand("UP_NODE");
+    if (node) mindMap.execCommand("UP_NODE", node);
   });
   click("#menu-move-down", () => {
+    const node = menuNodes[0];
     hideMenus();
-    mindMap.execCommand("DOWN_NODE");
+    if (node) mindMap.execCommand("DOWN_NODE", node);
   });
   click("#menu-remove-node", () => {
     const nodes = menuNodes;
@@ -1344,7 +1258,7 @@ export async function start(host: Host) {
   click("#menu-source", () => {
     const node = menuNodes[0];
     hideMenus();
-    if (node) openInlineEdit(node);
+    if (node) openSource(node);
   });
   click("#menu-expand-subtree", () => {
     const nodes = menuNodes;
@@ -1371,7 +1285,7 @@ export async function start(host: Host) {
   levelSelect.addEventListener("change", () => {
     const level = levelSelect.value;
     if (level === "all") mindMap.execCommand("EXPAND_ALL");
-    else if (level) mindMap.execCommand("UNEXPAND_TO_LEVEL", Number(level) + 1);
+    else if (level) mindMap.execCommand("UNEXPAND_TO_LEVEL", Number(level));
     levelSelect.value = "";
     levelSelect.blur();
     setTimeout(() => mindMap.view.fit(), 300);
@@ -1445,8 +1359,8 @@ export async function start(host: Host) {
 
 export function mount(host: Host) {
   return start(host).then(api => {
-    // Exposed for end-to-end tests and console debugging.
-    (window as any).inkmap = api;
+    // Exposed for end-to-end tests, console debugging, and host workspace panes (see workspace-tree.ts `editorApi`).
+    (window as unknown as { inkmap: typeof api }).inkmap = api;
     return api;
   });
 }

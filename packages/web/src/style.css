@@ -28,7 +28,6 @@ button, input, select { font: inherit; color: inherit; }
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='%23646a73' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 3.8 5 6.3l2.5-2.5'/%3E%3C/svg%3E"); }
 #bar select:hover { background-color: var(--ui-hover); border-color: var(--ui-border-strong); }
 #theme-select { max-width: 108px; text-overflow: ellipsis; }
-.language-select { max-width: 82px; text-overflow: ellipsis; }
 :root.dark #bar select {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='%239aa0a8' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M2.5 3.8 5 6.3l2.5-2.5'/%3E%3C/svg%3E"); }
 #bar select option { background: var(--ui-solid); color: var(--ui-text); }
@@ -86,7 +85,7 @@ button, input, select { font: inherit; color: inherit; }
   background: var(--account-tint); color: var(--account-ink); font-size: 11px; font-weight: 600; line-height: 1.35; }
 
 .account-plan { margin: 12px 12px 10px; display: flex; flex-direction: column; gap: 10px; }
-.account-plan-status[hidden], .plan-more-btn[hidden], .account-perks[hidden], .account-menu-item[hidden], .link-btn[hidden], .account-web-links[hidden], .account-ext-link[hidden] { display: none !important; }
+.account-plan-status[hidden], .account-perks[hidden], .account-menu-item[hidden], .link-btn[hidden] { display: none !important; }
 .account-plan-status { border-radius: 10px; padding: 10px 12px;
   background: var(--ui-subtle); border: 1px solid var(--ui-border);
   border-left: 3px solid var(--account-dot); }
@@ -94,10 +93,6 @@ button, input, select { font: inherit; color: inherit; }
 .account-plan-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; background: var(--account-dot);
   box-shadow: 0 0 0 3px var(--account-tint); }
 .account-plan strong { font-size: 12.5px; font-weight: 650; color: var(--ui-text); letter-spacing: -.005em; }
-.plan-more-btn { display: inline-flex; align-items: center; gap: 2px; border: none; background: transparent;
-  padding: 2px 5px; margin-right: -4px; border-radius: 5px; font-size: 11.5px; font-weight: 560; color: var(--ui-primary);
-  cursor: pointer; white-space: nowrap; transition: background .12s ease; }
-.plan-more-btn:hover { background: var(--ui-hover); }
 .account-plan p { margin: 3px 0 0 14px; font-size: 11.5px; color: var(--ui-muted); line-height: 1.4; font-variant-numeric: tabular-nums; }
 
 .account-perks { border-radius: 10px; padding: 11px 12px;
@@ -118,23 +113,6 @@ button, input, select { font: inherit; color: inherit; }
 .account-primary:not(:has(> :not([hidden]))), .account-actions[hidden] { display: none; }
 .account-primary .buy { min-height: 36px; padding: 6px 12px; font-size: 12.5px; white-space: nowrap; }
 
-.account-web-links { display: flex; flex-direction: column; gap: 4px; padding: 0 12px 10px; }
-.upgrade-web-links { padding: 10px 0 4px; flex-direction: row; flex-wrap: wrap; gap: 8px; }
-.account-ext-link {
-  display: inline-flex; align-items: center; gap: 6px; width: 100%; box-sizing: border-box;
-  min-height: 30px; padding: 4px 10px; border-radius: 7px;
-  border: 1px solid var(--ui-border); background: var(--ui-subtle);
-  color: var(--ui-muted); font-size: 11.5px; font-weight: 520;
-  text-decoration: none; cursor: pointer; transition: background .12s ease, color .12s ease, border-color .12s ease;
-}
-.upgrade-web-links .account-ext-link { flex: 1; min-width: 180px; justify-content: center; }
-.account-ext-link:hover {
-  background: var(--ui-hover); color: var(--ui-primary);
-  border-color: color-mix(in srgb, var(--ui-primary) 30%, var(--ui-border));
-}
-.account-ext-link .ext-arrow { margin-left: auto; font-size: 11px; opacity: .75; }
-.upgrade-web-links .account-ext-link .ext-arrow { margin-left: 2px; }
-
 #account-panel .account-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 4px; padding: 6px 8px; margin: 0; border-top: 1px solid var(--ui-border); background: color-mix(in srgb, var(--ui-subtle) 50%, transparent); }
 #account-panel .account-actions[hidden] { display: none; }
 .account-menu-item { display: inline-flex; align-items: center; justify-content: center; gap: 6px; width: 100%; height: 30px; padding: 0 8px; box-sizing: border-box;
@@ -146,7 +124,7 @@ button, input, select { font: inherit; color: inherit; }
 :root.dark .account-menu-item.danger:hover { background: rgba(248, 113, 113, .13); color: #f87171; }
 .account-menu-item:disabled { opacity: .55; cursor: wait; }
 
-#account-panel:has(.phone-sign-in, .wechat-pay) > :is(.account-identity, .account-plan, .account-primary, .account-web-links, .account-actions) { display: none; }
+#account-panel:has(.phone-sign-in, .wechat-pay) > :is(.account-identity, .account-plan, .account-primary, .account-actions) { display: none; }
 #account-message { margin: 0 12px 12px; }
 
 #pro:focus-visible, #account-panel button:focus-visible, .upgrade-card button:focus-visible { outline: 2px solid var(--ui-primary); outline-offset: 2px; }
@@ -196,7 +174,7 @@ button, input, select { font: inherit; color: inherit; }
 #source-text { flex: 1; border: none; outline: none; resize: none; padding: 12px; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--ui-text); background: var(--ui-solid); }
 .source-hint { margin: 0; padding: 8px 12px; border-top: 1px solid var(--ui-border); font-size: 12px; color: var(--ui-muted); }
 
-#upgrade { position: fixed; inset: 0; z-index: 40; display: flex; align-items: center; justify-content: center;
+#upgrade { position: fixed; inset: 0; z-index: 46; display: flex; align-items: center; justify-content: center;
   background: rgba(15, 20, 30, .48); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); }
 #upgrade[hidden] { display: none; }
 .upgrade-card { position: relative; width: min(540px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; box-sizing: border-box; padding: 24px;
@@ -240,7 +218,7 @@ button, input, select { font: inherit; color: inherit; }
 .upgrade-features li.highlight { font-weight: 600; color: var(--ui-primary); }
 .upgrade-buy { display: flex; gap: 10px; }
 .upgrade-buy[hidden], .upgrade-features[hidden], .upgrade-close[hidden], .buy[hidden] { display: none; }
-.upgrade-card:has(.phone-sign-in, .wechat-pay) :is(.upgrade-buy, .upgrade-web-links, #upgrade-account-actions) { display: none; }
+.upgrade-card:has(.phone-sign-in, .wechat-pay) :is(.upgrade-buy, #upgrade-account-actions) { display: none; }
 
 .buy { flex: 1; min-height: 40px; padding: 8px 14px; font-weight: 600; letter-spacing: -.005em; border-radius: 8px;
   border: 1px solid rgba(25, 65, 170, .3); cursor: pointer; color: #fff;
@@ -396,7 +374,7 @@ button, input, select { font: inherit; color: inherit; }
 #diagram-modal-img { display: block; max-width: none; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 12px 40px rgba(0, 0, 0, .35); user-select: none; -webkit-user-drag: none; pointer-events: none; }
 
 :root.trial-expired body > :not(#upgrade):not(#bar):not(script) { visibility: hidden; }
-:root.trial-expired #bar { left: auto; z-index: 41; padding: 0; background: transparent; border: 0; box-shadow: none; backdrop-filter: none; }
+:root.trial-expired #bar { left: auto; z-index: 47; padding: 0; background: transparent; border: 0; box-shadow: none; backdrop-filter: none; }
 :root.trial-expired #bar > :not(#account) { display: none; }
 :root.trial-expired #upgrade { box-sizing: border-box; padding-top: 46px; }
 .sidebar-opening body > :not(.sidebar-gate):not(script) { display: none; }

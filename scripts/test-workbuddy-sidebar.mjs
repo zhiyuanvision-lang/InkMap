@@ -5,9 +5,10 @@ import { tmpdir } from "node:os";
 import { extname, join, resolve, sep } from "node:path";
 import { test } from "node:test";
 import puppeteer from "puppeteer-core";
+import { CHROME, NEEDS_CHROME, SIDEBARS } from "./lib/test-env.mjs";
 
-test("WorkBuddy page imports a Markdown copy and exports the edited Markdown", async t => {
-  const root = resolve("dist/sidebars/workbuddy");
+test("WorkBuddy page imports a Markdown copy and exports the edited Markdown", NEEDS_CHROME, async t => {
+  const root = join(SIDEBARS, "workbuddy");
   const manifest = JSON.parse(await readFile(join(root, "manifest.json"), "utf8"));
   assert.equal(manifest.pages[0].id, "inkmap");
   const dir = await mkdtemp(join(tmpdir(), "inkmap-workbuddy-"));
@@ -32,7 +33,7 @@ test("WorkBuddy page imports a Markdown copy and exports the edited Markdown", a
   await new Promise(ok => server.listen(0, "127.0.0.1", ok));
   t.after(() => new Promise(ok => server.close(ok)));
   const browser = await puppeteer.launch({
-    executablePath: process.env.CHROME_PATH ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+    executablePath: CHROME,
     headless: true, args: ["--no-first-run"],
   });
   t.after(() => browser.close());

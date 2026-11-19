@@ -1,15 +1,12 @@
 import { build } from "esbuild";
-import { cp, copyFile, mkdir, rm, writeFile } from "node:fs/promises";
-import { execFileSync } from "node:child_process";
+import { copyFile, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import { packageName } from "../packages/harness/src/shared.mjs";
+import { copyTree, productVersion, removeStaleArtifacts, ROOT as root, runNpm } from "./lib/bundle-utils.mjs";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
 const out = join(root, "dist", "sidebars");
 const target = join(out, packageName);
-const cliPkg = JSON.parse(await import("node:fs/promises").then(fs => fs.readFile(join(root, "packages", "cli", "package.json"), "utf8")));
-const version = cliPkg.version || "0.3.1";
+const version = await productVersion();
 const manifest = {
   name: packageName,
   version,
@@ -173,7 +170,7 @@ await writeFile(join(target, "locale", "zh.json"), JSON.stringify(localeZh, null
 await writeFile(join(target, "README.md"), readmeEn, "utf8");
 await writeFile(join(target, "README.zh.md"), readmeZh, "utf8");
 await Promise.all([
-  cp(join(root, "packages", "web", "dist"), join(target, "web"), { recursive: true }),
+  copyTree(join(root, "packages", "web", "dist"), join(target, "web")),
   copyFile(join(root, "packages", "vscode", "images", "icon.svg"), join(target, "icon.svg")),
   copyFile(join(root, "packages", "vscode", "LICENSE.md"), join(target, "LICENSE.md")),
   copyFile(join(root, "packages", "vscode", "THIRD_PARTY_NOTICES.md"), join(target, "THIRD_PARTY_NOTICES.md")),
@@ -191,7 +188,8 @@ await Promise.all([
   }),
 ]);
 
-const packed = JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", out], {
+const packed = JSON.parse(runNpm(["pack", "--ignore-scripts", "--json", "--pack-destination", out], {
   cwd: target, encoding: "utf8",
 }));
+await removeStaleArtifacts(out, new RegExp(`^${packageName}-.+\\.tgz$`), packed[0].filename);
 console.log(join(out, packed[0].filename));

@@ -1,6 +1,9 @@
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { defineConfig } from "vite";
 import { viteSingleFile } from "vite-plugin-singlefile";
+
+const productVersion: string = JSON.parse(readFileSync(new URL("../cli/package.json", import.meta.url), "utf8")).version;
 
 export default defineConfig(({ mode }) => {
   const codex = mode === "codex";
@@ -8,6 +11,7 @@ export default defineConfig(({ mode }) => {
   return {
     // Relative asset paths also work in the CLI and editor webview.
     base: "./",
+    define: { __INKMAP_VERSION__: JSON.stringify(productVersion) },
     resolve: {
       alias: { "@inkmap/core": fileURLToPath(new URL("../core/src/index.ts", import.meta.url)) },
     },

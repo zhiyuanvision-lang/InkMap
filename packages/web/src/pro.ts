@@ -3,9 +3,9 @@ import { PopupBlockedError, type Host } from "./host";
 import { locale, t, type I18nKey } from "./i18n";
 import { createPhoneSignIn } from "./phone-sign-in";
 import { createWechatPay } from "./wechat-pay";
+import { $ } from "./dom";
 
 const FEATURES: (ProFeature | "updates" | "markdown" | "diagram")[] = ["markdown", "diagram", "browser", "export", "layouts", "themes", "replace", "present", "updates"];
-const $ = <T extends HTMLElement>(sel: string) => document.querySelector(sel) as T;
 
 export interface Pro {
   isPro(): boolean;
@@ -15,7 +15,6 @@ export interface Pro {
   allow(feature: ProFeature): boolean;
   openUpgrade(feature?: ProFeature): void;
   onChange(listener: (state: LicenseState) => void): void;
-  refreshLanguage(): void;
 }
 
 export async function createPro(host: Host, showToast?: (text: string) => void): Promise<Pro> {
@@ -80,6 +79,7 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     },
   );
   card.tabIndex = -1;
+  panel.tabIndex = -1;
   list.hidden = !canBuy;
 
   function refreshFeatures() {
@@ -91,7 +91,8 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
   }
   function localizeMembership() {
     if (!canBuy) {
-      $("#upgrade-title").textContent = t("accountHeading");
+      // Not "Signed in": this card is shown while signed out too.
+      $("#upgrade-title").textContent = t("accountTitle");
       $(".upgrade-sub").textContent = t(canSignIn ? "accountSync" : "accountUnavailable");
     }
   }
@@ -180,7 +181,7 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     wechatPay?.close();
     if (phoneSignIn) {
       message.hidden = true;
-      phoneSignIn.open($(slot), button);
+      phoneSignIn.open($(slot), button, { prefill: state.lastSignIn });
     } else void checkout("restore", message);
   }
 
@@ -198,7 +199,7 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
       }
       if (result.status === "qr") {
         if (locale() === "en") {
-          showMessage(message, "International card checkout ($15) is coming soon.", "error");
+          showMessage(message, t("cardComingSoon"), "error");
           return;
         }
         phoneSignIn?.close();
@@ -214,6 +215,7 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
         wechatPay?.close();
         phoneSignIn.open($(slot), button, {
           forPurchase: true,
+          prefill: state.lastSignIn,
           onVerified: verified => {
             if (!verified.pro) void startBuy(button, slot, message, true);
           },
@@ -266,7 +268,9 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     if (event.target instanceof Node && !account.contains(event.target)) setPanel(false);
   });
   account.addEventListener("focusout", event => {
-    if (event.relatedTarget instanceof Node && !account.contains(event.relatedTarget)) setPanel(false);
+    if (event.relatedTarget instanceof Node && event.relatedTarget !== document.body && !account.contains(event.relatedTarget)) {
+      setPanel(false);
+    }
   });
 
   function closeUpgrade() {
@@ -386,6 +390,8 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     accountBuy.hidden = !canBuy || state.pro;
     accountPerks.hidden = !canBuy || state.pro;
     const signInKey = canBuy ? "signInSecondary" : phoneSignIn ? "phoneSignIn" : "signIn";
+    // On a login-only host the paywall shows the email form itself, already filled in.
+    const paywallForm = !accessible && !canBuy && canSignIn && Boolean(phoneSignIn) && !signedIn();
     for (const button of [signIn, upgradeSignIn]) button.textContent = t(signInKey);
     signIn.hidden = !canSignIn || signedIn();
     switchAccount.hidden = !canSignIn || !signedIn();
@@ -406,7 +412,7 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     expiredMessage.textContent = t(canBuy ? (signedIn() ? "trialExpiredSignedIn" : "trialExpired")
       : !canSignIn ? "trialExpiredNoAccount" : signedIn() ? "trialExpiredNoPro" : "trialExpiredSignIn");
     buy.hidden = !canBuy || state.pro;
-    upgradeSignIn.hidden = !canSignIn || signedIn();
+    upgradeSignIn.hidden = !canSignIn || signedIn() || paywallForm;
     upgradeActions.hidden = accessible || !canSignIn || !signedIn();
     upgradeSwitch.hidden = upgradeActions.hidden;
     upgradeAccount.hidden = upgradeActions.hidden;
@@ -415,6 +421,9 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     updateModalAccessibility(accessible);
     if (state.pro) closeUpgrade();
     else if (!accessible && dialog.hidden) openUpgrade();
+    if (paywallForm && !dialog.hidden && !phoneSignIn!.isOpen()) {
+      phoneSignIn!.open($("#upgrade-phone-slot"), upgradeSignIn, { prefill: state.lastSignIn, closable: false });
+    }
   }
 
   function setState(next: LicenseState) {
@@ -466,12 +475,5 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     },
     openUpgrade,
     onChange: fn => listeners.push(fn),
-    refreshLanguage() {
-      refreshFeatures();
-      localizeMembership();
-      phoneSignIn?.refreshLanguage();
-      wechatPay?.refreshLanguage();
-      renderState();
-    },
   };
 }

@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import * as vscode from "vscode";
-import { sanitizeViewState, type Ad } from "@inkmap/core";
+import { sanitizeViewState } from "@inkmap/core";
 import type { LicenseService } from "../../cli/src/license";
 import { serve, type DocSource, type Served } from "../../cli/src/server";
 import { docDir, docName, replaceText } from "./documents";
@@ -17,25 +17,35 @@ export class BrowserServers implements vscode.Disposable {
     private readonly webRoot: string,
     private readonly log: vscode.OutputChannel,
     private readonly license: LicenseService,
-    private readonly ads: () => Promise<Ad[]>,
   ) {}
 
   async open(uri: vscode.Uri) {
     const key = uri.toString();
     let served = this.servers.get(key);
     if (!served) {
+      const workspaceRoots = (vscode.workspace.workspaceFolders ?? [])
+        .filter(f => f.uri.scheme === "file")
+        .map(f => f.uri.fsPath);
       served = serve({
         source: documentSource(uri, this.context),
         webRoot: this.webRoot,
         port: 0,
         log: msg => this.log.appendLine(`[${docName(uri)}] ${msg}`),
         license: this.license,
-        ads: this.ads,
+        workspaceRoots,
+        // Files picked in the browser tree still go through VS Code's document model (dirty buffers, save hooks).
+        openSource: async path => documentSource(vscode.Uri.file(path), this.context),
       });
       this.servers.set(key, served);
       served.catch(() => this.servers.delete(key));
     }
-    const { url } = await served;
+    const server = await served;
+    // The user may have switched this browser window to another file; bring it back to the requested document.
+    if (uri.scheme === "file") await server.switchToFile?.(uri.fsPath, { trustCaller: true }).catch(() => {});
+    // In Remote / Codespaces the page is reached through a forwarded host; let the server accept it.
+    const external = await vscode.env.asExternalUri(vscode.Uri.parse(server.url));
+    if (external.authority && external.authority.toLowerCase() !== new URL(server.url).host) server.allowHost(external.authority);
+    const url = external.toString(true);
     this.log.appendLine(`[${docName(uri)}] ${url}`);
     await openUrl(url);
     return url;
@@ -52,6 +62,7 @@ function documentSource(uri: vscode.Uri, context: vscode.ExtensionContext): DocS
   const viewKey = VIEW_STATE_PREFIX + uri.toString();
   return {
     name: docName(uri),
+    ...(uri.scheme === "file" && { key: uri.fsPath }),
     dir: docDir(uri)?.fsPath ?? "",
     read: async () => (await document()).getText(),
     async write(md) {

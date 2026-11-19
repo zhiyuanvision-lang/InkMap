@@ -7,7 +7,8 @@
     "dev": "vite",
     "build": "tsc --noEmit -p . && vite build",
     "build:codex": "vite build --mode codex",
-    "build:workbuddy": "vite build --mode workbuddy"
+    "build:workbuddy": "vite build --mode workbuddy",
+    "test": "vitest run test"
   },
   "dependencies": {
     "@modelcontextprotocol/ext-apps": "1.7.5",

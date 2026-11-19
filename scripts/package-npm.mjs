@@ -1,36 +1,16 @@
 import { build } from "esbuild";
-import { execFileSync } from "node:child_process";
-import { chmod, copyFile, cp, mkdir, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, copyFile, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import {
+  buildWebApp, CLI_DIST as cliDist, CODEX_HTML as codexHtml, copyTree, productVersion, ROOT as root, runNpm,
+  singleFileWebEditor, syncCliCodexHtml, thirdPartyNotices, VSCODE_DIR as vscodeDir, writeCodexPluginManifests,
+  writeJSON,
+} from "./lib/bundle-utils.mjs";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
 const outRoot = join(root, "dist", "npm");
 const pkgDir = join(outRoot, "inkmap-mcp");
-const cliDist = join(root, "packages", "cli", "dist");
-const codexHtml = join(root, "packages", "web", "dist-codex", "index.html");
-const webDist = join(root, "packages", "web", "dist");
 const agySource = join(root, "packages", "antigravity");
-const vscodeDir = join(root, "packages", "vscode");
-
-const cliPkg = JSON.parse(await readFile(join(root, "packages", "cli", "package.json"), "utf8"));
-const version = cliPkg.version;
-
-const writeJSON = (path, value) => writeFile(path, JSON.stringify(value, null, 2) + "\n", "utf8");
-
-async function inlineCssFonts(cssText, assetsDir) {
-  const woff2Re = /url\(\.\/(KaTeX_[^)]+\.woff2)\)\s*format\("woff2"\)(?:,url\(\.\/KaTeX_[^)]+\.woff\)\s*format\("woff"\))?(?:,url\(\.\/KaTeX_[^)]+\.ttf\)\s*format\("truetype"\))?/g;
-  const matches = [...cssText.matchAll(woff2Re)];
-  let outCss = cssText;
-  for (const m of matches) {
-    try {
-      const buf = await readFile(join(assetsDir, m[1]));
-      const dataUrl = `data:font/woff2;base64,${buf.toString("base64")}`;
-      outCss = outCss.replace(m[0], `url("${dataUrl}") format("woff2")`);
-    } catch {}
-  }
-  return outCss;
-}
+const version = await productVersion();
 
 await rm(outRoot, { recursive: true, force: true });
 await Promise.all([
@@ -46,20 +26,7 @@ await Promise.all([
   mkdir(join(pkgDir, "dist", "bundles", "harness", "locale"), { recursive: true }),
 ]);
 
-const assetFiles = await readdir(join(webDist, "assets"));
-const jsEntry = assetFiles.find(f => /^index-.*\.js$/.test(f));
-const cssEntry = assetFiles.find(f => /^index-.*\.css$/.test(f));
-if (!jsEntry || !cssEntry) {
-  throw new Error("Missing built web assets in packages/web/dist/assets");
-}
-
-const rawCss = await readFile(join(webDist, "assets", cssEntry), "utf8");
-const inlinedCss = await inlineCssFonts(rawCss, join(webDist, "assets"));
-const rawHtml = await readFile(join(webDist, "index.html"), "utf8");
-const cleanHtml = rawHtml
-  .replace(/<script\b[^>]*src="\.\/assets\/index-[^"]+\.js"[^>]*><\/script>\s*/g, "")
-  .replace(/<link\b[^>]*href="\.\/assets\/index-[^"]+\.css"[^>]*>\s*/g, "")
-  .replace("</head>", () => `  <style>${inlinedCss}</style>\n  <script defer src="./app.js"></script>\n</head>`);
+const web = await singleFileWebEditor("./app.js");
 
 const agyBundle = join(pkgDir, "dist", "bundles", "antigravity");
 const agySidecar = join(agyBundle, "sidecars", "inkmap");
@@ -84,16 +51,7 @@ const [cliBuild] = await Promise.all([
     banner: { js: 'const inkmapModuleUrl = require("node:url").pathToFileURL(__filename).href;' },
     metafile: true,
   }),
-  build({
-    entryPoints: [join(webDist, "assets", jsEntry)],
-    bundle: true,
-    format: "iife",
-    platform: "browser",
-    target: ["es2022"],
-    define: { "import.meta.url": "window.location.href" },
-    logLevel: "error",
-    outfile: join(pkgDir, "dist", "web", "app.js"),
-  }),
+  buildWebApp(web.jsEntry, join(pkgDir, "dist", "web", "app.js")),
   build({
     entryPoints: [join(agySource, "src", "main.mjs")],
     bundle: true,
@@ -102,14 +60,6 @@ const [cliBuild] = await Promise.all([
     format: "esm",
     external: ["sidecar_sdk"],
     outfile: join(agySidecar, "main.mjs"),
-  }),
-  build({
-    entryPoints: [join(agySource, "src", "select.mjs")],
-    bundle: true,
-    platform: "node",
-    target: "node20",
-    format: "esm",
-    outfile: join(agySidecar, "select.mjs"),
   }),
   build({
     absWorkingDir: root,
@@ -126,16 +76,15 @@ const [cliBuild] = await Promise.all([
   copyFile(join(vscodeDir, "package.nls.json"), join(vscodeBundle, "package.nls.json")),
   copyFile(join(vscodeDir, "package.nls.zh-cn.json"), join(vscodeBundle, "package.nls.zh-cn.json")),
   copyFile(join(vscodeDir, "images", "icon.png"), join(vscodeBundle, "images", "icon.png")),
-  writeFile(join(pkgDir, "dist", "web", "index.html"), cleanHtml, "utf8"),
-  writeFile(join(pkgDir, "dist", "web", "app.css"), inlinedCss, "utf8"),
-  copyFile(codexHtml, join(cliDist, "codex.html")),
+  writeFile(join(pkgDir, "dist", "web", "index.html"), web.html, "utf8"),
+  syncCliCodexHtml(),
   copyFile(codexHtml, join(pkgDir, "dist", "codex.html")),
   copyFile(join(agySource, "plugin.json"), join(agyBundle, "plugin.json")),
   copyFile(join(agySource, "mcp_config.json"), join(agyBundle, "mcp_config.json")),
   copyFile(join(agySource, "sidecar.json"), join(agySidecar, "sidecar.json")),
   copyFile(join(agySource, "src", "bridge.js"), join(agySidecar, "bridge.js")),
-  cp(join(agySource, "skills"), join(agyBundle, "skills"), { recursive: true }),
-  cp(join(agySource, "rules"), join(agyBundle, "rules"), { recursive: true }),
+  copyTree(join(agySource, "skills"), join(agyBundle, "skills")),
+  copyTree(join(agySource, "rules"), join(agyBundle, "rules")),
   copyFile(join(vscodeDir, "images", "icon.svg"), join(agyBundle, "assets", "logo.svg")),
   copyFile(join(vscodeDir, "images", "icon.png"), join(codexPlugin, "assets", "icon.png")),
   copyFile(join(vscodeDir, "LICENSE.md"), join(pkgDir, "LICENSE.md")),
@@ -147,7 +96,7 @@ const [cliBuild] = await Promise.all([
   copyFile(join(dshBuiltDir, "icon.svg"), join(harnessBundle, "icon.svg")),
   copyFile(join(dshBuiltDir, "README.md"), join(harnessBundle, "README.md")),
   copyFile(join(dshBuiltDir, "README.zh.md"), join(harnessBundle, "README.zh.md")),
-  cp(join(dshBuiltDir, "locale"), join(harnessBundle, "locale"), { recursive: true }),
+  copyTree(join(dshBuiltDir, "locale"), join(harnessBundle, "locale")),
 ]);
 
 const binScript = `#!/usr/bin/env node
@@ -161,69 +110,8 @@ const binPath = join(pkgDir, "bin", "inkmap.cjs");
 await writeFile(binPath, binScript, "utf8");
 await chmod(binPath, 0o755);
 
-// Codex bundle manifests
-const codexDescription = "Interactive two-way Markdown mind map (markmap), Mermaid flowchart & XMind outline editor | 双向编辑 Markdown 思维导图、脑图、流程图与大纲";
-const codexKeywords = [
-  "inkmap", "markdown", "mindmap", "mind-map", "mind map", "markmap", "mermaid",
-  "flowchart", "diagram", "outline", "xmind", "katex", "思维导图", "脑图", "流程图", "大纲", "架构图"
-];
-const codexInterface = { displayName: "Inkmap — Mind Map & Mermaid 思维导图", logo: "./assets/icon.png", composerIcon: "./assets/icon.png" };
-const codexManifest = {
-  name: "inkmap-codex",
-  version,
-  description: codexDescription,
-  homepage: "https://zhiyuanv.com/software.html",
-  repository: "https://github.com/zhiyuanvision-lang/InkMap",
-  author: { name: "Zhiyuan Vision", email: "contact@zhiyuanv.com" },
-  keywords: codexKeywords,
-};
-const codexServer = { command: "node", args: ["${PLUGIN_ROOT}/server.cjs"], cwd: "${PLUGIN_ROOT}" };
-await Promise.all([
-  writeJSON(join(codexPlugin, "plugin.json"), {
-    $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
-    ...codexManifest,
-    extensions: { "com.openai": { requires_local_executor: true, interface: codexInterface } },
-  }),
-  writeJSON(join(codexPlugin, ".codex-plugin", "plugin.json"), {
-    ...codexManifest,
-    requires_local_executor: true,
-    interface: codexInterface,
-    mcpServers: "./.mcp.json",
-  }),
-  writeJSON(join(codexPlugin, "mcp.json"), {
-    $schema: "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
-    mcpServers: { inkmap: { type: "stdio", ...codexServer } },
-  }),
-  writeJSON(join(codexPlugin, ".mcp.json"), { mcpServers: { inkmap: codexServer } }),
-  writeJSON(join(codexBundle, ".agents", "plugins", "marketplace.json"), {
-    name: "inkmap-local",
-    interface: { displayName: "Inkmap Local" },
-    plugins: [{
-      name: "inkmap-codex",
-      source: { source: "local", path: "./inkmap-codex" },
-      policy: { installation: "AVAILABLE", authentication: "ON_INSTALL" },
-      category: "Productivity",
-    }],
-  }),
-]);
-
-// Third-party license notices
-const licenses = new Set(["node_modules/@openai/mcp-extensions"]);
-for (const input of Object.keys(cliBuild.metafile.inputs)) {
-  const p = input.replaceAll("\\", "/");
-  const packageDir = /^(.*node_modules\/(?:@[^/]+\/)?[^/]+)/.exec(p)?.[1];
-  if (packageDir) licenses.add(packageDir);
-}
-const bundledLicenses = await Promise.all([...licenses].sort().map(async dir => {
-  const p = join(root, dir);
-  const pkg = JSON.parse(await readFile(join(p, "package.json"), "utf8"));
-  const licenseFile = (await readdir(p)).find(file => /^(licen[cs]e|copying)(\.|$)/i.test(file));
-  if (!licenseFile) throw new Error(`Missing bundled license for ${pkg.name}`);
-  const license = (await readFile(join(p, licenseFile), "utf8")).trim();
-  return `## ${pkg.name} ${pkg.version}\n\n\`\`\`text\n${license}\n\`\`\`\n`;
-}));
-const webNotices = await readFile(join(vscodeDir, "THIRD_PARTY_NOTICES.md"), "utf8");
-await writeFile(join(pkgDir, "THIRD_PARTY_NOTICES.md"), webNotices + "\n" + bundledLicenses.join("\n"), "utf8");
+await writeCodexPluginManifests(codexPlugin, join(codexBundle, ".agents", "plugins"), version);
+await writeFile(join(pkgDir, "THIRD_PARTY_NOTICES.md"), await thirdPartyNotices(cliBuild.metafile), "utf8");
 
 // Official MCP Registry manifest + zero-dependency package.json
 const mcpName = "io.github.zhiyuanvision-lang/inkmap-markdown-mindmap-markmap";
@@ -406,8 +294,5 @@ await Promise.all([
   }),
 ]);
 
-const packedName = execFileSync("npm", ["pack", "--pack-destination", outRoot], {
-  cwd: pkgDir,
-  encoding: "utf8",
-}).trim().split("\n").pop();
-console.log(join(outRoot, packedName));
+const packed = JSON.parse(runNpm(["pack", "--json", "--pack-destination", outRoot], { cwd: pkgDir, encoding: "utf8" }));
+console.log(join(outRoot, packed[0].filename));

@@ -1,11 +1,104 @@
 import { execFileSync } from "node:child_process";
 import { link, mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { PRODUCT, TRIAL_MS, billingFlowUrl, sanitizeAds, type Ad, type LicenseState, type PhoneSignInError, type PhoneSignInResult, type WechatOrderResult } from "@inkmap/core";
+import { homedir, tmpdir } from "node:os";
+import { dirname, join, sep } from "node:path";
+import { INKMAP_VERSION } from "./version.js";
+import { PRODUCT, TRIAL_MS, billingFlowUrl, type LicenseState, type PhoneSignInError, type PhoneSignInResult, type WechatOrderResult } from "@inkmap/core";
 
+const ZH_LOCALE_RE = /^zh(?:[-_.]|$)/i;
+const EN_LOCALE_RE = /^en(?:[-_.]|$)/i;
 let cachedOsLocale: "zh" | "en" | undefined;
+
+interface WaitingToken {
+  origin: string;
+  token: string;
+  /** The address the code was sent to ("" when unknown). */
+  email: string;
+  since: number;
+  /** Polled every few seconds until then, every half minute afterwards. */
+  fastUntil: number;
+}
+const WAIT_FAST_MS = 2500;
+const WAIT_SLOW_MS = 30_000;
+const WAIT_FAST_FOR_MS = 30 * 60_000;
+/** A bound token is a 30-day session on the server; waiting on it for payment stops after three days. */
+const WAIT_MAX_MS = 3 * 24 * 60 * 60_000;
+const MAX_WAITING = 5;
+
+function isWaitingToken(value: unknown): value is WaitingToken {
+  const w = value as WaitingToken;
+  return Boolean(w) && typeof w.origin === "string" && typeof w.token === "string" && /^[A-Za-z0-9_-]{43}$/.test(w.token) &&
+    typeof w.email === "string" && typeof w.since === "number" && typeof w.fastUntil === "number";
+}
+
+const DOMESTIC_TIME_ZONE = /^(Asia\/(Shanghai|Chongqing|Chungking|Harbin|Urumqi|Beijing)|PRC)$/i;
+
+/** What the Domestic/Overseas decision reads from the computer, passed in so the rules can be tested on any OS. */
+export interface LocaleProbe {
+  platform: NodeJS.Platform;
+  env: NodeJS.ProcessEnv;
+  /** The IANA time zone the OS reports (`Asia/Shanghai`). */
+  timeZone: string;
+  /** Intl's default locale, used on Windows when the registry cannot be read. */
+  intlLocale: string;
+  /** Runs a system command and returns its output; throws when the command fails. */
+  run(command: string, args: string[]): string;
+}
+
+/** The first language of `defaults read -g AppleLanguages` output, quoted (`"zh-Hans-CN"`) or not (`en`). */
+export function parseAppleLanguages(output: string): string {
+  const match = /^\(\s*(?:"([^"]+)"|([^\s,)]+))/m.exec(output);
+  return match?.[1] ?? match?.[2] ?? "";
+}
+
+const posixLocale = (env: NodeJS.ProcessEnv) => (env.LC_ALL || env.LC_MESSAGES || env.LANG || "").trim();
+
+/**
+ * Domestic ("zh") vs. Overseas ("en") from the computer's OS time zone OR its OS system language — never from an
+ * IDE/plugin UI language. `INKMAP_LOCALE` overrides both (support and tests).
+ */
+export function resolveOsLocale(probe: LocaleProbe): "zh" | "en" {
+  const explicit = (probe.env.INKMAP_LOCALE || "").trim();
+  if (ZH_LOCALE_RE.test(explicit)) return "zh";
+  if (EN_LOCALE_RE.test(explicit)) return "en";
+  if (DOMESTIC_TIME_ZONE.test(probe.timeZone)) return "zh";
+  let language = "";
+  if (probe.platform === "darwin") {
+    try {
+      language = parseAppleLanguages(probe.run("defaults", ["read", "-g", "AppleLanguages"]));
+    } catch {
+      language = posixLocale(probe.env);
+    }
+  } else if (probe.platform === "win32") {
+    try {
+      const output = probe.run("reg", ["query", "HKCU\\Control Panel\\International", "/v", "LocaleName"]);
+      language = /LocaleName\s+REG_\w+\s+(\S+)/i.exec(output)?.[1] ?? "";
+    } catch {}
+    if (!language) language = probe.intlLocale;
+  } else {
+    language = posixLocale(probe.env);
+  }
+  return ZH_LOCALE_RE.test(language) ? "zh" : "en";
+}
+
+function systemLocaleProbe(): LocaleProbe {
+  let timeZone = "";
+  let intlLocale = "";
+  try {
+    const options = Intl.DateTimeFormat().resolvedOptions();
+    timeZone = options.timeZone || "";
+    intlLocale = options.locale || "";
+  } catch {}
+  return {
+    platform: process.platform,
+    env: process.env,
+    timeZone,
+    intlLocale,
+    run: (command, args) =>
+      execFileSync(command, args, { encoding: "utf8", timeout: 800, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] }),
+  };
+}
 
 /**
  * Detects Domestic ("zh") vs. Overseas ("en") strictly from the computer's OS timezone
@@ -13,50 +106,14 @@ let cachedOsLocale: "zh" | "en" | undefined;
  */
 export function detectOsLocale(): "zh" | "en" {
   const explicit = (process.env.INKMAP_LOCALE || "").trim();
-  if (/^zh\b/i.test(explicit)) return "zh";
-  if (/^en\b/i.test(explicit)) return "en";
-  if (cachedOsLocale) return cachedOsLocale;
-
-  let domestic = false;
-  try {
-    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
-    if (/^(Asia\/(Shanghai|Chongqing|Chungking|Harbin|Urumqi|Beijing)|PRC)$/i.test(tz)) {
-      domestic = true;
-    }
-  } catch {}
-
-  if (!domestic) {
-    if (process.platform === "darwin") {
-      try {
-        const out = execFileSync("defaults", ["read", "-g", "AppleLanguages"], {
-          encoding: "utf8",
-          timeout: 800,
-          stdio: ["ignore", "pipe", "ignore"],
-        });
-        const firstLang = /"([^"]+)"/.exec(out)?.[1] ?? "";
-        if (/^zh\b/i.test(firstLang)) domestic = true;
-      } catch {
-        const raw = (process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "").trim();
-        if (/^zh\b/i.test(raw)) domestic = true;
-      }
-    } else if (process.platform === "win32") {
-      try {
-        const loc = Intl.DateTimeFormat().resolvedOptions().locale || "";
-        if (/^zh\b/i.test(loc)) domestic = true;
-      } catch {}
-    } else {
-      const raw = (process.env.LC_ALL || process.env.LC_MESSAGES || process.env.LANG || "").trim();
-      if (/^zh\b/i.test(raw)) domestic = true;
-    }
-  }
-
-  cachedOsLocale = domestic ? "zh" : "en";
-  return cachedOsLocale;
+  if (ZH_LOCALE_RE.test(explicit)) return "zh";
+  if (EN_LOCALE_RE.test(explicit)) return "en";
+  return (cachedOsLocale ??= resolveOsLocale(systemLocaleProbe()));
 }
 
 export type CheckoutMode = "buy" | "restore";
 
-export interface SessionStorage {
+interface SessionStorage {
   read(): Promise<string | undefined>;
   write(token: string | undefined): Promise<void>;
 }
@@ -66,7 +123,7 @@ export interface LicenseService {
   connect(mode: CheckoutMode, localeHint?: string): Promise<string>;
   orderPro(localeHint?: string): Promise<WechatOrderResult>;
   sendPhoneCode(phone: string, localeHint?: string): Promise<PhoneSignInResult>;
-  signInByPhone(phone: string, code: string): Promise<PhoneSignInResult<LicenseState>>;
+  signInByPhone(phone: string, code: string, localeHint?: string): Promise<PhoneSignInResult<LicenseState>>;
   deactivate(): Promise<void>;
   onChange(listener: (state: LicenseState) => void): () => void;
   track?(event: string, count?: number, hostHint?: string): void;
@@ -74,7 +131,7 @@ export interface LicenseService {
   dispose(): void;
 }
 
-export function billingOrigin(raw: string | undefined): string {
+function billingOrigin(raw: string | undefined): string {
   if (!raw) throw new Error("Inkmap checkout is not configured.");
   const url = new URL(raw);
   if (url.protocol !== "https:" || url.origin !== raw.replace(/\/$/, "")) {
@@ -83,7 +140,11 @@ export function billingOrigin(raw: string | undefined): string {
   return url.origin;
 }
 
-export function licenseService(storage: SessionStorage, getOrigin: () => string | undefined, { loginOnly = false, host: defaultHost = "" } = {}): LicenseService {
+export function licenseService(
+  storage: SessionStorage,
+  getOrigin: () => string | undefined,
+  { loginOnly = false, host: defaultHost = "", waitPollMs = WAIT_FAST_MS }: { loginOnly?: boolean; host?: string; waitPollMs?: number } = {},
+): LicenseService {
   const listeners = new Set<(state: LicenseState) => void>();
   let current: LicenseState = { pro: false };
   let trial: Promise<void> | undefined;
@@ -95,20 +156,56 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
   let detectedHost = defaultHost;
   const pendingEvents = new Map<string, number>();
   let lastCheck = 0;
+  /** Until then a signed-in free user is checked every few seconds, because a sign-in or purchase may be completing. */
+  let fastPollUntil = 0;
+  const expectPurchase = () => void (fastPollUntil = Date.now() + 15 * 60_000);
+  /** A checkout flow being created; concurrent requests share it instead of racing to replace each other's flow. */
+  let flowCreation: ReturnType<typeof createCheckoutFlow> | undefined;
   let disposed = false;
   let generation = 0;
   let connection: Promise<void> | undefined;
   let activeOrigin: string | undefined;
   let pendingWrite = Promise.resolve();
-  let pendingCheckout: { origin: string; url: string; token: string; cookie?: string } | undefined;
-  let cachedOrder: { at: number; origin: string; result: WechatOrderResult } | undefined;
-  let magicPollTimer: ReturnType<typeof setTimeout> | undefined;
-  let magicSession = 0;
+  let pendingCheckout: { origin: string; url: string; token: string; cookie?: string; locale: "zh" | "en" } | undefined;
+  let cachedOrder: { at: number; origin: string; locale: "zh" | "en"; result: WechatOrderResult } | undefined;
+  /**
+   * Sign-in tokens this computer is waiting on, while no account is signed in. A token from an email send waits for
+   * the email's button (the server binds it to the account when clicked). On a login-only host after the trial, a
+   * verified account without Pro is not signed in; its token waits instead. Pro belongs to the account, so paying by
+   * any route makes such a token active, and the first token that is active signs in without the code.
+   */
+  let waiting: WaitingToken[] = [];
+  let waitTimer: ReturnType<typeof setTimeout> | undefined;
+  let waitRound = 0;
+  /** The email (or phone number) last used to sign in here; kept after sign-out so the form can be prefilled. */
+  let lastSignIn: string | undefined;
+  /** A session record for storage; it carries the remembered sign-in so it survives the session. */
+  const sessionRecord = (fields: Record<string, unknown>) => JSON.stringify({ ...fields, ...(lastSignIn && { lastSignIn }) });
+  /** What storage holds while signed out: the remembered sign-in and the tokens still waited on, if any. */
+  const signedOutRecord = () =>
+    lastSignIn || waiting.length ? JSON.stringify({ ...(lastSignIn && { lastSignIn }), ...(waiting.length && { waiting }) }) : undefined;
 
-  function stopMagicPoll() {
-    ++magicSession;
-    clearTimeout(magicPollTimer);
-    magicPollTimer = undefined;
+  /** Remembers `id` for prefilling and stores it next to the current session (or alone when signed out). */
+  async function rememberSignIn(id: string) {
+    const clean = id.trim().slice(0, 254);
+    if (!clean || clean === lastSignIn) return;
+    lastSignIn = clean;
+    current = { ...current, lastSignIn };
+    await writeSession(async () => {
+      let record: Record<string, unknown> = {};
+      try {
+        record = JSON.parse((await storage.read()) || "{}");
+      } catch {}
+      await storage.write(JSON.stringify({ ...record, lastSignIn }));
+    }).catch(() => {});
+  }
+
+  /** Stops waiting on every token (a session was stored, or the user signed out). */
+  function clearWaiting() {
+    waiting = [];
+    ++waitRound;
+    clearTimeout(waitTimer);
+    waitTimer = undefined;
   }
 
   function mergeCookies(existing: string | undefined, response: Response): string | undefined {
@@ -142,10 +239,12 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     return /^1\d{10}$/.test(clean) ? `${clean.slice(0, 3)}****${clean.slice(7)}` : clean.slice(0, 32);
   }
 
-  function clientLocale(hint?: string): "zh" | "en" {
-    const h = (hint || "").trim();
-    if (/^zh\b/i.test(h)) return "zh";
-    if (/^en\b/i.test(h)) return "en";
+  /**
+   * Domestic (¥29.9 WeChat Pay) vs. Overseas ($15 card) follows the computer's OS timezone/language only.
+   * Clients still send their UI language as a hint, but a zh-CN IDE on an Overseas machine (or the reverse)
+   * must not switch editions, so the hint is deliberately ignored here.
+   */
+  function clientLocale(_uiLocaleHint?: string): "zh" | "en" {
     return detectOsLocale();
   }
 
@@ -155,7 +254,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     return next;
   }
 
-  async function createCheckoutFlow(origin: string, existingToken?: string, existingCookie?: string, localeHint?: string): Promise<{ origin: string; url: string; token: string; cookie?: string }> {
+  async function createCheckoutFlow(origin: string, existingToken?: string, existingCookie?: string, localeHint?: string): Promise<{ origin: string; url: string; token: string; cookie?: string; locale: "zh" | "en" }> {
     const loc = clientLocale(localeHint);
     const response = await fetch(origin + "/billing/v1/connections", {
       method: "POST",
@@ -176,7 +275,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     if (typeof data.token !== "string" || !/^[A-Za-z0-9_-]{43}$/.test(data.token)) {
       throw new Error("Invalid Inkmap checkout response.");
     }
-    return { origin, url, token: data.token, ...(cookie && { cookie }) };
+    return { origin, url, token: data.token, locale: loc, ...(cookie && { cookie }) };
   }
 
   function checkoutPost(checkoutUrl: string, action: "sms" | "login" | "email/send" | "email/verify" | "order", origin: string, body: object, token?: string, cookie?: string, localeHint?: string) {
@@ -240,11 +339,25 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       ...(current.trialUntil !== undefined && { trialUntil: current.trialUntil }),
       ...(connected && { connected: true }),
       ...(cleanAccount && { account: cleanAccount }),
+      ...(lastSignIn && { lastSignIn }),
     };
     for (const listener of listeners) listener(current);
   }
 
   async function startTrial() {
+    try {
+      const record = JSON.parse((await storage.read()) || "{}");
+      const remembered = record.lastSignIn;
+      if (typeof remembered === "string" && remembered.trim() && !lastSignIn) {
+        lastSignIn = remembered.trim().slice(0, 254);
+        current = { ...current, lastSignIn };
+      }
+      // Tokens waited on before a restart (an unpaid sign-in, an email not yet clicked) are picked up again.
+      if (typeof record.token !== "string" && Array.isArray(record.waiting) && !waiting.length) {
+        waiting = record.waiting.filter(isWaitingToken).slice(-MAX_WAITING);
+        scheduleWait(waitPollMs);
+      }
+    } catch {}
     const trialUntil = await localTrialDeadline().catch(() => undefined);
     if (disposed || trialUntil === undefined) return;
     current = { ...current, trialUntil };
@@ -289,7 +402,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
           token = undefined;
           return await writeSession(async () => {
             if (version !== generation || disposed) return;
-            await storage.write(undefined).catch(() => {});
+            await storage.write(signedOutRecord()).catch(() => {});
             update(false);
           });
         }
@@ -307,42 +420,130 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     return connection;
   }
 
-  function startMagicPoll(origin: string, pendingToken: string) {
-    stopMagicPoll();
-    const id = magicSession;
-    const deadline = Date.now() + 10 * 60_000;
-    const poll = () => {
-      if (disposed || id !== magicSession || Date.now() >= deadline) return;
-      magicPollTimer = setTimeout(async () => {
-        if (disposed || id !== magicSession) return;
+  /** True on a login-only host once the trial is over: an account must have Pro to stay signed in there. */
+  async function mustPayFirst() {
+    if (!loginOnly) return false;
+    await (trial ??= startTrial());
+    return current.trialUntil !== undefined && current.trialUntil <= Date.now();
+  }
+
+  /**
+   * Starts (or renews) waiting on `token` and saves the list before returning, so a restart keeps it; a code sent to
+   * a different address ends the waits for the previous one.
+   */
+  async function waitFor(origin: string, token: string, email: string) {
+    const now = Date.now();
+    const same = (other: string) => !other || !email || other.toLowerCase() === email.toLowerCase();
+    waiting = waiting
+      .filter(w => w.token !== token && same(w.email))
+      .map(w => ({ ...w, fastUntil: now + WAIT_FAST_FOR_MS }));
+    waiting.push({ origin, token, email, since: now, fastUntil: now + WAIT_FAST_FOR_MS });
+    waiting = waiting.slice(-MAX_WAITING);
+    scheduleWait(waitPollMs);
+    await writeSession(async () => {
+      let record: Record<string, unknown> = {};
+      try {
+        record = JSON.parse((await storage.read()) || "{}");
+      } catch {}
+      if (typeof record.token !== "string") await storage.write(signedOutRecord());
+    }).catch(() => {});
+  }
+
+  function scheduleWait(delay: number) {
+    clearTimeout(waitTimer);
+    if (disposed || !waiting.length) return;
+    waitTimer = setTimeout(() => void checkWaiting(), delay);
+    waitTimer.unref();
+  }
+
+  async function checkWaiting() {
+    const round = ++waitRound;
+    const now = Date.now();
+    const before = waiting.length;
+    let origin: string;
+    try {
+      origin = billingOrigin(getOrigin());
+    } catch {
+      return scheduleWait(WAIT_SLOW_MS);
+    }
+    waiting = waiting.filter(w => w.origin === origin && now - w.since < WAIT_MAX_MS);
+    for (const w of [...waiting]) {
+      let response: Response;
+      try {
+        response = await entitlement(w.origin, w.token);
+      } catch {
+        continue;
+      }
+      if (disposed || round !== waitRound) return;
+      // 401: the email was never clicked and the token expired (15 minutes), or the session was revoked.
+      if (response.status === 401) {
+        waiting = waiting.filter(other => other !== w);
+        continue;
+      }
+      if (!response.ok) continue;
+      const body = await response.json().catch(() => null);
+      if (disposed || round !== waitRound) return;
+      if (body?.connected !== true || body.entitlement !== PRODUCT.entitlement) continue;
+      // Bound to an account. Without Pro, a login-only host past its trial keeps waiting for the payment.
+      if (body.active !== true && (await mustPayFirst())) continue;
+      if (disposed || round !== waitRound) return;
+      await writeSession(async () => {
+        if (disposed || round !== waitRound || w.origin !== billingOrigin(getOrigin())) return;
+        clearWaiting();
+        await storage.write(sessionRecord({ origin: w.origin, token: w.token }));
+        ++generation;
+        activeOrigin = w.origin;
+        applyEntitlement(body);
+        schedule(body.active === true ? 60_000 : 2500);
+      });
+      return;
+    }
+    if (disposed || round !== waitRound) return;
+    if (waiting.length !== before) {
+      await writeSession(async () => {
+        let record: Record<string, unknown> = {};
         try {
-          const res = await entitlement(origin, pendingToken);
-          if (disposed || id !== magicSession) return;
-          if (res.status === 401) {
-            stopMagicPoll();
-            return;
-          }
-          if (res.ok) {
-            const body = await res.json();
-            if (body?.connected === true && body.entitlement === PRODUCT.entitlement) {
-              stopMagicPoll();
-              await writeSession(async () => {
-                if (disposed || origin !== billingOrigin(getOrigin())) return;
-                await storage.write(JSON.stringify({ origin, token: pendingToken }));
-                ++generation;
-                activeOrigin = origin;
-                applyEntitlement(body);
-                schedule(body.active === true ? 60_000 : 2500);
-              });
-              return;
-            }
-          }
+          record = JSON.parse((await storage.read()) || "{}");
         } catch {}
-        if (!disposed && id === magicSession && Date.now() < deadline) poll();
-      }, 2000);
-      magicPollTimer.unref();
-    };
-    poll();
+        if (typeof record.token !== "string") await storage.write(signedOutRecord());
+      }).catch(() => {});
+    }
+    scheduleWait(waiting.some(w => Date.now() < w.fastUntil) ? waitPollMs : WAIT_SLOW_MS);
+  }
+
+  /**
+   * A login-only host after the trial does not keep an account without Pro signed in: the paywall offers the email
+   * form instead. The account's token is kept and waited on, so paying from the email signs it back in by itself.
+   */
+  async function parkUnpaidSession() {
+    if (current.pro || !current.connected || !(await mustPayFirst())) return;
+    await writeSession(async () => {
+      if (current.pro || !current.connected) return;
+      let record: Record<string, unknown> = {};
+      try {
+        record = JSON.parse((await storage.read()) || "{}");
+      } catch {}
+      if (typeof record.token !== "string" || typeof record.origin !== "string") return;
+      // Ask the server first: another editor sharing this session may just have unlocked Pro on it.
+      const response = await entitlement(record.origin, record.token).catch(() => null);
+      if (!response?.ok) return;
+      const latest = await response.json().catch(() => null);
+      if (!latest || latest.active === true || latest.connected !== true) {
+        if (latest) applyEntitlement(latest);
+        return;
+      }
+      ++generation;
+      clearTimeout(timer);
+      lastCheck = 0;
+      const now = Date.now();
+      waiting = [
+        ...waiting.filter(w => w.token !== record.token),
+        { origin: record.origin, token: record.token, email: lastSignIn ?? "", since: now, fastUntil: now + WAIT_FAST_FOR_MS },
+      ].slice(-MAX_WAITING);
+      await storage.write(signedOutRecord());
+      update(false);
+    });
+    scheduleWait(waitPollMs);
   }
 
   async function sendPendingTelemetry() {
@@ -356,9 +557,12 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     if (process.env.INKMAP_ALLOW_TEST_TELEMETRY !== "1") {
       if (origin === "https://billing.example.com" || process.env.INKMAP_DISABLE_TELEMETRY === "1" || process.env.NODE_TEST_CONTEXT) return;
       const customHome = process.env.INKMAP_HOME || "";
+      const sysTmp = tmpdir();
       if (
         customHome &&
-        (customHome.startsWith("/tmp/") ||
+        (customHome === sysTmp ||
+          customHome.startsWith(sysTmp + sep) ||
+          customHome.startsWith("/tmp/") ||
           customHome.startsWith("/private/tmp/") ||
           customHome.includes("/var/folders/") ||
           customHome.includes("inkmap-npm-isolated-") ||
@@ -387,7 +591,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
         installId: id,
         host: hostName,
         os,
-        version: "0.3.10",
+        version: INKMAP_VERSION,
         locale: clientLocale(),
         tier,
         events,
@@ -399,11 +603,16 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
   return {
     async state() {
       await (trial ??= startTrial());
-      if (Date.now() - lastCheck >= 4000) await refresh();
+      // While a sign-in or purchase started here may be completing, a free user is checked every few seconds so Pro
+      // unlocks promptly; otherwise the billing server is asked at most once a minute, however often the UI polls.
+      const interval = !current.pro && Date.now() < fastPollUntil ? 4000 : 60_000;
+      if (Date.now() - lastCheck >= interval) await refresh();
+      await parkUnpaidSession();
       return current;
     },
     async connect(mode, localeHint) {
       if (loginOnly && mode !== "restore") throw new Error("Only Yunfan account sign-in is available.");
+      expectPurchase();
       const origin = billingOrigin(getOrigin());
       const loc = clientLocale(localeHint);
       const version = generation;
@@ -443,7 +652,8 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
         if (version !== generation || disposed || origin !== billingOrigin(getOrigin())) {
           throw new Error("The Yunfan account session changed. Please try again.");
         }
-        await storage.write(JSON.stringify({ origin, token: data.token, ...(mode === "buy" && { checkoutUrl: url }) }));
+        clearWaiting();
+        await storage.write(sessionRecord({ origin, token: data.token, ...(mode === "buy" && { checkoutUrl: url }) }));
         ++generation;
         lastCheck = 0;
         if (mode !== "buy" || !current.connected) update(false);
@@ -453,8 +663,10 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     },
     async orderPro(localeHint) {
       if (loginOnly) throw new Error("Only Yunfan account sign-in is available.");
+      expectPurchase();
       const origin = billingOrigin(getOrigin());
-      if (cachedOrder && cachedOrder.origin === origin && Date.now() - cachedOrder.at < 8000) {
+      const loc = clientLocale(localeHint);
+      if (cachedOrder && cachedOrder.origin === origin && cachedOrder.locale === loc && Date.now() - cachedOrder.at < 8000) {
         const hit = cachedOrder.result;
         cachedOrder = undefined;
         schedule(hit.status === "qr" || hit.status === "redirect" ? 4000 : 60_000);
@@ -476,7 +688,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
         if (persist || nextCookie !== cookie) {
           await writeSession(async () => {
             if (version !== generation || disposed || origin !== billingOrigin(getOrigin())) return;
-            await storage.write(JSON.stringify({ origin, token, checkoutUrl, ...(nextCookie && { cookie: nextCookie }) }));
+            await storage.write(sessionRecord({ origin, token, checkoutUrl, ...(nextCookie && { cookie: nextCookie }) }));
             if (persist) {
               ++generation;
               lastCheck = 0;
@@ -522,34 +734,42 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     },
     async sendPhoneCode(phone, localeHint) {
       if (typeof phone !== "string" || !phone.trim() || phone.length > 254) return phoneFailure(400);
+      expectPurchase();
       const isEmail = phone.includes("@");
       const locale = clientLocale(localeHint);
       try {
         const origin = billingOrigin(getOrigin());
         if (!loginOnly) {
           try {
-            if (!pendingCheckout || pendingCheckout.origin !== origin) {
-              pendingCheckout = await createCheckoutFlow(origin, undefined, undefined, locale);
+            const newFlow = () => (flowCreation ??= createCheckoutFlow(origin, undefined, undefined, locale)
+              .finally(() => { flowCreation = undefined; }));
+            let flow = pendingCheckout;
+            if (!flow || flow.origin !== origin || flow.locale !== locale) {
+              flow = await newFlow();
+              pendingCheckout = flow;
             }
             const sendAction = isEmail ? "email/send" : "sms";
             const sendBody = isEmail ? { email: phone, locale } : { phone };
-            let smsRes = await checkoutPost(pendingCheckout.url, sendAction, origin, sendBody, pendingCheckout.token, pendingCheckout.cookie, locale);
-            if (smsRes.status === 410 || smsRes.status === 404) {
-              pendingCheckout = await createCheckoutFlow(origin, undefined, undefined, locale);
-              smsRes = await checkoutPost(pendingCheckout.url, sendAction, origin, sendBody, pendingCheckout.token, pendingCheckout.cookie, locale);
+            let smsRes = await checkoutPost(flow.url, sendAction, origin, sendBody, flow.token, flow.cookie, locale);
+            if (smsRes.status === 401 || smsRes.status === 403 || smsRes.status === 404 || smsRes.status === 410) {
+              flow = await newFlow();
+              pendingCheckout = flow;
+              smsRes = await checkoutPost(flow.url, sendAction, origin, sendBody, flow.token, flow.cookie, locale);
             }
-            pendingCheckout.cookie = mergeCookies(pendingCheckout.cookie, smsRes);
-            return smsRes.status === 204 ? { ok: true, value: undefined } : phoneFailure(smsRes.status);
+            flow.cookie = mergeCookies(flow.cookie, smsRes);
+            if (smsRes.status !== 204) return phoneFailure(smsRes.status);
+            await rememberSignIn(phone);
+            return { ok: true, value: undefined };
           } catch {
             pendingCheckout = undefined;
           }
         }
         const response = await phoneRequest(origin, "send", phone, undefined, locale);
         if (response.status === 204) {
+          await rememberSignIn(phone);
+          // The email's button signs this computer in (and leads to payment), on purchase hosts too.
           const pendingToken = response.headers.get("x-inkmap-pending-token")?.trim();
-          if (pendingToken && /^[A-Za-z0-9_-]{43}$/.test(pendingToken)) {
-            startMagicPoll(origin, pendingToken);
-          }
+          if (pendingToken && /^[A-Za-z0-9_-]{43}$/.test(pendingToken)) await waitFor(origin, pendingToken, phone);
           return { ok: true, value: undefined };
         }
         return phoneFailure(response.status);
@@ -557,41 +777,46 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
         return phoneFailure();
       }
     },
-    async signInByPhone(phone, code) {
+    async signInByPhone(phone, code, localeHint) {
       if (typeof phone !== "string" || !phone.trim() || phone.length > 254 ||
           typeof code !== "string" || !/^\d{6}$/.test(code)) return phoneFailure(400);
       const isEmail = phone.includes("@");
+      const locale = clientLocale(localeHint);
       const version = generation;
       try {
         const origin = billingOrigin(getOrigin());
         let token: string;
         let checkoutUrl: string | undefined;
         let cookie: string | undefined;
-        if (pendingCheckout && pendingCheckout.origin === origin && !loginOnly) {
+        const flow = pendingCheckout;
+        if (!loginOnly && flow && flow.origin === origin) {
           const verifyAction = isEmail ? "email/verify" : "login";
           const verifyBody = isEmail ? { email: phone, code } : { phone, code };
-          const loginRes = await checkoutPost(pendingCheckout.url, verifyAction, origin, verifyBody, pendingCheckout.token, pendingCheckout.cookie);
+          const loginRes = await checkoutPost(flow.url, verifyAction, origin, verifyBody, flow.token, flow.cookie, locale);
           if (!loginRes.ok) {
-            if (loginRes.status === 410 || loginRes.status === 404) pendingCheckout = undefined;
+            if (loginRes.status === 401 || loginRes.status === 403 || loginRes.status === 404 || loginRes.status === 410) {
+              if (pendingCheckout === flow) pendingCheckout = undefined;
+            }
             return phoneFailure(loginRes.status);
           }
-          cookie = mergeCookies(pendingCheckout.cookie, loginRes);
-          token = pendingCheckout.token;
-          checkoutUrl = pendingCheckout.url;
-          pendingCheckout = undefined;
+          cookie = mergeCookies(flow.cookie, loginRes);
+          token = flow.token;
+          checkoutUrl = flow.url;
+          if (pendingCheckout === flow) pendingCheckout = undefined;
 
-          const orderRes = await checkoutPost(checkoutUrl, "order", origin, {}, token, cookie).catch(() => null);
+          const orderRes = await checkoutPost(checkoutUrl, "order", origin, {}, token, cookie, locale).catch(() => null);
           if (orderRes?.ok) {
             cookie = mergeCookies(cookie, orderRes);
             const orderData = await orderRes.json().catch(() => null);
             if (orderData && typeof orderData === "object") {
               if (orderData.active === true) {
-                cachedOrder = { at: Date.now(), origin, result: { status: "active", state: current } };
+                cachedOrder = { at: Date.now(), origin, locale, result: { status: "active", state: current } };
               } else if (typeof orderData.qr === "string" && orderData.qr) {
                 const qr = orderData.qr.startsWith("data:image/") ? orderData.qr : "data:image/png;base64," + orderData.qr;
                 cachedOrder = {
                   at: Date.now(),
                   origin,
+                  locale,
                   result: {
                     status: "qr",
                     qr,
@@ -600,12 +825,12 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
                   },
                 };
               } else if (typeof orderData.checkoutUrl === "string" && /^https:\/\//.test(orderData.checkoutUrl)) {
-                cachedOrder = { at: Date.now(), origin, result: { status: "redirect", url: orderData.checkoutUrl } };
+                cachedOrder = { at: Date.now(), origin, locale, result: { status: "redirect", url: orderData.checkoutUrl } };
               }
             }
           }
         } else {
-          const response = await phoneRequest(origin, "verify", phone, code);
+          const response = await phoneRequest(origin, "verify", phone, code, locale);
           if (response.status !== 201) return phoneFailure(response.status);
           cookie = mergeCookies(undefined, response);
           const body = await response.json();
@@ -628,10 +853,17 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
           return phoneFailure();
         }
         if (cachedOrder?.result.status === "active") state.active = true;
+        if (!checkoutUrl && state.active !== true && (await mustPayFirst())) {
+          // The code proved the email, but this account has no Pro: stay signed out and wait on its token, so that
+          // paying from the email (or anywhere else) signs in without another code.
+          await rememberSignIn(phone);
+          await waitFor(origin, token, phone);
+          return { ok: false, reason: "notPro" } as const;
+        }
         return await writeSession(async () => {
           if (version !== generation || disposed || origin !== billingOrigin(getOrigin())) return phoneFailure();
-          stopMagicPoll();
-          await storage.write(JSON.stringify({ origin, token, ...(checkoutUrl && { checkoutUrl }), ...(cookie && { cookie }) }));
+          clearWaiting();
+          await storage.write(sessionRecord({ origin, token, ...(checkoutUrl && { checkoutUrl }), ...(cookie && { cookie }) }));
           ++generation;
           activeOrigin = origin;
           applyEntitlement(state);
@@ -644,12 +876,12 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       }
     },
     async deactivate() {
-      stopMagicPoll();
+      clearWaiting();
       pendingCheckout = undefined;
       cachedOrder = undefined;
       const saved = await writeSession(async () => {
         const previous = await storage.read();
-        await storage.write(undefined);
+        await storage.write(signedOutRecord());
         ++generation;
         clearTimeout(timer);
         lastCheck = 0;
@@ -659,7 +891,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       if (!saved) return;
       try {
         const { origin, token } = JSON.parse(saved);
-        if (origin !== billingOrigin(getOrigin())) return;
+        if (origin !== billingOrigin(getOrigin()) || typeof token !== "string") return;
         await fetch(origin + "/billing/v1/entitlement", {
           method: "DELETE", headers: { authorization: "Bearer " + token }, redirect: "error",
           signal: AbortSignal.timeout(5000),
@@ -680,7 +912,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
         pendingEvents.set("app_open", (pendingEvents.get("app_open") ?? 0) + 1);
       }
       if (event !== "app_open") {
-        pendingEvents.set(event, Math.min(1000, (pendingEvents.get(event, ) ?? 0) + count));
+        pendingEvents.set(event, Math.min(1000, (pendingEvents.get(event) ?? 0) + count));
       }
       if (telemetryTimer) return;
       telemetryTimer = setTimeout(() => {
@@ -698,7 +930,7 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
     },
     dispose() {
       disposed = true;
-      stopMagicPoll();
+      clearWaiting();
       clearTimeout(trialTimer);
       clearTimeout(timer);
       clearTimeout(telemetryTimer);
@@ -722,30 +954,38 @@ function inferNodeHost(): string {
   return "cli";
 }
 
-async function localInstallId(): Promise<string | undefined> {
-  const path = join(process.env.INKMAP_HOME ?? join(homedir(), ".inkmap"), "install-id");
-  let value: string;
+async function atomicCreateIfMissing(path: string, initialContent: string): Promise<string> {
   try {
-    value = (await readFile(path, "utf8")).trim();
+    return await readFile(path, "utf8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    const generated = "inst_" + randomUUID().replace(/-/g, "").slice(0, 24);
     const temporary = path + "." + randomUUID();
     try {
-      await writeFile(temporary, generated, { mode: 0o600, flag: "wx" });
-      await link(temporary, path).catch(err => {
-        if (err.code !== "EEXIST") throw err;
+      await writeFile(temporary, initialContent, { mode: 0o600, flag: "wx" });
+      await link(temporary, path).catch(async (err: NodeJS.ErrnoException) => {
+        if (err.code === "EEXIST") return;
+        if (err.code === "EPERM" || err.code === "ENOSYS" || err.code === "EXDEV") {
+          await rename(temporary, path);
+          return;
+        }
+        throw err;
       });
     } finally {
-      await rm(temporary, { force: true });
+      await rm(temporary, { force: true }).catch(() => {});
     }
-    value = (await readFile(path, "utf8")).trim();
+    return await readFile(path, "utf8");
   }
+}
+
+async function localInstallId(): Promise<string | undefined> {
+  const path = join(process.env.INKMAP_HOME || join(homedir(), ".inkmap"), "install-id");
+  const generated = "inst_" + randomUUID().replace(/-/g, "").slice(0, 24);
+  const value = (await atomicCreateIfMissing(path, generated)).trim();
   return /^[A-Za-z0-9_:-]{8,64}$/.test(value) ? value : undefined;
 }
 
-export function fileSessionStorage(path = join(process.env.INKMAP_HOME ?? join(homedir(), ".inkmap"), "billing-session")): SessionStorage {
+export function fileSessionStorage(path = join(process.env.INKMAP_HOME || join(homedir(), ".inkmap"), "billing-session")): SessionStorage {
   return {
     read: () => readFile(path, "utf8").then(s => s.trim() || undefined, () => undefined),
     async write(token) {
@@ -764,47 +1004,10 @@ export function fileSessionStorage(path = join(process.env.INKMAP_HOME ?? join(h
 
 // Shared by the desktop extension and CLI for this operating-system account.
 async function localTrialDeadline(): Promise<number | undefined> {
-  const path = join(homedir(), ".inkmap", "trial-start");
-  const now = Date.now();
-  let value: string;
-  try {
-    value = await readFile(path, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    const temporary = path + "." + randomUUID();
-    try {
-      await writeFile(temporary, String(now), { mode: 0o600, flag: "wx" });
-      await link(temporary, path).catch(error => {
-        if (error.code !== "EEXIST") throw error;
-      });
-    } finally {
-      await rm(temporary, { force: true });
-    }
-    value = await readFile(path, "utf8");
-  }
+  const path = join(process.env.INKMAP_HOME || join(homedir(), ".inkmap"), "trial-start");
+  const value = await atomicCreateIfMissing(path, String(Date.now()));
   const started = Number(value);
   return Number.isSafeInteger(started) && started > 0 && started <= Date.now()
     ? started + TRIAL_MS
     : undefined;
-}
-
-const AD_TTL = 6 * 60 * 60 * 1000;
-
-/** Fetches the sponsor ad feed at most every few hours; any failure just means no sponsor ads. */
-export function adFeed(url: string | undefined): () => Promise<Ad[]> {
-  let cache: { at: number; ads: Ad[] } | undefined;
-  return async () => {
-    if (!url) return [];
-    if (cache && Date.now() - cache.at < AD_TTL) return cache.ads;
-    try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(5000), headers: { accept: "application/json" } });
-      const ads = res.ok ? sanitizeAds(await res.json()) : [];
-      cache = { at: Date.now(), ads };
-      return ads;
-    } catch {
-      cache = { at: Date.now(), ads: [] };
-      return [];
-    }
-  };
 }

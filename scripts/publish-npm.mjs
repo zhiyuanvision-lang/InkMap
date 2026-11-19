@@ -1,30 +1,30 @@
-import { execFileSync, spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { ROOT as root, runNpm } from "./lib/bundle-utils.mjs";
 
-const root = fileURLToPath(new URL("../", import.meta.url));
 const pkgDir = join(root, "dist", "npm", "inkmap-mcp");
 
-if (!existsSync(join(pkgDir, "package.json"))) {
-  console.log("Building npm package first...");
-  execFileSync("npm", ["run", "package:npm"], { cwd: root, stdio: "inherit" });
-}
+console.log("Rebuilding and verifying parity before npm publish...");
+runNpm(["run", "package:platforms"], { cwd: root, stdio: "inherit" });
+runNpm(["run", "verify:parity"], { cwd: root, stdio: "inherit" });
 
-const whoami = spawnSync("npm", ["whoami"], { encoding: "utf8" });
-if (whoami.status !== 0) {
+let npmUser = "";
+try {
+  npmUser = String(runNpm(["whoami"], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] })).trim();
+} catch {}
+if (!npmUser) {
   console.log("当前尚未登录 npm，正在启动浏览器授权登录 (npm login --auth-type=web)...");
-  const login = spawnSync("npm", ["login", "--auth-type=web"], { stdio: "inherit" });
-  if (login.status !== 0) {
+  try {
+    runNpm(["login", "--auth-type=web"], { stdio: "inherit" });
+  } catch {
     console.error("npm 登录未完成，已取消发布。");
     process.exit(1);
   }
 } else {
-  console.log(`Publishing as npm user: ${whoami.stdout.trim()}`);
+  console.log(`Publishing as npm user: ${npmUser}`);
 }
 
 const extraArgs = process.argv.slice(2);
-execFileSync("npm", ["publish", "--access", "public", ...extraArgs], {
+runNpm(["publish", "--access", "public", ...extraArgs], {
   cwd: pkgDir,
   stdio: "inherit",
 });

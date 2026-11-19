@@ -4,9 +4,13 @@ import { CodexHost } from "./codex-host";
 import { mount } from "./main";
 import { McpAppHost, type McpWorkspaceSnapshot } from "./mcp-app-host";
 import { sidebarGate, sidebarText } from "./sidebar-shell";
+import { resizeMap } from "./workspace-tree";
 
 const gate = sidebarGate(sidebarText("正在连接 Inkmap 思维导图面板…", "Connecting to Inkmap mind map panel…"));
-const app = new App({ name: "Inkmap", version: "0.3.10" }, {}, { autoResize: false });
+/** Injected by vite.config.ts from packages/cli/package.json. */
+declare const __INKMAP_VERSION__: string;
+
+const app = new App({ name: "Inkmap", version: __INKMAP_VERSION__ }, {}, { autoResize: false });
 const extensions = new OpenAIExtensions(app);
 
 let compactBannerActive = false;
@@ -41,6 +45,7 @@ let opened = false;
 let latestInput: { path?: string; workspace?: string } | undefined;
 let initialResultResolver: ((snapshot?: McpWorkspaceSnapshot) => void) | undefined;
 let mountedMcpHost: Promise<McpAppHost> | undefined;
+let updateDelegatedBanner: ((next?: McpWorkspaceSnapshot) => void) | undefined;
 let ready: Promise<void>;
 
 function parseWorkspaceArgs(args?: Record<string, unknown>) {
@@ -51,12 +56,12 @@ function parseWorkspaceArgs(args?: Record<string, unknown>) {
   };
 }
 
-function mountEditorPaneDelegatedBanner(snapshot: McpWorkspaceSnapshot & { editorUrl?: string }) {
+function mountEditorPaneDelegatedBanner(initialSnapshot: McpWorkspaceSnapshot & { editorUrl?: string }) {
+  let snapshot = initialSnapshot;
   opened = true;
   compactBannerActive = true;
   gate.close();
 
-  const fileName = snapshot.currentFile ? snapshot.currentFile.split(/[\\/]/).pop() || snapshot.currentFile : "Markdown";
   const banner = document.createElement("div");
   banner.id = "inkmap-delegated-banner";
   banner.innerHTML = `
@@ -131,10 +136,19 @@ function mountEditorPaneDelegatedBanner(snapshot: McpWorkspaceSnapshot & { edito
       <button type="button" class="ink-del-btn" id="ink-del-browser">${sidebarText("使用浏览器打开", "Open in Browser")}</button>
     </div>
   `;
-  banner.querySelector(".ink-del-text")!.textContent = sidebarText(
-    `${fileName} 思维导图`,
-    `${fileName} mind map`,
-  );
+  const bannerTextEl = banner.querySelector(".ink-del-text")!;
+  const syncBannerState = (next?: McpWorkspaceSnapshot) => {
+    if (next) {
+      snapshot = { ...snapshot, ...next };
+    }
+    const currentName = snapshot.currentFile ? snapshot.currentFile.split(/[\\/]/).pop() || snapshot.currentFile : "Markdown";
+    bannerTextEl.textContent = sidebarText(
+      `${currentName} 思维导图`,
+      `${currentName} mind map`,
+    );
+  };
+  syncBannerState();
+  updateDelegatedBanner = syncBannerState;
   document.documentElement.classList.add("ink-banner-collapsed");
   document.body.appendChild(banner);
   void app.sendSizeChanged({ height: 46 }).catch(() => {});
@@ -191,24 +205,12 @@ function mountEditorPaneDelegatedBanner(snapshot: McpWorkspaceSnapshot & { edito
         opened = false;
         void startMcpWorkspaceHost({ ...snapshot, openedInEditorPane: false }, true)?.then(() => {
           for (const delay of [80, 220, 450]) {
-            window.setTimeout(() => {
-              try {
-                const api = (window as any).inkmap;
-                api?.mindMap?.resize();
-                api?.mindMap?.view?.fit();
-              } catch {}
-            }, delay);
+            window.setTimeout(() => resizeMap(true), delay);
           }
         });
       } else {
         for (const delay of [60, 200]) {
-          window.setTimeout(() => {
-            try {
-              const api = (window as any).inkmap;
-              api?.mindMap?.resize();
-              api?.mindMap?.view?.fit();
-            } catch {}
-          }, delay);
+          window.setTimeout(() => resizeMap(true), delay);
         }
       }
     } else {
@@ -277,7 +279,7 @@ app.addEventListener("toolinput", async ({ arguments: args }) => {
         initialResultResolver = undefined;
         resolve(undefined);
       }
-    }, 250);
+    }, 800);
   });
   if (!opened) {
     void startMcpWorkspaceHost(snapshot);
@@ -297,6 +299,7 @@ app.addEventListener("toolresult", async result => {
     void startMcpWorkspaceHost(snapshot);
     return;
   }
+  updateDelegatedBanner?.(snapshot);
   if (mountedMcpHost) {
     const host = await mountedMcpHost.catch(() => undefined);
     if (host) {
@@ -319,8 +322,8 @@ void ready.then(() => {
   if (ctx?.theme === "light" || ctx?.theme === "dark") applyDocumentTheme(ctx.theme);
   if (ctx?.styles?.variables) applyHostStyleVariables(ctx.styles.variables);
   window.setTimeout(() => {
-    if (!opened) void startMcpWorkspaceHost();
-  }, 400);
+    if (!opened && !initialResultResolver) void startMcpWorkspaceHost();
+  }, 900);
 }, () => {
   gate.note.textContent = sidebarText("无法连接宿主思维导图面板。", "Could not connect to the host mind map panel.");
 });
