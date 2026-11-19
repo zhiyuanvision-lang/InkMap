@@ -231,6 +231,7 @@ export function activate(context: vscode.ExtensionContext) {
   void syncDeepSeekHarnessIfInstalled();
   const log = vscode.window.createOutputChannel("Inkmap");
   const license = extensionLicense(context);
+  license.track?.("plugin_activate");
   const ads = adFeed(PRODUCT.adFeedUrl);
   const browsers = new BrowserServers(context, vscode.Uri.joinPath(context.extensionUri, "dist", "web").fsPath, log, license, ads);
 
@@ -247,14 +248,30 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
+  const maybeOfferOnboarding = (editor: vscode.TextEditor | undefined) => {
+    if (!editor || editor.document.languageId !== "markdown" || editor.document.uri.scheme !== "file") return;
+    if (context.globalState.get<boolean>("inkmap.hasOpenedMap") || context.globalState.get<boolean>("inkmap.onboardingPrompted")) return;
+    void context.globalState.update("inkmap.onboardingPrompted", true);
+    license.track?.("onboarding_view");
+    const docUri = editor.document.uri;
+    void vscode.window.showInformationMessage(t("onboardingTip"), t("onboardingAction")).then(pick => {
+      if (pick) {
+        license.track?.("onboarding_open");
+        void openToSide(docUri);
+      }
+    });
+  };
+
   const editors = new MindmapEditorProvider(context, license, ads);
   chatAvailable().then(available => vscode.commands.executeCommand("setContext", "inkmap.chatAvailable", available));
+  maybeOfferOnboarding(vscode.window.activeTextEditor);
 
   context.subscriptions.push(
     log,
     license,
     browsers,
     startMcpTargetBridge(),
+    vscode.window.onDidChangeActiveTextEditor(maybeOfferOnboarding),
     vscode.window.registerUriHandler({
       handleUri(uri) {
         if (uri.path === "/open") {

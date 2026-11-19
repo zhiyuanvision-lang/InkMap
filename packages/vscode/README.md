@@ -78,7 +78,7 @@
 
 ## 隐私
 
-Inkmap 不收集、不上传你的文档，没有任何使用统计或跟踪。详见 [用户许可协议](LICENSE.md)。
+你的 Markdown 文档始终保存在本地，Inkmap 绝不收集或上传任何文档内容，仅记录匿名功能健康度与激活统计以改进稳定性。详见 [用户许可协议](LICENSE.md)。
 
 ---
 
@@ -160,4 +160,4 @@ The chosen layout and theme are stored in the document's front matter (`inkmap.l
 
 ### Privacy
 
-Inkmap never collects or uploads your documents and does no analytics or tracking. See the [license agreement](LICENSE.md).
+Your Markdown files stay strictly on your machine — Inkmap never collects or uploads document contents, and records only anonymous product health and feature counts. See the [license agreement](LICENSE.md).

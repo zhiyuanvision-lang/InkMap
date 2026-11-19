@@ -55,7 +55,7 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
   const fallbackEditors = new Map<string, Promise<Served>>();
   const ads = adFeed(PRODUCT.adFeedUrl);
   const workspaces = createMcpWorkspaceManager();
-  const server = new McpServer({ name: "inkmap", version: "0.3.8" });
+  const server = new McpServer({ name: "inkmap", version: "0.3.9" });
 
   function isAntigravityHost(): boolean {
     const clientName = server.server.getClientVersion()?.name ?? "";
@@ -75,8 +75,15 @@ export async function createInkmapMcpServer(options: { html?: string; billingOri
     if (clientName.includes("cursor")) return "cursor";
     if (clientName.includes("codex")) return "codex";
     if (clientName.includes("windsurf")) return "windsurf";
+    if (clientName.includes("trae")) return "trae";
+    if (clientName.includes("qoder")) return "qoder";
+    if (clientName.includes("deepseek") || clientName.includes("dsh")) return "deepseek";
     return "mcp";
   }
+
+  server.server.oninitialized = () => {
+    billing.track?.("plugin_activate", 1, detectMcpHost());
+  };
 
   function hasIdeEditorExtension(): boolean {
     const clientName = server.server.getClientVersion()?.name ?? "";

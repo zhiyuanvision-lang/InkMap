@@ -70,6 +70,7 @@ export interface LicenseService {
   deactivate(): Promise<void>;
   onChange(listener: (state: LicenseState) => void): () => void;
   track?(event: string, count?: number, hostHint?: string): void;
+  flushTelemetry?(): Promise<void>;
   dispose(): void;
 }
 
@@ -342,6 +343,57 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
       magicPollTimer.unref();
     };
     poll();
+  }
+
+  async function sendPendingTelemetry() {
+    if (disposed || !pendingEvents.size) return;
+    let origin: string;
+    try {
+      origin = billingOrigin(getOrigin());
+    } catch {
+      return;
+    }
+    if (process.env.INKMAP_ALLOW_TEST_TELEMETRY !== "1") {
+      if (origin === "https://billing.example.com" || process.env.INKMAP_DISABLE_TELEMETRY === "1" || process.env.NODE_TEST_CONTEXT) return;
+      const customHome = process.env.INKMAP_HOME || "";
+      if (
+        customHome &&
+        (customHome.startsWith("/tmp/") ||
+          customHome.startsWith("/private/tmp/") ||
+          customHome.includes("/var/folders/") ||
+          customHome.includes("inkmap-npm-isolated-") ||
+          customHome.includes("inkmap-antigravity-mcp-") ||
+          customHome.includes("inkmap-local-editor-") ||
+          customHome.includes("inkmap-harness-"))
+      ) {
+        return;
+      }
+    }
+    const id = await (installIdPromise ??= localInstallId().catch(() => undefined));
+    if (disposed || !id || !pendingEvents.size) return;
+    await (trial ??= startTrial());
+    const events: Record<string, number> = {};
+    for (const [k, v] of pendingEvents.entries()) events[k] = v;
+    pendingEvents.clear();
+    const tier = current.pro ? "pro" : (current.trialUntil ?? 0) > Date.now() ? "trial" : "expired";
+    const os = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "win" : process.platform === "linux" ? "linux" : "other";
+    const hostName = detectedHost || inferNodeHost();
+    await fetch(origin + "/billing/v1/telemetry", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      redirect: "error",
+      body: JSON.stringify({
+        product: PRODUCT.id,
+        installId: id,
+        host: hostName,
+        os,
+        version: "0.3.9",
+        locale: clientLocale(),
+        tier,
+        events,
+      }),
+      signal: AbortSignal.timeout(5000),
+    }).catch(() => {});
   }
 
   return {
@@ -628,63 +680,21 @@ export function licenseService(storage: SessionStorage, getOrigin: () => string 
         pendingEvents.set("app_open", (pendingEvents.get("app_open") ?? 0) + 1);
       }
       if (event !== "app_open") {
-        pendingEvents.set(event, Math.min(1000, (pendingEvents.get(event) ?? 0) + count));
+        pendingEvents.set(event, Math.min(1000, (pendingEvents.get(event, ) ?? 0) + count));
       }
       if (telemetryTimer) return;
       telemetryTimer = setTimeout(() => {
         telemetryTimer = undefined;
-        void (async () => {
-          if (disposed || !pendingEvents.size) return;
-          let origin: string;
-          try {
-            origin = billingOrigin(getOrigin());
-          } catch {
-            return;
-          }
-          if (process.env.INKMAP_ALLOW_TEST_TELEMETRY !== "1") {
-            if (origin === "https://billing.example.com" || process.env.INKMAP_DISABLE_TELEMETRY === "1" || process.env.NODE_TEST_CONTEXT) return;
-            const customHome = process.env.INKMAP_HOME || "";
-            if (
-              customHome &&
-              (customHome.startsWith("/tmp/") ||
-                customHome.startsWith("/private/tmp/") ||
-                customHome.includes("/var/folders/") ||
-                customHome.includes("inkmap-npm-isolated-") ||
-                customHome.includes("inkmap-antigravity-mcp-") ||
-                customHome.includes("inkmap-local-editor-") ||
-                customHome.includes("inkmap-harness-"))
-            ) {
-              return;
-            }
-          }
-          const id = await (installIdPromise ??= localInstallId().catch(() => undefined));
-          if (disposed || !id || !pendingEvents.size) return;
-          await (trial ??= startTrial());
-          const events: Record<string, number> = {};
-          for (const [k, v] of pendingEvents.entries()) events[k] = v;
-          pendingEvents.clear();
-          const tier = current.pro ? "pro" : (current.trialUntil ?? 0) > Date.now() ? "trial" : "expired";
-          const os = process.platform === "darwin" ? "mac" : process.platform === "win32" ? "win" : process.platform === "linux" ? "linux" : "other";
-          const hostName = detectedHost || inferNodeHost();
-          await fetch(origin + "/billing/v1/telemetry", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            redirect: "error",
-            body: JSON.stringify({
-              product: PRODUCT.id,
-              installId: id,
-              host: hostName,
-              os,
-              version: "0.3.8",
-              locale: clientLocale(),
-              tier,
-              events,
-            }),
-            signal: AbortSignal.timeout(5000),
-          }).catch(() => {});
-        })();
+        void sendPendingTelemetry();
       }, 800);
       telemetryTimer.unref();
+    },
+    async flushTelemetry() {
+      if (telemetryTimer) {
+        clearTimeout(telemetryTimer);
+        telemetryTimer = undefined;
+      }
+      await sendPendingTelemetry();
     },
     dispose() {
       disposed = true;
@@ -705,6 +715,8 @@ function inferNodeHost(): string {
     const app = (process.env.VSCODE_NLS_CONFIG || process.execPath || "").toLowerCase();
     if (app.includes("cursor")) return "cursor";
     if (app.includes("windsurf")) return "windsurf";
+    if (app.includes("trae")) return "trae";
+    if (app.includes("qoder")) return "qoder";
     return "vscode";
   }
   return "cli";

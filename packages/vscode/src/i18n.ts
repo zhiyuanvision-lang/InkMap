@@ -19,6 +19,8 @@ const zh = {
   removeConfirm: "退出当前账号？下次登录时会自动同步 Pro 权益。",
   remove: "退出登录",
   saveExport: "导出",
+  onboardingTip: "💡 Inkmap 思维导图已就绪：点击即可在右侧并排打开可双向编辑的脑图与流程图",
+  onboardingAction: "立即打开思维导图",
 };
 
 type Key = keyof typeof zh;
@@ -42,6 +44,8 @@ const en: Record<Key, string> = {
   removeConfirm: "Sign out? Your Pro access will sync the next time you sign in.",
   remove: "Sign Out",
   saveExport: "Export",
+  onboardingTip: "💡 Inkmap is ready: Open this Markdown file side-by-side as an interactive two-way mind map",
+  onboardingAction: "Open Mind Map",
 };
 
 export const isChinese = () => detectOsLocale() === "zh";

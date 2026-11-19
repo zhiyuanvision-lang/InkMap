@@ -230,8 +230,8 @@ const mcpName = "io.github.zhiyuanvision-lang/inkmap-markdown-mindmap-markmap";
 const serverManifest = {
   $schema: "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   name: mcpName,
-  title: "Inkmap — Markdown Mind Map & Mermaid 思维导图/脑图/流程图",
-  description: "Two-way Markdown mind map (markmap), Mermaid flowchart & outline MCP App | 双向思维导图/脑图/流程图/大纲",
+  title: "Inkmap — Editable Mindmap, Markmap, Mind Map & Mermaid 思维导图/脑图",
+  description: "Two-way Markdown mindmap (markmap), Mermaid flowchart & outline MCP App | 双向思维导图/脑图/流程图/大纲",
   version,
   websiteUrl: "https://zhiyuanv.com/software.html",
   icons: [

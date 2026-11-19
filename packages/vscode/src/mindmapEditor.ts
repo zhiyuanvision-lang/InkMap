@@ -120,6 +120,7 @@ export class MindmapEditorProvider implements vscode.CustomTextEditorProvider {
         }
         switch (msg.type) {
           case "ready": {
+            void this.context.globalState?.update("inkmap.hasOpenedMap", true);
             this.license.track?.("doc_open");
             const [license, ads] = await Promise.all([this.license.state(), this.ads()]);
             return post({ type: "doc", doc: state(), license, ads, chat: await chatAvailable() });

@@ -7,7 +7,17 @@ const KEY = "inkmap.billing.session";
 
 export function extensionLicense(context: vscode.ExtensionContext): LicenseService {
   const app = (vscode.env.appName || "").toLowerCase();
-  const host = app.includes("cursor") ? "cursor" : app.includes("windsurf") ? "windsurf" : app.includes("antigravity") ? "antigravity" : "vscode";
+  const host = app.includes("cursor")
+    ? "cursor"
+    : app.includes("windsurf")
+      ? "windsurf"
+      : app.includes("trae")
+        ? "trae"
+        : app.includes("qoder")
+          ? "qoder"
+          : app.includes("antigravity")
+            ? "antigravity"
+            : "vscode";
   return licenseService({
     read: () => Promise.resolve(context.secrets.get(KEY)),
     write: async token => {

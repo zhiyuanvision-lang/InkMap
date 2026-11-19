@@ -589,4 +589,40 @@ describe("licenseService", () => {
       globalThis.fetch = realFetch;
     }
   });
+
+  it("flushes plugin_activate and app_open telemetry immediately when requested", async () => {
+    const origin = "https://telemetry.example.com";
+    const payloads = [];
+    const realFetch = globalThis.fetch;
+    const prevAllow = process.env.INKMAP_ALLOW_TEST_TELEMETRY;
+    const prevHome = process.env.INKMAP_HOME;
+    const tmpHome = await mkdtemp(join(tmpdir(), "inkmap-tel-test-"));
+    process.env.INKMAP_ALLOW_TEST_TELEMETRY = "1";
+    process.env.INKMAP_HOME = tmpHome;
+    globalThis.fetch = async (url, init) => {
+      if (url === `${origin}/billing/v1/telemetry`) {
+        payloads.push(JSON.parse(init.body));
+        return new Response(null, { status: 204 });
+      }
+      return new Response(null, { status: 204 });
+    };
+    const svc = licenseService({ read: async () => undefined, write: async () => {} }, () => origin, { host: "trae" });
+    try {
+      svc.track("plugin_activate");
+      await svc.flushTelemetry();
+      assert.equal(payloads.length, 1);
+      assert.equal(payloads[0].host, "trae");
+      assert.equal(payloads[0].version, "0.3.9");
+      assert.equal(payloads[0].events.app_open, 1);
+      assert.equal(payloads[0].events.plugin_activate, 1);
+    } finally {
+      svc.dispose();
+      globalThis.fetch = realFetch;
+      if (prevAllow === undefined) delete process.env.INKMAP_ALLOW_TEST_TELEMETRY;
+      else process.env.INKMAP_ALLOW_TEST_TELEMETRY = prevAllow;
+      if (prevHome === undefined) delete process.env.INKMAP_HOME;
+      else process.env.INKMAP_HOME = prevHome;
+      await rm(tmpHome, { recursive: true, force: true });
+    }
+  });
 });

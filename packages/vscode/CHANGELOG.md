@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.9
+
+- **First-Run Markdown Onboarding & Multi-Host Activation Funnel**: Added a one-time side-by-side mind map quick-open tip when opening a Markdown file for the first time, plus accurate activation funnel & host detection across VS Code, Cursor, Trae, Windsurf, Qoder, DeepSeek Harness, and MCP clients.
+- **Store Listing Animated Demo & `Mindmap` Search Ranking**: Added animated two-way Markdown & Mermaid showcase GIFs, live browser playground link (`zhiyuanv.com/inkmap.html`), and exact `Mindmap` title indexing across VS Code Marketplace and Open VSX.
+
 ## 0.3.8
 
 - **Redesigned Brand Icon**: Crafted a clean, high-contrast Aurora Mind Tree squircle icon (`icon.svg` / `icon.png`) and browser tab favicon, sharp from 16×16 IDE tab pills up to 400×400 Marketplace banners.

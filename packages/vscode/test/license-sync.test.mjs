@@ -92,3 +92,96 @@ test("resends revoked Pro access when the editor tab or window returns", async (
   await Promise.resolve();
   assert.equal(messages.length, 2);
 });
+
+test("records plugin_activate on startup and offers one-time Markdown onboarding", async () => {
+  const activeEditorChanged = event();
+  const executedCommands = [];
+  const infoPrompts = [];
+  let pickAction = true;
+  class FakeUri {
+    constructor(scheme, fsPath) {
+      this.scheme = scheme;
+      this.fsPath = fsPath;
+      this.path = fsPath;
+    }
+    toString() { return this.fsPath; }
+    static joinPath(uri, ...parts) { return new FakeUri("file", join(uri.fsPath, ...parts)); }
+    static file(p) { return new FakeUri("file", p); }
+    static parse(u) { return new FakeUri("https", u); }
+  }
+  const vscode = {
+    Uri: FakeUri,
+    ViewColumn: { Beside: 2, Active: 1 },
+    env: { appName: "Trae", language: "zh-cn" },
+    commands: {
+      getCommands: async () => [],
+      registerCommand: () => ({ dispose() {} }),
+      executeCommand: async (...args) => { executedCommands.push(args); },
+    },
+    window: {
+      activeTextEditor: undefined,
+      state: { focused: true },
+      tabGroups: { all: [] },
+      createOutputChannel: () => ({ appendLine() {}, dispose() {} }),
+      registerUriHandler: () => ({ dispose() {} }),
+      registerCustomEditorProvider: () => ({ dispose() {} }),
+      onDidChangeActiveTextEditor: activeEditorChanged.subscribe,
+      onDidChangeWindowState: event().subscribe,
+      onDidChangeTextEditorSelection: event().subscribe,
+      showInformationMessage: async (msg, action) => {
+        infoPrompts.push({ msg, action });
+        return pickAction ? action : undefined;
+      },
+      showWarningMessage: async () => undefined,
+      showErrorMessage: async () => undefined,
+    },
+    workspace: {
+      workspaceFolders: [],
+      getConfiguration: () => ({ get: () => "https://billing.example.com" }),
+      onDidChangeWorkspaceFolders: event().subscribe,
+      onDidChangeTextDocument: event().subscribe,
+    },
+  };
+  const { outputFiles } = buildSync({
+    entryPoints: [fileURLToPath(new URL("../src/extension.ts", import.meta.url))],
+    bundle: true,
+    platform: "node",
+    external: ["vscode"],
+    write: false,
+  });
+  const bundled = { exports: {} };
+  const require = createRequire(import.meta.url);
+  new Function("require", "module", "exports", outputFiles[0].text)(
+    id => id === "vscode" ? vscode : require(id), bundled, bundled.exports,
+  );
+
+  const globalStore = new Map();
+  const subscriptions = [];
+  const mdUri = FakeUri.file("/tmp/demo.md");
+  vscode.window.activeTextEditor = { document: { languageId: "markdown", uri: mdUri } };
+
+  try {
+    bundled.exports.activate({
+      extensionUri: { fsPath: fileURLToPath(new URL("../", import.meta.url)) },
+      subscriptions,
+      secrets: { get: async () => undefined, store: async () => {}, delete: async () => {} },
+      globalState: {
+        get: k => globalStore.get(k),
+        update: async (k, v) => { globalStore.set(k, v); },
+      },
+      workspaceState: { get: () => undefined, update: async () => {} },
+    });
+
+    await new Promise(r => setTimeout(r, 20));
+    assert.equal(infoPrompts.length, 1);
+    assert.equal(globalStore.get("inkmap.onboardingPrompted"), true);
+    assert.ok(executedCommands.some(args => args[0] === "vscode.openWith" && args[2] === "inkmap.mindmap"));
+
+    // Opening another Markdown file never nags a second time
+    activeEditorChanged.fire({ document: { languageId: "markdown", uri: mdUri } });
+    await new Promise(r => setTimeout(r, 10));
+    assert.equal(infoPrompts.length, 1);
+  } finally {
+    for (const sub of subscriptions) sub?.dispose?.();
+  }
+});

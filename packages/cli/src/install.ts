@@ -840,6 +840,16 @@ export async function runInstall(options: InstallOptions = {}): Promise<InstallR
     log("    Qoder, WorkBuddy, Claude Desktop, Claude Code, OpenAI Codex, Google Antigravity & Trae!");
     log("──────────────────────────────────────────────────────────────────────");
   }
+  if (!options.uninstall && result.installed.length > 0) {
+    try {
+      const { fileSessionStorage, licenseService } = await import("./license.js");
+      const { YUNFAN_BILLING_ORIGIN } = await import("@inkmap/core");
+      const svc = licenseService(fileSessionStorage(), () => process.env.INKMAP_BILLING_ORIGIN || YUNFAN_BILLING_ORIGIN, { host: "cli" });
+      svc.track?.("plugin_install", 1, "cli");
+      await Promise.race([svc.flushTelemetry?.(), new Promise(r => setTimeout(r, 1500))]);
+      svc.dispose();
+    } catch {}
+  }
   return result;
 }
 

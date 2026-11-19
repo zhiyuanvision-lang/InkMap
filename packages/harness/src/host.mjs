@@ -65,7 +65,8 @@ async function readBody(req) {
 }
 
 export function apply(ctx) {
-  const license = licenseService(fileSessionStorage(), () => YUNFAN_BILLING_ORIGIN);
+  const license = licenseService(fileSessionStorage(), () => YUNFAN_BILLING_ORIGIN, { host: "deepseek" });
+  license.track?.("plugin_activate", 1, "deepseek");
   const editors = new Map();
   const leases = new Map();
   let disposed = false;
