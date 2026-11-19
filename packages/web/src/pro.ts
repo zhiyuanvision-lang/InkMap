@@ -421,7 +421,7 @@ export async function createPro(host: Host, showToast?: (text: string) => void):
     const wasSignedIn = signedIn();
     const wasPro = state.pro;
     state = next;
-    const autoCompletedViaMagicLink = !wasSignedIn && signedIn() && Boolean(phoneSignIn?.isOpen());
+    const autoCompletedViaMagicLink = !wasSignedIn && signedIn() && Boolean(phoneSignIn?.isOpen()) && !phoneSignIn?.isVerifying();
     if (autoCompletedViaMagicLink) {
       phoneSignIn?.close();
     }
