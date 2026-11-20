@@ -86,7 +86,13 @@ if (skipStores) {
   process.exit(0);
 }
 
-// 4. Commit, tag (`vX.Y.Z` + Claude directory `inkmap--vX.Y.Z`), push & create GitHub Release
+// 4. Publish npm (`inkmap-mcp` + `dsh-inkmap`) FIRST so npm starts scanning before GitHub tag triggers CI
+console.log("\n📦 Publishing inkmap-mcp & dsh-inkmap to npm...");
+runNpm(["publish", "--access", "public"], { cwd: join(root, "dist", "npm", "inkmap-mcp"), stdio: "inherit" });
+runNpm(["publish", "--access", "public"], { cwd: join(root, "dist", "sidebars", "dsh-inkmap"), stdio: "inherit" });
+
+// 5. Commit, tag (`vX.Y.Z` + Claude directory `inkmap--vX.Y.Z`), push & create GitHub Release
+//    (Pushing `vX.Y.Z` triggers `.github/workflows/publish-mcp-registry.yml`, which waits in cloud for npm scan & publishes via GitHub OIDC)
 execFileSync("git", ["add", "-A"], { cwd: root, stdio: "inherit" });
 try {
   execFileSync("git", ["commit", "-m", `chore(release): v${version}`], { cwd: root, stdio: "inherit" });
@@ -121,39 +127,13 @@ try {
   );
 }
 
-// 5. Open VSX (Cursor / Trae / Windsurf / VSCodium)
+// 6. Open VSX (Cursor / Trae / Windsurf / VSCodium)
 console.log("\n📦 Publishing to Open VSX...");
 execFileSync(process.execPath, [join(root, "packages", "vscode", "scripts", "publish-openvsx.mjs")], { cwd: root, stdio: "inherit" });
 
-// 6. Microsoft VS Code Marketplace
+// 7. Microsoft VS Code Marketplace
 console.log("\n📦 Publishing to VS Code Marketplace...");
 execFileSync(process.execPath, [join(root, "packages", "vscode", "scripts", "publish-vscode.mjs")], { cwd: root, stdio: "inherit" });
-
-// 7. npm (`inkmap-mcp` + `dsh-inkmap`)
-console.log("\n📦 Publishing inkmap-mcp & dsh-inkmap to npm...");
-runNpm(["publish", "--access", "public"], { cwd: join(root, "dist", "npm", "inkmap-mcp"), stdio: "inherit" });
-runNpm(["publish", "--access", "public"], { cwd: join(root, "dist", "sidebars", "dsh-inkmap"), stdio: "inherit" });
-
-// 8. Official MCP Registry (`registry.modelcontextprotocol.io`) — retries while npm CDN propagates the new tarball
-try {
-  console.log("\n📦 Publishing to Official MCP Registry...");
-  const ghToken = execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).trim();
-  for (let attempt = 1; attempt <= 20; attempt++) {
-    try {
-      if (ghToken) {
-        execFileSync("mcp-publisher", ["login", "github", "--token", ghToken], { cwd: root, stdio: "inherit" });
-      }
-      execFileSync("mcp-publisher", ["publish"], { cwd: root, stdio: "inherit" });
-      break;
-    } catch (err) {
-      if (attempt === 20) throw err;
-      console.log(`[release] Waiting 15s for npm async scan & CDN propagation before retry (${attempt}/20)...`);
-      await new Promise(r => setTimeout(r, 15_000));
-    }
-  }
-} catch (err) {
-  console.warn("[release] mcp-publisher skipped:", err.message);
-}
 
 // 9. Update website dsh-index.json & deploy to tengxun server
 const localDshIndex = "/Users/lhy/Workspace/ZhiyuanV/website/dsh-index.json";

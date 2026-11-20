@@ -9,6 +9,7 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       id-token: write
       contents: read
@@ -25,8 +26,33 @@ jobs:
       - name: Validate server.json
         run: ./mcp-publisher validate server.json
 
-      - name: Authenticate via GitHub OIDC
-        run: ./mcp-publisher login github-oidc
+      - name: Wait for npm package propagation
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -r '.version' server.json)
+          echo "Waiting for inkmap-mcp@${VERSION} to finish npm async scan and propagate..."
+          for i in $(seq 1 50); do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/inkmap-mcp/${VERSION}")
+            if [ "$STATUS" = "200" ]; then
+              echo "✅ inkmap-mcp@${VERSION} is live on npm!"
+              exit 0
+            fi
+            echo "Attempt $i/50: HTTP $STATUS (npm still processing), sleeping 30s..."
+            sleep 30
+          done
+          echo "::error::Timed out waiting for inkmap-mcp@${VERSION} on npm."
+          exit 1
 
-      - name: Publish to MCP Registry
-        run: ./mcp-publisher publish server.json
+      - name: Authenticate via GitHub OIDC & Publish
+        run: |
+          set -euo pipefail
+          ./mcp-publisher login github-oidc
+          OUT=$(./mcp-publisher publish server.json 2>&1) || {
+            echo "$OUT"
+            if echo "$OUT" | grep -qiE "already exists|duplicate|409"; then
+              echo "Already published on MCP Registry; treating as success."
+              exit 0
+            fi
+            exit 1
+          }
+          echo "$OUT"
