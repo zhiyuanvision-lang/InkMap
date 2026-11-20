@@ -18,6 +18,8 @@
     "package:platforms": "npm run build:sidebars && npm run package:vscode",
     "verify:parity": "node scripts/verify-parity.mjs",
     "sync:all": "npm run package:platforms && npm run verify:parity && npm test && npm run test:sidebars && node dist/npm/inkmap-mcp/bin/inkmap.cjs install",
+    "icon:apply": "node scripts/sync-icon.mjs",
+    "release": "node scripts/release-all.mjs",
     "publish:npm": "node scripts/publish-npm.mjs",
     "publish:mcp-registry": "mcp-publisher publish",
     "publish:openvsx": "node packages/vscode/scripts/publish-openvsx.mjs",

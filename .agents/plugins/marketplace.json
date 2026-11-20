@@ -1,21 +1,15 @@
 {
-  "name": "inkmap-official",
-  "interface": {
-    "displayName": "Inkmap — Markdown Mind Map & Mermaid 思维导图"
+  "name": "inkmap-marketplace",
+  "owner": {
+    "name": "Zhiyuan Vision",
+    "email": "contact@zhiyuanv.com"
   },
   "plugins": [
     {
       "name": "inkmap",
-      "description": "Interactive two-way Markdown mind map (markmap), Mermaid flowchart & XMind outline editor | 双向编辑 Markdown 思维导图、脑图、流程图与大纲",
-      "source": {
-        "source": "local",
-        "path": "."
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Productivity"
+      "source": "./",
+      "version": "0.3.14",
+      "description": "Interactive two-way Markdown mind map (markmap), Mermaid flowchart & XMind outline MCP App | 双向编辑 Markdown 思维导图、脑图、流程图与大纲"
     }
   ]
 }

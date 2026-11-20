@@ -153,26 +153,34 @@ const rootPluginKeywords = [
 ];
 const sharedPluginMeta = {
   name: "inkmap",
-  displayName: "Inkmap — Markdown Mind Map & Mermaid 思维导图",
+  displayName: "Inkmap — Markdown Mindmap & Markmap 思维导图",
   version,
   description: rootPluginDescription,
   author: { name: "Zhiyuan Vision", email: "contact@zhiyuanv.com", url: "https://zhiyuanv.com" },
   homepage: "https://zhiyuanv.com/software.html",
   repository: "https://github.com/zhiyuanvision-lang/InkMap",
   license: "SEE LICENSE IN LICENSE.md",
-  logo: "./packages/vscode/images/icon.png",
   keywords: rootPluginKeywords,
 };
+const claudeIconSrc = await readFile(join(vscodeDir, "images", "icon-512.png")).then(
+  () => join(vscodeDir, "images", "icon-512.png"),
+  () => join(vscodeDir, "images", "icon.png"),
+);
 await Promise.all([
   mkdir(join(root, ".claude-plugin"), { recursive: true }),
   mkdir(join(root, ".cursor-plugin"), { recursive: true }),
+  mkdir(join(root, ".agents", "plugins"), { recursive: true }),
+  mkdir(join(root, "packages", "claude-plugin", ".claude-plugin"), { recursive: true }),
 ]);
 await Promise.all([
+  copyFile(claudeIconSrc, join(root, ".claude-plugin", "icon.png")),
+  copyFile(claudeIconSrc, join(root, "packages", "claude-plugin", ".claude-plugin", "icon.png")),
   writeJSON(join(pkgDir, "server.json"), serverManifest),
   writeJSON(join(root, "server.json"), serverManifest),
   writeJSON(join(root, "plugin.json"), {
     $schema: "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
     ...sharedPluginMeta,
+    logo: "./packages/vscode/images/icon.png",
     skills: "./skills",
     mcpServers: "./mcp.json",
     extensions: {
@@ -186,8 +194,28 @@ await Promise.all([
       },
     },
   }),
+  writeJSON(join(root, ".agents", "plugins", "marketplace.json"), {
+    name: "inkmap-marketplace",
+    owner: { name: "Zhiyuan Vision", email: "contact@zhiyuanv.com" },
+    plugins: [
+      {
+        name: "inkmap",
+        source: "./",
+        version,
+        description: rootPluginDescription,
+      },
+    ],
+  }),
   writeJSON(join(root, ".claude-plugin", "plugin.json"), {
-    ...sharedPluginMeta,
+    name: "inkmap",
+    version,
+    description: rootPluginDescription,
+    author: { name: "Zhiyuan Vision", email: "contact@zhiyuanv.com", url: "https://zhiyuanv.com" },
+    homepage: "https://zhiyuanv.com/software.html",
+    repository: "https://github.com/zhiyuanvision-lang/InkMap",
+    license: "SEE LICENSE IN LICENSE.md",
+    icon: "./.claude-plugin/icon.png",
+    keywords: rootPluginKeywords,
     skills: "./skills",
     mcpServers: "./.mcp.json",
   }),
@@ -214,6 +242,7 @@ await Promise.all([
   }),
   writeJSON(join(root, ".cursor-plugin", "plugin.json"), {
     ...sharedPluginMeta,
+    logo: "./packages/vscode/images/icon.png",
     skills: "./skills",
     mcpServers: "./mcp.json",
   }),

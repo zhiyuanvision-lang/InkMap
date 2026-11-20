@@ -46,7 +46,7 @@ npx -y inkmap-mcp@latest install
 | :--- | :--- | :--- |
 | **Cursor / VS Code / Trae / Windsurf** | 扩展商店搜索 **`Inkmap`** 安装 | 打开任意 `.md` 文件，点击**编辑器右上角导图图标**，或右键文件选择 **`Open as Inkmap`** 即可左右并排联动编辑 |
 | **DeepSeek Harness** | 插件页右上角 `+ 添加插件` 输入 **`dsh-inkmap`** | 预览任意 `.md` 文档时，点击右上角工具栏的 **「Inkmap」** 按钮即可在右侧分栏打开交互脑图 |
-| **Claude / Codex / Antigravity** | 运行上方 `npx -y inkmap-mcp@latest install` | 直接在对话中对 AI 说：*“用 Inkmap 打开 `README.md`”*，面板即刻自动弹出并随 AI 改稿实时刷新 |
+| **Claude / Codex / Antigravity** | 运行上方 `npx -y inkmap-mcp@latest install`（或在 Claude Code 内执行 `/plugin install inkmap --marketplace zhiyuanvision-lang/InkMap`） | 直接在对话中对 AI 说：*“用 Inkmap 打开 `README.md`”*，面板即刻自动弹出并随 AI 改稿实时刷新 |
 | **Qoder / 独立浏览器三栏工作台** | 终端执行 `npx -y inkmap-mcp@latest 你的文档.md` | 直接在 Chrome/默认浏览器打开「项目目录树 + Markdown 源码 + 交互导图」全屏三栏工作台 |
 
 > 💡 **不想装任何东西先试试手感？** 直接点开浏览器免安装体验台 👉 **[zhiyuanv.com/inkmap.html](https://www.zhiyuanv.com/inkmap.html)**
