@@ -640,7 +640,7 @@ describe("licenseService", () => {
     }
   });
 
-  it("flushes plugin_activate and app_open telemetry immediately when requested", async () => {
+  it("keeps passive plugin_activate separate from app_open and records app_open on real usage", async () => {
     const origin = "https://telemetry.example.com";
     const payloads = [];
     const realFetch = globalThis.fetch;
@@ -663,8 +663,14 @@ describe("licenseService", () => {
       assert.equal(payloads.length, 1);
       assert.equal(payloads[0].host, "trae");
       assert.equal(payloads[0].version, JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8")).version);
-      assert.equal(payloads[0].events.app_open, 1);
+      assert.equal(payloads[0].events.app_open, undefined);
       assert.equal(payloads[0].events.plugin_activate, 1);
+
+      svc.track("doc_open");
+      await svc.flushTelemetry();
+      assert.equal(payloads.length, 2);
+      assert.equal(payloads[1].events.app_open, 1);
+      assert.equal(payloads[1].events.doc_open, 1);
     } finally {
       svc.dispose();
       globalThis.fetch = realFetch;

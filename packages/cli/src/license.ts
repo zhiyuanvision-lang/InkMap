@@ -907,7 +907,7 @@ export function licenseService(
     track(event, count = 1, hostHint) {
       if (disposed || !event || typeof event !== "string" || count <= 0) return;
       if (hostHint) detectedHost = hostHint;
-      if (!sentAppOpen) {
+      if (!sentAppOpen && !PASSIVE_TELEMETRY_EVENTS.has(event)) {
         sentAppOpen = true;
         pendingEvents.set("app_open", (pendingEvents.get("app_open") ?? 0) + 1);
       }
@@ -939,6 +939,8 @@ export function licenseService(
     },
   };
 }
+
+const PASSIVE_TELEMETRY_EVENTS = new Set(["plugin_activate", "plugin_install", "onboarding_view"]);
 
 function inferNodeHost(): string {
   if (process.env.INKMAP_HOST) return process.env.INKMAP_HOST;

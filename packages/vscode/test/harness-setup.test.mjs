@@ -21,22 +21,43 @@ const { outputFiles } = buildSync({
 });
 
 /** Loads the extension against a fake VS Code whose notifications answer with `choose(buttons)`. */
-function loadExtension(choose) {
+function loadExtension(choose, { codeLens = true } = {}) {
   const prompts = [];
   const messages = [];
+  let codeLensProvider;
   class FakeUri {
-    constructor(fsPath) { this.scheme = "file"; this.fsPath = fsPath; this.path = fsPath; }
+    constructor(fsPath, scheme = "file") { this.scheme = scheme; this.fsPath = fsPath; this.path = fsPath; }
     toString() { return this.fsPath; }
     static joinPath(uri, ...parts) { return new FakeUri(join(uri.fsPath, ...parts)); }
     static file(p) { return new FakeUri(p); }
     static parse(u) { return new FakeUri(u); }
   }
+  class FakeRange {
+    constructor(sl, sc, el, ec) { this.start = { line: sl, character: sc }; this.end = { line: el, character: ec }; }
+  }
+  class FakeCodeLens {
+    constructor(range, command) { this.range = range; this.command = command; }
+  }
+  class FakeEventEmitter {
+    constructor() { this.event = () => noop(); }
+    fire() {}
+    dispose() {}
+  }
   const vscode = {
     Uri: FakeUri,
+    Range: FakeRange,
+    CodeLens: FakeCodeLens,
+    EventEmitter: FakeEventEmitter,
     ViewColumn: { Beside: 2, Active: 1 },
     ProgressLocation: { Notification: 15 },
     env: { appName: "Visual Studio Code", language: "en" },
     commands: { getCommands: async () => [], registerCommand: noop, executeCommand: async () => {} },
+    languages: {
+      registerCodeLensProvider: (_sel, provider) => {
+        codeLensProvider = provider;
+        return noop();
+      },
+    },
     window: {
       activeTextEditor: undefined,
       state: { focused: true },
@@ -61,15 +82,18 @@ function loadExtension(choose) {
     },
     workspace: {
       workspaceFolders: [],
-      getConfiguration: () => ({ get: () => "https://billing.example.com" }),
+      getConfiguration: () => ({
+        get: (key, fallback) => (key === "codeLens" ? codeLens : key === "billingOrigin" ? "https://billing.example.com" : fallback),
+      }),
       onDidChangeWorkspaceFolders: subscribable().subscribe,
       onDidChangeTextDocument: subscribable().subscribe,
+      onDidChangeConfiguration: subscribable().subscribe,
     },
   };
   const bundled = { exports: {} };
   const require = createRequire(import.meta.url);
   new Function("require", "module", "exports", outputFiles[0].text)(id => (id === "vscode" ? vscode : require(id)), bundled, bundled.exports);
-  return { extension: bundled.exports, prompts, messages };
+  return { extension: bundled.exports, prompts, messages, getCodeLensProvider: () => codeLensProvider, FakeUri };
 }
 
 function activate(extension, globalStore) {
@@ -142,8 +166,8 @@ test("accepting the DeepSeek Harness prompt adds the Inkmap plugin index", async
   const store = new Map();
   const { extension, prompts, messages } = loadExtension(buttons => buttons[0]);
   const dispose = activate(extension, store);
-  await settle(() => prompts.length === 1 && messages.length === 1, "the install result");
-  dispose();
+  t.after(dispose);
+  await settle(() => prompts.length === 1 && messages.some(m => /DeepSeek Harness/.test(m)), "the install result");
   const { patch, pkg } = await profileFiles(profile);
   assert.ok(patch.startsWith("- id: other\n  name: other\n\n- id: plugin-market\n"), patch);
   assert.ok(patch.includes(INDEX_URL));
@@ -161,4 +185,25 @@ test("no prompt when DeepSeek Harness is missing or already set up", async t => 
   activate(extension, new Map())();
   await new Promise(ok => setTimeout(ok, 50));
   assert.equal(prompts.length, 0);
+});
+
+test("registers top-of-document Markdown CodeLens actions and respects inkmap.codeLens setting", async t => {
+  const profile = await harnessHome(t);
+  process.env.DSH_HOME = join(profile, "missing");
+  const { extension, getCodeLensProvider, FakeUri } = loadExtension(() => undefined, { codeLens: true });
+  const dispose = activate(extension, new Map());
+  const provider = getCodeLensProvider();
+  assert.ok(provider, "CodeLens provider registered");
+  const docUri = new FakeUri("/tmp/notes.md", "file");
+  const lenses = provider.provideCodeLenses({ uri: docUri });
+  assert.equal(lenses.length, 2);
+  assert.equal(lenses[0].command.command, "inkmap.codeLensOpen");
+  assert.equal(lenses[1].command.command, "inkmap.openInBrowser");
+  assert.deepEqual(provider.provideCodeLenses({ uri: new FakeUri("untitled:Untitled-1", "untitled") }), []);
+  dispose();
+
+  const disabled = loadExtension(() => undefined, { codeLens: false });
+  const disposeDisabled = activate(disabled.extension, new Map());
+  assert.deepEqual(disabled.getCodeLensProvider().provideCodeLenses({ uri: docUri }), []);
+  disposeDisabled();
 });

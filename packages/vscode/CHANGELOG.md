@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.12
+
+- **Top-of-Document Markdown CodeLens Quick Actions**: Added non-intrusive `⇄ Open as Inkmap Mind Map | Open in Browser` (`⇄ 用 Inkmap 思维导图打开 | 浏览器全屏打开`) CodeLens buttons at line 1 of every `.md` file so newly installed users can open a side-by-side editable mind map or full-screen browser canvas in a single click (configurable via `inkmap.codeLens`).
+
 ## 0.3.11
 
 - **DeepSeek Harness Setup Now Asks First**: The extension no longer edits DeepSeek Harness's desktop profile or runs `dsh plugin add` on its own at startup. The first time it finds DeepSeek Harness without the Inkmap plugin, it asks once (Install / No thanks) and remembers the answer; the new **Inkmap: Install in DeepSeek Harness** command installs it at any time.

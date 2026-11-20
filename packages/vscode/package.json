@@ -2,7 +2,7 @@
   "name": "inkmap-vscode",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.3.11",
+  "version": "0.3.12",
   "publisher": "inkmap",
   "homepage": "https://zhiyuanv.com/software.html",
   "repository": {
@@ -128,6 +128,11 @@
         "command": "inkmap.installDeepSeekHarness",
         "title": "%command.installDeepSeekHarness%",
         "category": "Inkmap"
+      },
+      {
+        "command": "inkmap.openDemo",
+        "title": "%command.openDemo%",
+        "category": "Inkmap"
       }
     ],
     "keybindings": [
@@ -193,6 +198,10 @@
           "when": "false"
         },
         {
+          "command": "inkmap.codeLensOpen",
+          "when": "false"
+        },
+        {
           "command": "inkmap.open",
           "when": "editorLangId == markdown"
         },
@@ -236,6 +245,11 @@
           "type": "boolean",
           "default": true,
           "description": "%config.browserAutoSave%"
+        },
+        "inkmap.codeLens": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.codeLens%"
         }
       }
     }

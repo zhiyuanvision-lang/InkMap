@@ -2,7 +2,7 @@ import { hasAccess } from "@inkmap/core";
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, watch } from "node:fs";
 import { lstat, readFile, realpath, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { isAbsolute, join, relative, sep } from "node:path";
 import * as vscode from "vscode";
 import { BrowserServers } from "./browser";
@@ -344,6 +344,17 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
+  const openDemo = async () => {
+    const dir = context.globalStorageUri?.fsPath || join(tmpdir(), "inkmap-welcome");
+    mkdirSync(dir, { recursive: true });
+    const demoPath = join(dir, "Inkmap-Welcome.md");
+    if (!existsSync(demoPath)) await writeFile(demoPath, t("welcomeDoc"), "utf8");
+    await vscode.commands.executeCommand("vscode.openWith", vscode.Uri.file(demoPath), MindmapEditorProvider.viewType, {
+      viewColumn: vscode.ViewColumn.Active,
+      preserveFocus: false,
+    });
+  };
+
   const maybeOfferOnboarding = (editor: vscode.TextEditor | undefined) => {
     if (!editor || editor.document.languageId !== "markdown" || editor.document.uri.scheme !== "file") return;
     if (context.globalState.get<boolean>("inkmap.hasOpenedMap") || context.globalState.get<boolean>("inkmap.onboardingPrompted")) return;
@@ -358,9 +369,84 @@ export function activate(context: vscode.ExtensionContext) {
     });
   };
 
+  const maybeOfferWelcome = () => {
+    const active = vscode.window.activeTextEditor;
+    if (active?.document.languageId === "markdown" && active.document.uri.scheme === "file") {
+      maybeOfferOnboarding(active);
+      return;
+    }
+    if (
+      context.globalState.get<boolean>("inkmap.hasOpenedMap") ||
+      context.globalState.get<boolean>("inkmap.welcomePrompted") ||
+      context.globalState.get<boolean>("inkmap.onboardingPrompted")
+    ) {
+      return;
+    }
+    void context.globalState.update("inkmap.welcomePrompted", true);
+    license.track?.("onboarding_view");
+    void vscode.window.showInformationMessage(t("welcomeTip"), t("welcomeAction")).then(pick => {
+      if (pick) {
+        license.track?.("onboarding_open");
+        void openDemo();
+      }
+    });
+  };
+
+  const statusBar = vscode.window.createStatusBarItem?.(vscode.StatusBarAlignment?.Right ?? 2, 100);
+  if (statusBar) {
+    statusBar.text = t("statusBarLabel");
+    statusBar.tooltip = t("statusBarTooltip");
+    statusBar.command = "inkmap.openToSide";
+    const updateStatusBar = (editor: vscode.TextEditor | undefined) => {
+      if (editor?.document.languageId === "markdown" && editor.document.uri.scheme === "file") statusBar.show();
+      else statusBar.hide();
+    };
+    updateStatusBar(vscode.window.activeTextEditor);
+    context.subscriptions.push(statusBar, vscode.window.onDidChangeActiveTextEditor(updateStatusBar));
+  }
+
   const editors = new MindmapEditorProvider(context, license);
   chatAvailable().then(available => vscode.commands.executeCommand("setContext", "inkmap.chatAvailable", available));
-  maybeOfferOnboarding(vscode.window.activeTextEditor);
+  maybeOfferWelcome();
+
+  if (vscode.languages?.registerCodeLensProvider) {
+    const lensEmitter = vscode.EventEmitter ? new vscode.EventEmitter<void>() : undefined;
+    const lensProvider: vscode.CodeLensProvider = {
+      ...(lensEmitter && { onDidChangeCodeLenses: lensEmitter.event }),
+      provideCodeLenses(document) {
+        if (document.uri.scheme !== "file") return [];
+        if (vscode.workspace.getConfiguration("inkmap", document.uri).get<boolean>("codeLens", true) === false) {
+          return [];
+        }
+        const top = new vscode.Range(0, 0, 0, 0);
+        return [
+          new vscode.CodeLens(top, {
+            title: t("codeLensOpen"),
+            tooltip: t("codeLensOpenTooltip"),
+            command: "inkmap.codeLensOpen",
+            arguments: [document.uri],
+          }),
+          new vscode.CodeLens(top, {
+            title: t("codeLensBrowser"),
+            tooltip: t("codeLensBrowserTooltip"),
+            command: "inkmap.openInBrowser",
+            arguments: [document.uri],
+          }),
+        ];
+      },
+    };
+    context.subscriptions.push(vscode.languages.registerCodeLensProvider({ language: "markdown", scheme: "file" }, lensProvider));
+    if (lensEmitter) {
+      context.subscriptions.push(lensEmitter);
+      if (vscode.workspace.onDidChangeConfiguration) {
+        context.subscriptions.push(
+          vscode.workspace.onDidChangeConfiguration(e => {
+            if (e.affectsConfiguration("inkmap.codeLens")) lensEmitter.fire();
+          }),
+        );
+      }
+    }
+  }
 
   context.subscriptions.push(
     log,
@@ -385,6 +471,12 @@ export function activate(context: vscode.ExtensionContext) {
     vscode.commands.registerCommand("inkmap.addToChat", () => editors.requestChat()),
     vscode.commands.registerCommand("inkmap.open", openToSide),
     vscode.commands.registerCommand("inkmap.openToSide", openToSide),
+    vscode.commands.registerCommand("inkmap.codeLensOpen", (arg?: unknown) => {
+      if (!context.globalState.get<boolean>("inkmap.hasOpenedMap")) {
+        license.track?.("onboarding_open");
+      }
+      return openToSide(arg);
+    }),
     vscode.commands.registerCommand(
       "inkmap.showSource",
       withUri(uri => vscode.window.showTextDocument(uri, { viewColumn: vscode.ViewColumn.Beside, preview: false })),
@@ -408,6 +500,7 @@ export function activate(context: vscode.ExtensionContext) {
       }),
     ),
     vscode.commands.registerCommand("inkmap.installDeepSeekHarness", installInDeepSeekHarness),
+    vscode.commands.registerCommand("inkmap.openDemo", openDemo),
     vscode.commands.registerCommand("inkmap.upgrade", async (arg?: unknown) => {
       if (editors.openAccount()) return;
       const uri = targetUri(arg);

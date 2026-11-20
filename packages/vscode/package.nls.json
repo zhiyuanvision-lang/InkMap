@@ -10,9 +10,11 @@
   "command.addToChat": "Add to Chat",
   "command.upgrade": "Get Inkmap Pro",
   "command.installDeepSeekHarness": "Install in DeepSeek Harness",
+  "command.openDemo": "Open Welcome Mind Map",
   "config.billingOrigin": "HTTPS origin of the Inkmap checkout service.",
   "config.browser": "Browser used by “Open Mind Map in Browser”",
   "config.browser.chrome": "Google Chrome (falls back to the default browser when not found)",
   "config.browser.default": "The system default browser",
-  "config.browserAutoSave": "Save the document automatically after editing the map in the browser; when off, changes stay unsaved in the editor"
+  "config.browserAutoSave": "Save the document automatically after editing the map in the browser; when off, changes stay unsaved in the editor",
+  "config.codeLens": "Show quick “Open as Inkmap Mind Map | Open in Browser” CodeLens actions at the top of Markdown files"
 }

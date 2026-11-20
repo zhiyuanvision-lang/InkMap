@@ -10,9 +10,11 @@
   "command.addToChat": "添加到对话",
   "command.upgrade": "升级到 Inkmap Pro",
   "command.installDeepSeekHarness": "安装到 DeepSeek Harness",
+  "command.openDemo": "打开示例思维导图",
   "config.billingOrigin": "Inkmap 收费服务的 HTTPS 地址。",
   "config.browser": "“在浏览器中打开思维导图”使用的浏览器",
   "config.browser.chrome": "用 Google Chrome 打开（找不到时改用默认浏览器）",
   "config.browser.default": "用系统默认浏览器打开",
-  "config.browserAutoSave": "在浏览器中修改导图后自动保存文档；关闭后改动只进入编辑器中未保存的内容"
+  "config.browserAutoSave": "在浏览器中修改导图后自动保存文档；关闭后改动只进入编辑器中未保存的内容",
+  "config.codeLens": "在 Markdown 文件首行顶部显示“用 Inkmap 思维导图打开 | 浏览器全屏打开”快捷入口"
 }
