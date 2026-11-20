@@ -138,11 +138,11 @@ runNpm(["publish", "--access", "public"], { cwd: join(root, "dist", "sidebars", 
 try {
   console.log("\n📦 Publishing to Official MCP Registry...");
   const ghToken = execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).trim();
-  if (ghToken) {
-    execFileSync("mcp-publisher", ["login", "github", "--token", ghToken], { cwd: root, stdio: "inherit" });
-  }
   for (let attempt = 1; attempt <= 20; attempt++) {
     try {
+      if (ghToken) {
+        execFileSync("mcp-publisher", ["login", "github", "--token", ghToken], { cwd: root, stdio: "inherit" });
+      }
       execFileSync("mcp-publisher", ["publish"], { cwd: root, stdio: "inherit" });
       break;
     } catch (err) {
