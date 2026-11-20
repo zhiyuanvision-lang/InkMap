@@ -26,6 +26,7 @@ export function createPhoneSignIn(
   let trigger: HTMLButtonElement | undefined;
   let request = 0;
   let lastAutoSubmitted = "";
+  let lastNotProKey = "";
   let message: { key: Parameters<typeof t>[0]; error: boolean } | undefined;
 
   function render() {
@@ -64,6 +65,7 @@ export function createPhoneSignIn(
     forPurchase = false;
     onVerified = undefined;
     lastAutoSubmitted = "";
+    lastNotProKey = "";
     message = undefined;
     if (restoreFocus) trigger?.focus();
     trigger = undefined;
@@ -112,6 +114,12 @@ export function createPhoneSignIn(
       }
       return;
     }
+    const key = `${number}:${digits}`;
+    if (!silentPhoneCheck && key === lastNotProKey) {
+      failure("notPro", true);
+      render();
+      return;
+    }
     const id = ++request;
     busy = verifying = true;
     message = undefined;
@@ -120,12 +128,14 @@ export function createPhoneSignIn(
     if (id !== request) return;
     busy = verifying = false;
     if (result.ok) {
+      lastNotProKey = "";
       const nextCallback = onVerified;
       close();
       onSignedIn(result.value);
       nextCallback?.(result.value);
       return;
     }
+    lastNotProKey = result.reason === "notPro" ? key : "";
     failure(result.reason, true);
     render();
     code.select();
@@ -137,6 +147,7 @@ export function createPhoneSignIn(
     const id = ++request;
     busy = true;
     lastAutoSubmitted = "";
+    lastNotProKey = "";
     message = undefined;
     render();
     const result = await api.send(number).catch(() => ({ ok: false, reason: "unavailable" } as const));

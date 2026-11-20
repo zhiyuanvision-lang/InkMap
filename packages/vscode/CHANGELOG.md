@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.13
+
+- **Streamlined Extension Display Title**: Refined Marketplace & Open VSX display title (`Inkmap — Markdown Mindmap & Markmap 思维导图`) for cleaner tab/sidebar readability and higher search relevance.
+
 ## 0.3.12
 
 - **Top-of-Document Markdown CodeLens Quick Actions**: Added non-intrusive `⇄ Open as Inkmap Mind Map | Open in Browser` (`⇄ 用 Inkmap 思维导图打开 | 浏览器全屏打开`) CodeLens buttons at line 1 of every `.md` file so newly installed users can open a side-by-side editable mind map or full-screen browser canvas in a single click (configurable via `inkmap.codeLens`).

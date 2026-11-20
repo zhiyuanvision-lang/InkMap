@@ -1,5 +1,5 @@
 {
-  "displayName": "Inkmap — Editable Mindmap, Markmap, Markdown Mind Map & Mermaid 思维导图",
+  "displayName": "Inkmap — Markdown Mindmap & Markmap 思维导图",
   "description": "Editable Mindmap & Markmap alternative: Two-way Markdown mind map (.md) & Mermaid flowchart editor with XMind shortcuts, LaTeX, AI Chat & PNG/SVG/HTML export | 双向可编辑思维导图、脑图、流程图",
   "virtualWorkspaces": "Inkmap edits Markdown files on disk.",
   "editor.displayName": "Inkmap Mind Map",
