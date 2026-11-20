@@ -393,7 +393,10 @@ export function createAntigravitySidecar({
     if (!file || !rel) return notFound();
     try {
       const dir = await realpath(dirname(file));
-      const candidate = normalize(join(dir, decodeURIComponent(rel)));
+      const decoded = decodeURIComponent(rel);
+      const candidate = /^(?:[\\/]|[A-Za-z]:[\\/])/.test(decoded)
+        ? normalize(decoded)
+        : normalize(join(dir, decoded));
       if (!insideOrEqual(dir, candidate) || candidate === dir) return notFound();
       const realAsset = await realpath(candidate);
       if (!insideOrEqual(dir, realAsset) || !/\.(?:png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i.test(realAsset)) return notFound();

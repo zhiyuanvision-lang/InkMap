@@ -170,8 +170,22 @@ if (existsSync(localDshIndex)) {
     await writeFile(localDshIndex, JSON.stringify(idx, null, 2) + "\n", "utf8");
     execFileSync("scp", [localDshIndex, "tengxun:/var/www/zhiyuanv/dsh-index.json"], { stdio: "inherit" });
     console.log("📦 Synced dsh-index.json to https://zhiyuanv.com/dsh-index.json");
+
+    const playDir = "/Users/lhy/Workspace/ZhiyuanV/website/inkmap-play";
+    if (existsSync(playDir)) {
+      const { cpSync, rmSync } = await import("node:fs");
+      const mockJs = await readFile(join(playDir, "playground-mock.js"));
+      rmSync(join(playDir, "assets"), { recursive: true, force: true });
+      cpSync(join(root, "packages", "web", "dist", "assets"), join(playDir, "assets"), { recursive: true });
+      const playHtml = (await readFile(join(root, "packages", "web", "dist", "index.html"), "utf8"))
+        .replace("<head>", '<head>\n  <script src="./playground-mock.js"></script>');
+      await writeFile(join(playDir, "index.html"), playHtml, "utf8");
+      await writeFile(join(playDir, "playground-mock.js"), mockJs);
+      execFileSync("rsync", ["-az", "--delete", `${playDir}/`, "tengxun:/var/www/zhiyuanv/inkmap-play/"], { stdio: "inherit" });
+      console.log("📦 Synced live web playground to https://www.zhiyuanv.com/inkmap.html");
+    }
   } catch (err) {
-    console.warn("[release] Could not auto-sync dsh-index.json to tengxun:", err.message);
+    console.warn("[release] Could not auto-sync dsh-index.json / inkmap-play to tengxun:", err.message);
   }
 }
 

@@ -381,6 +381,22 @@ async function start(host: Host) {
   /** Line positions computed by nodeLines(); load() and every map change invalidate them. */
   let nodeLinesCache: Map<string, number> | undefined;
 
+  /** Removes any orphan SVG `<g>` left in `nodeDraw` if an async render chunk was interrupted by `setData()`. */
+  function sweepOrphanSvgNodes() {
+    try {
+      const container: Element | undefined = mindMap.nodeDraw?.node;
+      const cache = mindMap.renderer?.nodeCache;
+      if (!container || !cache) return;
+      const liveGroups = new Set<Element>();
+      for (const n of Object.values<any>(cache)) {
+        if (n?.group?.node) liveGroups.add(n.group.node);
+      }
+      for (const child of [...container.children]) {
+        if (!liveGroups.has(child)) child.remove();
+      }
+    } catch {}
+  }
+
   /** Replaces the map with `md`, keeping folds; `local` edits are then saved like any other edit. */
   let loadGeneration = 0;
   async function load(md: string, local: boolean, resetHistory = false) {
@@ -389,8 +405,21 @@ async function start(host: Host) {
     cancelSourceEdit();
     const folds = resetHistory ? new Map<string, boolean>() : collectExpand(mindMap.getData(false));
     const built = await buildData(md, (path, depth) => folds.get(path.join("\u0000")) ?? depth < INITIAL_LEVELS);
-    // A newer load started while this one was preloading images or diagrams; its result wins.
     if (generation !== loadGeneration) return;
+    // Wait out any in-flight chunked `root.render()` before calling `setData()`, otherwise `simple-mind-map`'s
+    // `reRender()` clears `nodeCache` while the old rAF loop still appends orphan `<g>` nodes onto `nodeDraw`.
+    if (mindMap.renderer?.isRendering) {
+      await new Promise<void>(done => {
+        const timer = window.setTimeout(done, 250);
+        const onEnd = () => {
+          clearTimeout(timer);
+          mindMap.off("node_tree_render_end", onEnd);
+          done();
+        };
+        mindMap.on("node_tree_render_end", onEnd);
+      });
+      if (generation !== loadGeneration) return;
+    }
     const data = built.data;
     meta = built.meta;
     nodeLinesCache = undefined;
@@ -403,6 +432,7 @@ async function start(host: Host) {
       mindMap.setData(data);
       requestAnimationFrame(() => {
         try {
+          sweepOrphanSvgNodes();
           mindMap.resize();
           mindMap.view.fit();
         } catch {}
@@ -1320,6 +1350,7 @@ async function start(host: Host) {
   }
 
   mindMap.on("node_tree_render_end", () => {
+    sweepOrphanSvgNodes();
     if (pendingInitialView) {
       const saved = pendingInitialView;
       pendingInitialView = undefined;

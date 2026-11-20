@@ -7,7 +7,9 @@
 .ink-node a { color: var(--ink-accent, #2563eb); text-decoration: underline; text-underline-offset: 2px; }
 .ink-node.depth-0 a { color: #dbeafe; }
 .ink-node.depth-1 { font-size: 15px; font-weight: 600; }
-.ink-node:has(table), .ink-node:has(img), .ink-node:has(.katex-display) { max-width: none; }
+.ink-node:has(img) { max-width: 640px; }
+.ink-node:has(table), .ink-node:has(.ink-diagram), .ink-node:has(.katex-display) { max-width: 960px; }
+.ink-node p, .ink-node li { max-width: 640px; }
 .ink-node .katex { font-size: 1.08em; }
 .ink-node .katex-display { margin: 6px 0; }
 .ink-node p { margin: 0; }
@@ -19,6 +21,17 @@
 .ink-node h4, .ink-node h5, .ink-node h6 { font-size: 13.5px; }
 .ink-node hr { border: 0; border-top: 1px solid var(--ink-border, #dee0e3); margin: 8px 0; }
 .ink-node blockquote { margin: 4px 0; padding: 4px 10px; border-left: 3px solid var(--ink-accent, #5b7fd4); background: color-mix(in srgb, var(--ink-text, #1f2329) 4%, transparent); border-radius: 0 4px 4px 0; }
+.ink-node .ink-alert { margin: 4px 0; padding: 6px 12px; border-left: 3.5px solid #2563eb; background: color-mix(in srgb, #2563eb 7%, transparent); border-radius: 0 6px 6px 0; }
+.ink-node .ink-alert > * + * { margin-top: 4px; }
+.ink-node .ink-alert-title { font-size: 11.5px; font-weight: 700; letter-spacing: 0.04em; color: #2563eb; }
+.ink-node .ink-alert-tip { border-left-color: #059669; background: color-mix(in srgb, #059669 7%, transparent); }
+.ink-node .ink-alert-tip .ink-alert-title { color: #059669; }
+.ink-node .ink-alert-important { border-left-color: #7c3aed; background: color-mix(in srgb, #7c3aed 7%, transparent); }
+.ink-node .ink-alert-important .ink-alert-title { color: #7c3aed; }
+.ink-node .ink-alert-warning { border-left-color: #d97706; background: color-mix(in srgb, #d97706 8%, transparent); }
+.ink-node .ink-alert-warning .ink-alert-title { color: #d97706; }
+.ink-node .ink-alert-caution { border-left-color: #dc2626; background: color-mix(in srgb, #dc2626 7%, transparent); }
+.ink-node .ink-alert-caution .ink-alert-title { color: #dc2626; }
 .ink-node ul, .ink-node ol { margin: 0; padding-left: 1.4em; }
 .ink-node li + li { margin-top: 3px; }
 .ink-node em { font-style: normal; opacity: .72; }

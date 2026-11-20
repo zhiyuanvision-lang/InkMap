@@ -149,7 +149,7 @@ export async function fileSource(file: string, log: (msg: string) => void = () =
 }
 
 /** Resolves `rel` under `root`, or returns null when it would escape it. */
-function within(root: string, rel: string): string | null {
+function within(root: string, rel: string, allowAbsoluteInRoot = false): string | null {
   let decoded: string;
   try {
     decoded = decodeURIComponent(rel);
@@ -158,7 +158,9 @@ function within(root: string, rel: string): string | null {
   }
   const resolvedRoot = resolve(root);
   const base = resolvedRoot.endsWith(sep) ? resolvedRoot : resolvedRoot + sep;
-  const full = normalize(join(resolvedRoot, decoded));
+  const full = allowAbsoluteInRoot && /^(?:[\\/]|[A-Za-z]:[\\/])/.test(decoded)
+    ? normalize(decoded)
+    : normalize(join(resolvedRoot, decoded));
   return full.startsWith(base) ? full : null;
 }
 
@@ -551,7 +553,7 @@ export async function serve({
       }
       if (url.pathname === "/favicon.ico") return void res.writeHead(204).end();
       if (url.pathname.startsWith("/doc-assets/")) {
-        let asset = within(activeSource.dir, url.pathname.slice("/doc-assets/".length));
+        let asset = within(activeSource.dir, url.pathname.slice("/doc-assets/".length), true);
         if (asset) {
           const root = await realpath(activeSource.dir).catch(() => null);
           asset = await realpath(asset).catch(() => null);

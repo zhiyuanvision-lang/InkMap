@@ -82,15 +82,48 @@ const cjkStrong: TokenizerAndRendererExtension = {
 
 export function createRenderer(assetBase: string, privateDocument = false) {
   const resolve = (href: string) => {
-    const absolute = /^([a-z][a-z0-9+.-]*:|[\\/])/i.test(href);
+    let cleaned = href.trim();
+    if (/^file:\/\//i.test(cleaned)) {
+      try {
+        const u = new URL(cleaned);
+        cleaned = decodeURIComponent(u.pathname).replace(/^\/([A-Za-z]:\/)/, "$1");
+      } catch {}
+    }
+    const isWebScheme = /^(?:https?:|data:|blob:|vscode-resource:|vscode-webview-resource:)/i.test(cleaned);
+    const isLocalAbsolute = !isWebScheme && /^(?:[\\/]|[A-Za-z]:[\\/])/.test(cleaned);
+    const hasOtherScheme = !isWebScheme && !isLocalAbsolute && /^[a-z][a-z0-9+.-]*:/i.test(cleaned);
+    if (hasOtherScheme) return "";
+
     if (privateDocument) {
-      if (/^data:image\/(?:png|jpeg|gif|webp);base64,[\w+/=]+$/i.test(href)) return href;
-      if (absolute || !assetBase) return "";
-      const target = new URL(href, location.origin + assetBase);
+      if (/^data:image\/(?:png|jpeg|gif|webp);base64,[\w+/=]+$/i.test(cleaned)) return cleaned;
+      if (isWebScheme || !assetBase) return "";
+      if (isLocalAbsolute) {
+        return assetBase.endsWith("=") || assetBase.endsWith("/")
+          ? assetBase + encodeURIComponent(cleaned)
+          : "";
+      }
+      const target = new URL(cleaned, location.origin + assetBase);
       return target.origin === location.origin && target.pathname.startsWith(assetBase) ? target.href : "";
     }
-    const rel = href.replace(/^\.\//, "");
-    if (absolute) return href;
+
+    if (isWebScheme) return cleaned;
+    if (!assetBase) return "";
+    if (isLocalAbsolute) {
+      if (assetBase.endsWith("=")) return assetBase + encodeURIComponent(cleaned);
+      // VS Code webview `assetBase` ends with the document directory path (e.g. `https://...vscode-cdn.net/Users/.../dir/`).
+      try {
+        const baseUrl = new URL(assetBase, typeof location !== "undefined" ? location.href : "http://127.0.0.1/");
+        const basePath = decodeURIComponent(baseUrl.pathname).replace(/^\/([A-Za-z]:\/)/, "$1");
+        if (basePath.length > 1 && cleaned.replace(/\\/g, "/").startsWith(basePath)) {
+          const sub = cleaned.replace(/\\/g, "/").slice(basePath.length);
+          return assetBase + sub.split("/").map(encodeURIComponent).join("/");
+        }
+      } catch {}
+      if (assetBase.endsWith("/")) return assetBase + encodeURIComponent(cleaned);
+      return "";
+    }
+
+    const rel = cleaned.replace(/^\.\//, "");
     if (!assetBase.endsWith("=")) return assetBase + rel;
     // A query-string base needs one encoding; decode first so `my%20pic.png` is not sent as `my%2520pic.png`.
     let path = rel;
@@ -100,6 +133,14 @@ export function createRenderer(assetBase: string, privateDocument = false) {
     return assetBase + encodeURIComponent(path);
   };
 
+  const ALERT_LABELS: Record<string, string> = {
+    note: "NOTE",
+    tip: "TIP",
+    important: "IMPORTANT",
+    warning: "WARNING",
+    caution: "CAUTION",
+  };
+
   let nestedMarkdownDepth = 0;
   const marked = new Marked({
     gfm: true,
@@ -107,6 +148,15 @@ export function createRenderer(assetBase: string, privateDocument = false) {
     renderer: {
       html({ raw }: Tokens.HTML | Tokens.Tag) {
         return privateDocument ? escapeAttr(raw) : false;
+      },
+      blockquote({ tokens }: Tokens.Blockquote) {
+        const body = this.parser.parse(tokens);
+        const m = /^<p>\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\](?:[ \t]*<br\s*\/?>|[ \t]*\n|[ \t]+)?/i.exec(body);
+        if (!m) return `<blockquote>${body}</blockquote>`;
+        const kind = m[1].toLowerCase();
+        const rest = body.slice(m[0].length);
+        const content = rest.startsWith("</p>") ? rest.slice(4) : `<p>${rest}`;
+        return `<div class="ink-alert ink-alert-${kind}"><div class="ink-alert-title">${ALERT_LABELS[kind]}</div>${content}</div>`;
       },
       link({ href, tokens }: Tokens.Link) {
         const label = this.parser.parseInline(tokens);
