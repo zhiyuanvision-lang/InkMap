@@ -134,12 +134,25 @@ console.log("\n📦 Publishing inkmap-mcp & dsh-inkmap to npm...");
 runNpm(["publish", "--access", "public"], { cwd: join(root, "dist", "npm", "inkmap-mcp"), stdio: "inherit" });
 runNpm(["publish", "--access", "public"], { cwd: join(root, "dist", "sidebars", "dsh-inkmap"), stdio: "inherit" });
 
-// 8. Official MCP Registry (`registry.modelcontextprotocol.io`)
+// 8. Official MCP Registry (`registry.modelcontextprotocol.io`) — retries while npm CDN propagates the new tarball
 try {
   console.log("\n📦 Publishing to Official MCP Registry...");
-  execFileSync("mcp-publisher", ["publish"], { cwd: root, stdio: "inherit" });
+  const ghToken = execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).trim();
+  if (ghToken) {
+    execFileSync("mcp-publisher", ["login", "github", "--token", ghToken], { cwd: root, stdio: "inherit" });
+  }
+  for (let attempt = 1; attempt <= 20; attempt++) {
+    try {
+      execFileSync("mcp-publisher", ["publish"], { cwd: root, stdio: "inherit" });
+      break;
+    } catch (err) {
+      if (attempt === 20) throw err;
+      console.log(`[release] Waiting 15s for npm async scan & CDN propagation before retry (${attempt}/20)...`);
+      await new Promise(r => setTimeout(r, 15_000));
+    }
+  }
 } catch (err) {
-  console.warn("[release] mcp-publisher skipped or needs re-login (`mcp-publisher login github`):", err.message);
+  console.warn("[release] mcp-publisher skipped:", err.message);
 }
 
 // 9. Update website dsh-index.json & deploy to tengxun server
