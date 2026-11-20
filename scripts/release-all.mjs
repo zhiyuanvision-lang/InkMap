@@ -143,10 +143,20 @@ if (existsSync(localDshIndex)) {
     const svgIcon = await readFile(join(root, "packages", "vscode", "images", "icon.svg"), "utf8");
     const svgDataUri = `data:image/svg+xml;base64,${Buffer.from(svgIcon).toString("base64")}`;
     const list = Array.isArray(idx) ? idx : idx.plugins || idx.packages || [];
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (idx.metadata) idx.metadata.updateTimestamp = nowSec;
     for (const item of list) {
       if (item.name === "dsh-inkmap" || item.package === "dsh-inkmap") {
         item.version = version;
         if (item.icon) item.icon = svgDataUri;
+        if (Array.isArray(item.versions) && !item.versions.some(v => v.version === version)) {
+          item.versions.unshift({
+            version,
+            publishTimestamp: nowSec,
+            source: { type: "npm" },
+            engines: { dsh: ">=0.2.0-0 <1.0.0" },
+          });
+        }
       }
     }
     if (idx.objects && Array.isArray(idx.objects)) {
