@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "inkmap": {
+      "command": "npx",
+      "args": ["-y", "inkmap-mcp@latest", "mcp"]
+    }
+  }
+}

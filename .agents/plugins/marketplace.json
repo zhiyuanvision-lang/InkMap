@@ -1,0 +1,15 @@
+{
+  "name": "inkmap-marketplace",
+  "owner": {
+    "name": "Zhiyuan Vision",
+    "email": "contact@zhiyuanv.com"
+  },
+  "plugins": [
+    {
+      "name": "inkmap",
+      "source": "./",
+      "version": "0.3.17",
+      "description": "Interactive two-way Markdown mind map (markmap), Mermaid flowchart & XMind outline MCP App | 双向编辑 Markdown 思维导图、脑图、流程图与大纲"
+    }
+  ]
+}

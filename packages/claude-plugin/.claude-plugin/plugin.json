@@ -1,0 +1,33 @@
+{
+  "name": "inkmap",
+  "version": "0.3.17",
+  "description": "Interactive two-way Markdown mind map (Markmap), Mermaid flowchart & XMind outline workflow skill | 双向编辑 Markdown 思维导图、脑图、流程图与大纲",
+  "author": {
+    "name": "Zhiyuan Vision",
+    "email": "contact@zhiyuanv.com",
+    "url": "https://zhiyuanv.com"
+  },
+  "homepage": "https://zhiyuanv.com/software.html",
+  "repository": "https://github.com/zhiyuanvision-lang/InkMap",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "icon": "./.claude-plugin/icon.png",
+  "keywords": [
+    "inkmap",
+    "markdown",
+    "mindmap",
+    "mind-map",
+    "markmap",
+    "mermaid",
+    "flowchart",
+    "diagram",
+    "outline",
+    "xmind",
+    "katex",
+    "思维导图",
+    "脑图",
+    "大纲",
+    "流程图",
+    "架构图"
+  ],
+  "skills": "./skills/"
+}
