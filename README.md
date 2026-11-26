@@ -44,7 +44,8 @@ npx -y inkmap-mcp@latest install
 
 | 所在平台 | 安装渠道 | 3 秒打开导图的操作方式 |
 | :--- | :--- | :--- |
-| **Cursor / VS Code / Trae / Windsurf** | 扩展商店搜索 **`Inkmap`** 安装 | 打开任意 `.md` 文件，点击**编辑器右上角导图图标**，或右键文件选择 **`Open as Inkmap`** 即可左右并排联动编辑 |
+| **Cursor / VS Code / Windsurf** | 扩展商店搜索 **`Inkmap`** 安装 | 打开任意 `.md` 文件，点击**编辑器右上角导图图标**，或右键文件选择 **`Open as Inkmap`** 即可左右并排联动编辑 |
+| **TRAE（国际版 / 国内版）** | TRAE 应用市场暂时搜不到 Inkmap：下载 [`inkmap.vsix`](https://github.com/zhiyuanvision-lang/InkMap/releases/latest/download/inkmap.vsix)，在 TRAE 扩展视图菜单选择**「从 VSIX 安装」**；国际版也可运行 `npx -y inkmap-mcp@latest install trae` | 同上 |
 | **DeepSeek Harness** | 插件页右上角 `+ 添加插件` 输入 **`dsh-inkmap`** | 预览任意 `.md` 文档时，点击右上角工具栏的 **「Inkmap」** 按钮即可在右侧分栏打开交互脑图 |
 | **Claude / Codex / Antigravity** | 运行上方 `npx -y inkmap-mcp@latest install`（或在 Claude Code 内执行 `/plugin install inkmap --marketplace zhiyuanvision-lang/InkMap`） | 直接在对话中对 AI 说：*“用 Inkmap 打开 `README.md`”*，面板即刻自动弹出并随 AI 改稿实时刷新 |
 | **Qoder / 独立浏览器三栏工作台** | 终端执行 `npx -y inkmap-mcp@latest 你的文档.md` | 直接在 Chrome/默认浏览器打开「项目目录树 + Markdown 源码 + 交互导图」全屏三栏工作台 |
