@@ -1,7 +1,7 @@
 {
   "name": "inkmap",
   "displayName": "Inkmap — Markdown Mindmap & Markmap 思维导图",
-  "version": "0.3.17",
+  "version": "0.3.18",
   "description": "Interactive two-way Markdown mind map (markmap), Mermaid flowchart & XMind outline MCP App | 双向编辑 Markdown 思维导图、脑图、流程图与大纲",
   "author": {
     "name": "Zhiyuan Vision",

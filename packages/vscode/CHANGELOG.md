@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.3.18
+
+- **A One-Time Invitation to Support Inkmap on Every Client**: After a few documents have been opened and edited, DeepSeek Harness, Qoder, the browser editor, WorkBuddy and the Claude, Codex and Antigravity panels show a small corner card once, asking for a GitHub star. It never blocks editing. VS Code and its forks keep their existing store review prompt.
+- **Qoder Plugin**: The package now ships a README with requirements, usage, trial and network notes.
+
 ## 0.3.17
 
 - **Edit Flowcharts Directly in the Diagram Viewer**: Click any flowchart node, line or subgraph title to edit it in place — rename, add a next node (`Tab`), add a standalone node, connect two nodes, change the shape, add or remove text on a line, delete, with undo / redo. Every change is written back to the Mermaid block in the Markdown; the source pane no longer pops open on a click (it stays available from the toolbar).
