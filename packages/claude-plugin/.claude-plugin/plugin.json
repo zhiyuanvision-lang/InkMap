@@ -8,6 +8,7 @@
     "url": "https://zhiyuanv.com"
   },
   "homepage": "https://zhiyuanv.com/software.html",
+  "privacyPolicyUrl": "https://zhiyuanv.com/software.html#privacy",
   "repository": "https://github.com/zhiyuanvision-lang/InkMap",
   "license": "SEE LICENSE IN LICENSE.md",
   "icon": "./.claude-plugin/icon.png",
