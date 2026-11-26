@@ -1,0 +1,83 @@
+{
+  "name": "dsh-inkmap",
+  "version": "0.3.18",
+  "description": "Inkmap 思维导图 — 在 DeepSeek Harness 中将本地 Markdown 实时渲染为可双向编辑的思维导图 (Markmap) 与 Mermaid 流程图 / Interactive two-way Markdown mind map & Mermaid flowchart editor for DeepSeek Harness.",
+  "type": "module",
+  "icon": "./icon.svg",
+  "license": "SEE LICENSE IN LICENSE.md",
+  "homepage": "https://zhiyuanv.com/software.html",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zhiyuanvision-lang/InkMap.git",
+    "directory": "packages/harness"
+  },
+  "author": "Zhiyuan Vision <support@zhiyuanv.com>",
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "dsh-bundle",
+    "inkmap",
+    "mindmap",
+    "mind-map",
+    "mind map",
+    "markmap",
+    "mermaid",
+    "markdown",
+    "outline",
+    "flowchart",
+    "diagram",
+    "xmind",
+    "brainstorm",
+    "katex",
+    "latex",
+    "思维导图",
+    "脑图",
+    "大纲",
+    "流程图",
+    "架构图",
+    "组织结构图",
+    "鱼骨图",
+    "时间轴",
+    "知识库",
+    "笔记",
+    "双向同步",
+    "可视化"
+  ],
+  "engines": {
+    "dsh": ">=0.2.0-0 <1.0.0"
+  },
+  "exports": {
+    ".": "./host.js",
+    "./client": "./client.js",
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg"
+  },
+  "files": [
+    "host.js",
+    "client.js",
+    "web",
+    "cordis.patch.yml",
+    "icon.svg",
+    "locale/*.json",
+    "README.md",
+    "README.zh.md",
+    "LICENSE.md",
+    "THIRD_PARTY_NOTICES.md"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-sidebar-documentpreview",
+        "@deepseek-ai/dsh-client-ui-sidebar-right"
+      ]
+    }
+  }
+}
