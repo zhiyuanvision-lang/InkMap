@@ -1,6 +1,6 @@
 {
   "name": "dsh-inkmap",
-  "version": "0.3.18",
+  "version": "0.3.19",
   "description": "Inkmap 思维导图 — 在 DeepSeek Harness 中将本地 Markdown 实时渲染为可双向编辑的思维导图 (Markmap) 与 Mermaid 流程图 / Interactive two-way Markdown mind map & Mermaid flowchart editor for DeepSeek Harness.",
   "type": "module",
   "icon": "./icon.svg",

@@ -143,4 +143,4 @@ npm run sync:all   # Builds all platform bundles, verifies asset hash parity, an
 
 ## Privacy & License
 
-Inkmap processes your Markdown documents **100% locally on your machine** — document contents are never uploaded to any server. See [LICENSE.md](packages/vscode/LICENSE.md).
+Inkmap processes your Markdown documents **100% locally on your machine** — document contents are never uploaded to any server. Inkmap sends anonymous usage statistics (version, client, feature counts; never document content) to `zhiyuanv.com`. See [LICENSE.md](packages/vscode/LICENSE.md) and the [privacy policy](https://zhiyuanv.com/software.html#privacy).

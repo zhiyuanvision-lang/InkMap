@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.19
+
+- **Paste and Drop Pictures**: Paste a screenshot onto a selected node to add it as a child node, paste into the node editor or a Markdown source box to insert it at the cursor, or drag a picture file onto a node. Each picture is saved as a file in `<document name>.assets/` next to your Markdown and linked by a relative path (PNG, JPG, GIF or WebP, up to 10 MB; existing files are never replaced). Available in VS Code, Cursor and compatible editors, DeepSeek Harness, the browser editor and the desktop app.
+- **Fixed: Pasted Pictures Were Lost**: A picture pasted onto a node used to appear in the map without being written to the Markdown, so it disappeared when the file was reopened. In the Claude, Codex, Antigravity and WorkBuddy panels, which cannot write files beside the document, Inkmap now says so instead.
+- **Desktop App for Windows, macOS and Linux**: Download it from [zhiyuanv.com](https://zhiyuanv.com/software.html#desktop) to open Markdown files as mind maps without an editor.
+- **Desktop Fixes**: A second Open command no longer queues another file dialog behind the first (which made Cancel look unresponsive), maximised windows are restored correctly, and a new window never covers a small screen.
+
 ## 0.3.18
 
 - **A One-Time Invitation to Support Inkmap on Every Client**: After a few documents have been opened and edited, DeepSeek Harness, Qoder, the browser editor, WorkBuddy and the Claude, Codex and Antigravity panels show a small corner card once, asking for a GitHub star. It never blocks editing. VS Code and its forks keep their existing store review prompt.

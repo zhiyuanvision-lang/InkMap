@@ -26,7 +26,8 @@
 
 ### 5. 隐私
 
-- 本软件不收集、不上传你的文档内容，不做任何使用统计或跟踪。
+- 本软件不收集、不上传你的文档内容、文件名或路径。
+- 为了解各客户端和功能的使用情况，本软件会向 `zhiyuanv.com` 发送匿名使用统计：随机生成的安装标识、软件版本、所在客户端、操作系统类型、界面语言、试用或 Pro 状态，以及打开、编辑和各项功能的使用次数。服务器在收到统计时会记录来源 IP 地址，用于识别重复设备和判断所在地区。
 - 平台会话凭证保存在编辑器的机密存储中，命令行工具保存在 `~/.inkmap/billing-session` 中。
 - 购买时的付款信息由支付平台处理，我们只能看到订单号、商品和联系方式等平台提供的信息，用于确认支付、发放权益和售后。
 
@@ -68,7 +69,8 @@ Within 7 days of purchase you can ask for a full refund through the store, no qu
 
 ### 5. Privacy
 
-- The Software never collects or uploads your documents and does no analytics or tracking.
+- The Software never collects or uploads your documents, their file names or their paths.
+- To understand how each client and feature is used, the Software sends anonymous usage statistics to `zhiyuanv.com`: a randomly generated installation ID, the Software version, the client it runs in, the operating system type, the interface language, whether it is in trial or Pro, and how many times documents were opened or edited and features were used. When it receives them, the server records the source IP address, which is used to recognise duplicate devices and the region.
 - The platform session is stored in the editor’s secret storage or in `~/.inkmap/billing-session` for the CLI.
 - Payments are handled by the payment platform. We only see what it shares — order number, product and contact details — and use it to confirm payments, grant access and provide support.
 
