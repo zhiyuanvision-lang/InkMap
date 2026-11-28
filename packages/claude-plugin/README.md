@@ -1,4 +1,4 @@
-# Markdown AI Mind Map — Inkmap (for Claude Code & Claude Desktop)
+# Markdown Mindmap · Inkmap (for Claude Code & Claude Desktop)
 
 **Drowning in 500-line Claude-generated `PLAN.md` specs, PRDs, and architecture docs?**  
 **Inkmap** turns long, messy AI Markdown (`.md`, `.markmap.md`) into a **clear, byte-preserving two-way editable mind map** and **visual Mermaid flowchart workspace** inside **Claude Code** and **Claude Desktop**.

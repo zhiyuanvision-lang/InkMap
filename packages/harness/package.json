@@ -1,7 +1,7 @@
 {
   "name": "dsh-inkmap",
-  "version": "0.3.21",
-  "description": "Markdown AI 思维导图 — Inkmap：把 AI 生成的冗长复杂 Markdown (.md) 秒变条理清晰的可编辑思维导图、可视化 Mermaid 流程图与剪贴板贴图工作台 | Turn long, messy AI Markdown into a clear, editable mind map, Mermaid flowchart & paste-image editor for DeepSeek Harness.",
+  "version": "0.3.22",
+  "description": "把 AI 生成的冗长复杂 Markdown (.md) 秒变条理清晰的可编辑思维导图、可视化 Mermaid 流程图与剪贴板贴图工作台。",
   "type": "module",
   "icon": "./icon.svg",
   "license": "SEE LICENSE IN LICENSE.md",

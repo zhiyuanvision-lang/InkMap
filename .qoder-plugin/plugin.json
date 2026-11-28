@@ -1,8 +1,8 @@
 {
   "name": "inkmap",
-  "displayName": "Markdown AI 思维导图 — Inkmap",
-  "version": "0.3.21",
-  "description": "把 AI 生成的冗长复杂 Markdown (.md) 秒变条理清晰的可编辑思维导图与可视化 Mermaid 流程图，支持剪贴板截图粘贴落盘 (.assets/) 并逐字节写回源文件 | Turn long, messy AI Markdown into a clear, editable mind map & Mermaid flowchart.",
+  "displayName": "Markdown 思维导图 · Inkmap",
+  "version": "0.3.22",
+  "description": "把 AI 生成的冗长复杂 Markdown (.md) 秒变条理清晰的可编辑思维导图与可视化 Mermaid 流程图，支持剪贴板截图粘贴落盘 (.assets/) 并逐字节写回源文件。",
   "author": {
     "name": "Zhiyuan Vision",
     "email": "contact@zhiyuanv.com"

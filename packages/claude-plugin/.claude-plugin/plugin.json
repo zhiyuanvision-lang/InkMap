@@ -1,7 +1,7 @@
 {
   "name": "inkmap",
-  "version": "0.3.21",
-  "description": "Turn long, messy AI Markdown into a clear, editable mind map & visual Mermaid flowchart | 把 AI 生成的冗长复杂 Markdown 秒变条理清晰的可编辑思维导图与流程图",
+  "version": "0.3.22",
+  "description": "Turn long, messy AI Markdown into a clear, editable mind map & visual Mermaid flowchart.",
   "author": {
     "name": "Zhiyuan Vision",
     "email": "contact@zhiyuanv.com",

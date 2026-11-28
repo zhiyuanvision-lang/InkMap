@@ -1,6 +1,6 @@
 <div align="center">
   <img src="packages/vscode/images/icon.png" width="84" height="84" alt="Inkmap Logo" />
-  <h1>Markdown AI Mind Map — Inkmap（墨图）</h1>
+  <h1>Markdown Mindmap · Inkmap（墨图）</h1>
   <p><strong>把 AI 生成的冗长复杂 Markdown 秒变条理清晰的可编辑思维导图、可视化 Mermaid 流程图与剪贴板贴图工作台</strong></p>
   <p><em>Turn long, messy AI Markdown (.md) into a clear, editable mind map, visual Mermaid flowchart &amp; clipboard paste-image workspace across IDEs, Desktop &amp; AI Agents</em></p>
 
@@ -113,7 +113,7 @@ npx -y inkmap-mcp@latest install
 
 <a id="english"></a>
 
-## English Guide — Markdown AI Mind Map (Inkmap)
+## English Guide — Markdown Mindmap · Inkmap
 
 **Turn long, messy AI-generated Markdown (`PLAN.md`, specs, PRDs, architecture notes) into a clear, two-way editable mind map** (**Markmap** alternative), **visual Mermaid flowchart editor**, and **clipboard paste-image workspace** — directly inside **VS Code, Cursor, Windsurf, Trae, the Native Desktop App (macOS / Windows / Linux), Claude Desktop, Claude Code, OpenAI Codex, Google Antigravity, DeepSeek Harness**, or your browser.
 

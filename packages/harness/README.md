@@ -1,4 +1,4 @@
-# Markdown AI Mind Map — Inkmap (for DeepSeek Harness)
+# Markdown Mindmap · Inkmap (for DeepSeek Harness)
 
 **Drowning in long, messy AI-generated Markdown specs and plans?**  
 **Inkmap** turns complex local Markdown (`.md` / `.markmap.md`) into a **clear, two-way editable mind map** (Markmap alternative) and **visual Mermaid flowchart editor** directly inside the **DeepSeek Harness right sidebar**, with clipboard screenshot paste straight to `<doc>.assets/`.

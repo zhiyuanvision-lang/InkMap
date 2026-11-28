@@ -1,8 +1,8 @@
 {
   "name": "inkmap",
-  "displayName": "Markdown AI Mind Map — Inkmap",
-  "version": "0.3.21",
-  "description": "Turn long, messy AI Markdown into a clear, editable mind map, visual Mermaid flowchart & paste-image (.assets/) MCP App | 把 AI 生成的冗长复杂 Markdown 秒变条理清晰的可编辑思维导图与流程图",
+  "displayName": "Markdown Mindmap · Inkmap",
+  "version": "0.3.22",
+  "description": "Turn long, messy AI Markdown into a clear, editable mind map, visual Mermaid flowchart & clipboard paste-image (.assets/) MCP App.",
   "author": {
     "name": "Zhiyuan Vision",
     "email": "contact@zhiyuanv.com",

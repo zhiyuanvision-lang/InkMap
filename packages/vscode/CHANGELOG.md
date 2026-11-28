@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.22
+
+- **Refined 3-Word Store Title & Pure Per-Language Summaries**: Streamlined the extension title to `Markdown Mindmap · Inkmap` (`Markdown 思维导图 · Inkmap`) with dedicated single-language English and Chinese summaries across all platforms for cleaner readability and higher `"markdown"` / `"mindmap"` search relevance.
+
 ## 0.3.21
 
 - **Unified AI-First Title & Store Guides Across All Platforms**: Updated the display name (`Markdown AI Mind Map — Inkmap` / `Markdown AI 思维导图 — Inkmap`), summary, search tags and introduction pages across VS Code, Open VSX, npm, Claude, Codex, Antigravity, Qoder and DeepSeek Harness to spotlight turning long, complex AI-generated Markdown outlines into clear, editable mind maps and visual Mermaid flowcharts.
