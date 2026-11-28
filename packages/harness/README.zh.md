@@ -1,6 +1,7 @@
-# Inkmap 思维导图（DeepSeek Harness 原生双向脑图 · 可视化流程图 · 剪贴板贴图工作台）
+# Markdown AI 思维导图 — Inkmap（DeepSeek Harness 原生双向脑图 · 可视化流程图 · 剪贴板贴图）
 
-将工作区内的本地 Markdown (`.md` / `.markmap.md`) 文件直接在 **DeepSeek Harness 右侧分栏** 渲染为可交互、可双向拖拽编辑的思维导图（Markmap 增强替代）与可视化 Mermaid 流程图。支持**剪贴板截图一键粘贴落盘**，每一处修改毫秒级逐字节写回原文件，未改动段落 100% 原样保留。
+**AI 智能体输出的几百行冗长复杂 Markdown 看不清主干逻辑？**  
+**Inkmap** 在 **DeepSeek Harness 右侧分栏** 将杂乱的本地 `.md` / `.markmap.md` 一键渲染为**条理清晰、可双向拖拽编辑的思维导图**与**可视化 Mermaid 流程图**。支持**剪贴板截图一键粘贴落盘**，每一处修改毫秒级逐字节写回原文件，未改动段落 100% 原样保留。
 
 ![Inkmap 双向实时同步演示](https://www.zhiyuanv.com/assets/inkmap/demo-sync-zh.gif)
 

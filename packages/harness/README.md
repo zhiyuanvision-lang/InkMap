@@ -1,6 +1,7 @@
-# Inkmap — Two-Way Markdown Mindmap, Visual Mermaid & Paste-Image Editor for DeepSeek Harness
+# Markdown AI Mind Map — Inkmap (for DeepSeek Harness)
 
-Render and edit local Markdown (`.md` / `.markmap.md`) files as interactive two-way mind maps (Markmap alternative) and visual Mermaid flowcharts directly inside the **DeepSeek Harness right sidebar**, with clipboard screenshot paste straight to `<doc>.assets/`.
+**Drowning in long, messy AI-generated Markdown specs and plans?**  
+**Inkmap** turns complex local Markdown (`.md` / `.markmap.md`) into a **clear, two-way editable mind map** (Markmap alternative) and **visual Mermaid flowchart editor** directly inside the **DeepSeek Harness right sidebar**, with clipboard screenshot paste straight to `<doc>.assets/`.
 
 ![Inkmap Two-Way Sync Demo](https://www.zhiyuanv.com/assets/inkmap/demo-sync-en.gif)
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.21
+
+- **Unified AI-First Title & Store Guides Across All Platforms**: Updated the display name (`Markdown AI Mind Map — Inkmap` / `Markdown AI 思维导图 — Inkmap`), summary, search tags and introduction pages across VS Code, Open VSX, npm, Claude, Codex, Antigravity, Qoder and DeepSeek Harness to spotlight turning long, complex AI-generated Markdown outlines into clear, editable mind maps and visual Mermaid flowcharts.
+
 ## 0.3.20
 
 - **Fixed: Overlapping Nodes After Switching Back to the Map**: When the map was in a background tab (a side pane tab, an editor tab behind the text editor, a collapsed panel) and the document changed or another file was opened, the nodes shrank to tiny boxes with their text piling up on top of each other. The map is now drawn again at its real size as soon as it is shown, including Mermaid diagrams that could not be drawn while hidden.

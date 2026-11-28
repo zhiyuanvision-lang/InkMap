@@ -1,8 +1,8 @@
 <div align="center">
   <img src="packages/vscode/images/icon.png" width="84" height="84" alt="Inkmap Logo" />
-  <h1>Inkmap（墨图）</h1>
-  <p><strong>可双向编辑的本地 Markdown 思维导图、可视化 Mermaid 流程图与剪贴板贴图工作台</strong></p>
-  <p><em>Two-Way Editable Markdown Mindmap (Markmap Alternative), Visual Mermaid Flowchart &amp; Clipboard Paste-Image Workspace for IDEs, Desktop &amp; AI Agents</em></p>
+  <h1>Markdown AI Mind Map — Inkmap（墨图）</h1>
+  <p><strong>把 AI 生成的冗长复杂 Markdown 秒变条理清晰的可编辑思维导图、可视化 Mermaid 流程图与剪贴板贴图工作台</strong></p>
+  <p><em>Turn long, messy AI Markdown (.md) into a clear, editable mind map, visual Mermaid flowchart &amp; clipboard paste-image workspace across IDEs, Desktop &amp; AI Agents</em></p>
 
   <p>
     <a href="https://www.zhiyuanv.com/inkmap.html"><img src="https://img.shields.io/badge/⚡_在线免安装试玩-Live_Playground-2563eb?style=for-the-badge" alt="Live Playground" /></a>
@@ -21,11 +21,11 @@
 
 <a id="简体中文"></a>
 
-## 为什么选择 Inkmap？
+## 为什么程序员都在用 Inkmap 看 AI 文档？
 
-传统 **Markmap** 只能单向只读预览，改一个分支还得退回源码数缩进；而传统脑图软件（`.xmind` 等）把内容锁死在私有二进制文件里，Git 无法对比、AI 智能体也无法直接读写；更头疼的是写 Markdown 插图往往还要折腾图床或手动拷文件。
+用 Cursor、Claude Code、Codex 写代码时，AI 智能体动辄输出几百行复杂的 `PLAN.md`、架构设计与重构方案——纯文本大纲层级深、字太密，扫半天抓不住主干逻辑；传统 **Markmap** 只能只读预览不能改；换成 `.xmind` 又变成私有二进制文件，Git 无法 Diff、AI 也无法继续读写。
 
-**Inkmap 让你的文件永远保持为干净的本地标准 `.md`，同时兼具桌面级脑图、可视化流程图与一键截图落盘的丝滑体验：**
+**Inkmap 把冗长杂乱的本地 `.md` 一键变成条理清晰的交互式思维导图，同时保留 100% 纯净的标准 Markdown 文件：**
 
 | 核心维度 | **Inkmap（墨图）** | 传统 Markmap 插件 | 传统脑图软件 (`.xmind`) |
 | :--- | :--- | :--- | :--- |
@@ -113,9 +113,9 @@ npx -y inkmap-mcp@latest install
 
 <a id="english"></a>
 
-## English Guide
+## English Guide — Markdown AI Mind Map (Inkmap)
 
-**Inkmap** turns plain local Markdown (`.md`, `.markmap.md`) files into a **two-way editable mind map** (**Markmap** alternative), **visual Mermaid flowchart editor**, and **clipboard paste-image workspace** — directly inside **VS Code, Cursor, Windsurf, Trae, the Native Desktop App (macOS / Windows / Linux), Claude Desktop, Claude Code, OpenAI Codex, Google Antigravity, DeepSeek Harness**, or your browser.
+**Turn long, messy AI-generated Markdown (`PLAN.md`, specs, PRDs, architecture notes) into a clear, two-way editable mind map** (**Markmap** alternative), **visual Mermaid flowchart editor**, and **clipboard paste-image workspace** — directly inside **VS Code, Cursor, Windsurf, Trae, the Native Desktop App (macOS / Windows / Linux), Claude Desktop, Claude Code, OpenAI Codex, Google Antigravity, DeepSeek Harness**, or your browser.
 
 | Capability | **Inkmap** | Read-Only Markmap | Proprietary `.xmind` Tools |
 | :--- | :--- | :--- | :--- |

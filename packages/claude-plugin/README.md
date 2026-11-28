@@ -1,6 +1,7 @@
-# Inkmap — Markdown Mind Map & Visual Mermaid Flowchart Plugin for Claude
+# Markdown AI Mind Map — Inkmap (for Claude Code & Claude Desktop)
 
-**Inkmap** equips **Claude Code** and **Claude Desktop** with byte-preserving Markdown mind map (`.md`, `.markmap.md`), XMind-style outliner, and inline Mermaid diagram workflows — pairing seamlessly with the interactive Inkmap visual mind map & flowchart editor.
+**Drowning in 500-line Claude-generated `PLAN.md` specs, PRDs, and architecture docs?**  
+**Inkmap** turns long, messy AI Markdown (`.md`, `.markmap.md`) into a **clear, byte-preserving two-way editable mind map** and **visual Mermaid flowchart workspace** inside **Claude Code** and **Claude Desktop**.
 
 ## Key Capabilities
 
