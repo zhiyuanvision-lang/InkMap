@@ -39,14 +39,16 @@
 
 ---
 
-## ⚡ 30 秒快速安装与打开指南
+## 安装与快速开始（30 秒上手）
 
-### 方式一：一行命令自动配置本机全部 AI 与 IDE 客户端（推荐）
+### 方式一：命令行一键安装（全平台自动配置 / DeepSeek Harness / Homebrew）
 
-自动检测并一键配置到本机已安装的 **Cursor、VS Code、Windsurf、Trae、DeepSeek Harness、Claude Desktop、Claude Code、OpenAI Codex、Google Antigravity**：
+自动检测并一键配置到本机已安装的 **Cursor、VS Code、Windsurf、Trae、DeepSeek Harness、Claude Desktop、Claude Code、OpenAI Codex、Google Antigravity**（下方依次为全端自动配置、DeepSeek Harness 原生插件安装、macOS Homebrew 桌面端安装）：
 
 ```bash
 npx -y inkmap-mcp@latest install
+dsh plugin --profile web add dsh-inkmap
+brew install --cask zhiyuanvision-lang/tap/inkmap
 ```
 
 ### 方式二：按你正在使用的平台安装与打开
@@ -63,7 +65,7 @@ npx -y inkmap-mcp@latest install
 
 ---
 
-## ✨ 四大核心特性详解
+## 功能特性详解（四大核心能力）
 
 ### 1. 剪贴板截图一键粘贴 & 拖拽插图（自动落盘 `<文档名>.assets/`）
 彻底告别写 Markdown 插图还要手动保存、重命名、敲路径或配图床的繁琐流程：
@@ -91,7 +93,7 @@ npx -y inkmap-mcp@latest install
 
 ---
 
-## ⌨️ 常用快捷键速查表
+## 配置与快捷键速查表
 
 | 导图核心操作 | 快捷键 / 方式 | 图文与进阶操作 | 快捷键 / 方式 |
 | :--- | :--- | :--- | :--- |
@@ -140,7 +142,7 @@ npx -y inkmap-mcp@latest install
    - Download at **[zhiyuanv.com/software.html#desktop](https://www.zhiyuanv.com/software.html#desktop)** — open and edit `.md` mind maps directly without launching an IDE.
 4. **Zero-install browser playground**: Try it live at **[zhiyuanv.com/inkmap.html](https://www.zhiyuanv.com/inkmap.html?lang=en)**.
 
-### Core Highlights
+### Features
 
 - **Paste & Drop Screenshots Straight into Markdown (`<doc>.assets/`)**: Press `⌘V` / `Ctrl+V` on any selected node to attach a clipboard screenshot as a child image node, paste inside any Markdown/node editor to insert `![](<doc>.assets/image-....png)` at the cursor, or drag `PNG` / `JPG` / `GIF` / `WebP` files (up to `10 MB`) onto a node. Images are saved locally right beside your document with clean relative links — never overwriting existing files and requiring zero cloud hosting. *(Supported in VS Code, Cursor & compatible IDEs, Desktop App, DeepSeek Harness, Qoder, and the Browser Editor.)*
 
