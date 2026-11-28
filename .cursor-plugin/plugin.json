@@ -1,8 +1,8 @@
 {
   "name": "inkmap",
   "displayName": "Inkmap — Markdown Mindmap & Markmap 思维导图",
-  "version": "0.3.19",
-  "description": "Interactive two-way Markdown mind map (markmap), Mermaid flowchart & XMind outline MCP App | 双向编辑 Markdown 思维导图、脑图、流程图与大纲",
+  "version": "0.3.20",
+  "description": "Interactive two-way Markdown mind map (markmap), visual Mermaid flowchart & paste-image (.assets/) MCP App | 双向编辑 Markdown 思维导图、脑图、流程图与剪贴板贴图",
   "author": {
     "name": "Zhiyuan Vision",
     "email": "contact@zhiyuanv.com",
@@ -22,6 +22,9 @@
     "mind map",
     "markmap",
     "mermaid",
+    "paste-image",
+    "markdown-image",
+    "markdown-editor",
     "flowchart",
     "diagram",
     "outline",
@@ -38,6 +41,7 @@
     "架构图",
     "组织结构图",
     "鱼骨图",
+    "贴图",
     "双向同步"
   ],
   "logo": "./packages/vscode/images/icon.png",

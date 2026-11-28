@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.20
+
+- **Fixed: Overlapping Nodes After Switching Back to the Map**: When the map was in a background tab (a side pane tab, an editor tab behind the text editor, a collapsed panel) and the document changed or another file was opened, the nodes shrank to tiny boxes with their text piling up on top of each other. The map is now drawn again at its real size as soon as it is shown, including Mermaid diagrams that could not be drawn while hidden.
+- **Fixed: Wrong Zoom After Switching Back**: A "fit to window" asked for while the map was hidden (after opening a file or resizing the pane) used to size the view to the collapsed nodes; it now happens once the map is shown.
+- **Fixed: Cursor Sync While the Map Is Hidden**: Moving the cursor in the Markdown while the map's tab is hidden now selects and centres that node once the map is shown, instead of leaving nothing selected.
+- **Fixed: Saved Zoom Lost in a Background Pane**: A file opened while its pane was hidden now keeps the zoom and position it was saved with, and no longer stores a wrong view while hidden.
+- **Exports and presentations** started right after switching back wait until the map has been redrawn.
+
 ## 0.3.19
 
 - **Paste and Drop Pictures**: Paste a screenshot onto a selected node to add it as a child node, paste into the node editor or a Markdown source box to insert it at the cursor, or drag a picture file onto a node. Each picture is saved as a file in `<document name>.assets/` next to your Markdown and linked by a relative path (PNG, JPG, GIF or WebP, up to 10 MB; existing files are never replaced). Available in VS Code, Cursor and compatible editors, DeepSeek Harness, the browser editor and the desktop app.

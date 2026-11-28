@@ -2,5 +2,5 @@
   "$schema": "https://glama.ai/mcp/schemas/server.json",
   "maintainers": ["zhiyuanvision-lang"],
   "name": "inkmap-mcp",
-  "description": "Two-way editable Markdown mind map (Markmap alternative) & Mermaid flowchart MCP App for Claude Desktop, Cursor, VS Code, Codex, and Antigravity."
+  "description": "Two-way editable Markdown mind map (Markmap alternative), visual Mermaid flowchart & clipboard paste-image (.assets/) MCP App for Claude Desktop, Cursor, VS Code, Codex, and Antigravity."
 }
