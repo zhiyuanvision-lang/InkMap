@@ -1,10 +1,12 @@
-name: Publish to Official MCP Registry
+name: Publish npm Provenance & Official MCP Registry
 
 on:
   workflow_dispatch:
   push:
     tags:
       - "v*"
+  release:
+    types: [published]
 
 jobs:
   publish:
@@ -16,6 +18,58 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Set up Node.js for npm Provenance (OIDC)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish npm packages with Sigstore Provenance (when Trusted Publisher or NPM_TOKEN is active)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          VERSION=$(jq -r '.version' server.json)
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/inkmap-mcp/${VERSION}")
+          if [ "$STATUS" = "200" ]; then
+            echo "inkmap-mcp@${VERSION} is already on npm; skipping CI provenance publish."
+            exit 0
+          fi
+          # Upgrade npm >= 11.5.1 so GitHub OIDC Trusted Publishing works without a static token
+          npm install -g npm@latest
+          if [ -z "${NODE_AUTH_TOKEN:-}" ]; then
+            # Clear empty token line written by setup-node so npm uses pure OIDC Trusted Publishing
+            rm -f "${NPM_CONFIG_USERCONFIG:-}"
+          fi
+          echo "Waiting up to 180s for GitHub Release v${VERSION} tarballs..."
+          mkdir -p /tmp/npm-tarballs
+          READY=0
+          for i in $(seq 1 18); do
+            if gh release download "v${VERSION}" -R "${GITHUB_REPOSITORY}" -D /tmp/npm-tarballs \
+              --pattern "inkmap-mcp-${VERSION}.tgz" \
+              --pattern "dsh-inkmap-${VERSION}.tgz" \
+              --pattern "dsh-plugin-inkmap-${VERSION}.tgz" --clobber 2>/dev/null; then
+              READY=1
+              break
+            fi
+            sleep 10
+          done
+          if [ "$READY" != "1" ]; then
+            echo "::warning::Release tarballs for v${VERSION} not attached yet; leaving npm publish to release-all.mjs fallback."
+            exit 0
+          fi
+          for PKG_TGZ in \
+            "/tmp/npm-tarballs/inkmap-mcp-${VERSION}.tgz" \
+            "/tmp/npm-tarballs/dsh-inkmap-${VERSION}.tgz" \
+            "/tmp/npm-tarballs/dsh-plugin-inkmap-${VERSION}.tgz"; do
+            echo "Publishing ${PKG_TGZ} with --provenance..."
+            npm publish "${PKG_TGZ}" --provenance --access public || {
+              echo "::warning::CI provenance publish did not succeed (configure Trusted Publisher on npmjs.com or NPM_TOKEN secret); release-all.mjs will publish locally."
+              exit 0
+            }
+          done
 
       - name: Install mcp-publisher
         run: |
